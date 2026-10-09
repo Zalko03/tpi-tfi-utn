@@ -1,5 +1,7 @@
-# /tarea <ID>
-Descripción: ejecutar una tarea del plan de punta a punta sin salirse del alcance.
+---
+description: Ejecutar una tarea del plan de punta a punta sin salirse del alcance. Uso: /tarea T1.3
+---
+
 1. Leé AGENTS.md y la sección de la tarea en docs/PLAN_IMPLEMENTACION.md.
 2. Mostrame un plan de 5–8 líneas (archivos a tocar, tests a escribir) y esperá mi OK.
 3. Creá la rama feature/<ID>-<slug>.
