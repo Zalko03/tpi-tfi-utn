@@ -14,6 +14,7 @@
 - Se creó la rama `feature/T0.1-estructura-monorepo` desde `main`.
 - Se commitearon los workflows del agente (`tarea.md`, `cierre-clase.md`) que estaban modificados localmente.
 - Se agregó `.gitignore` centralizado cubriendo Python (`__pycache__`, `venv`, `.venv`, `*.py[cod]`), Node (`node_modules`), Docker, secretos (`.env` con excepción `!.env.example`) y artefactos de editor/OS.
+- **fix:** se agregó sección "Claves privadas" al `.gitignore` (`*.pem`, `*.key`, `backend-django/config/keys/`, `backend-node/config/keys/`) para que el par JWT RS256 nunca entre al historial de Git (commit separado: `fix: ignorar claves privadas en .gitignore`).
 - Se agregó `.env.example` con las variables de los tres servicios (`backend-django`, `backend-node`, `ai-service`) y la sección de infra (descomentada en TP4). Sin valores reales; con comentarios que explican cómo generar el par de claves JWT RS256.
 - Se creó `README.md` base con tabla de arquitectura, instrucciones de puesta en marcha (completar en T0.4), estructura del repo, tabla del equipo y declaración de uso de IA (exigida por el plan).
 - Se crearon los directorios del monorepo con `.gitkeep`: `backend-django/`, `backend-node/`, `docs/adr/`, `docs/dominio/seed/`. **No se crean** `ai-service/`, `web/` ni `infra/` hasta sus TPs respectivos.

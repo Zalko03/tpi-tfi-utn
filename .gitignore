@@ -4,6 +4,14 @@
 *.env
 !.env.example
 
+# ── Claves privadas ───────────────────────────────────────────────────────────
+# El par JWT RS256 se genera localmente y NUNCA debe entrar al historial de Git.
+# Documentado en .env.example: cómo generarlo con openssl.
+*.pem
+*.key
+backend-django/config/keys/
+backend-node/config/keys/
+
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
