@@ -99,3 +99,43 @@ sequenceDiagram
 
 Los cinco pasos del plan quedan así: (1) el `POST` responde 202; (2) Node llama a la IA, valida y guarda en Mongo; (3) Node emite el aviso por Socket.IO; (4) el dueño aprueba y Node llama a Django; (5) Django recalcula las recetas, avisa a Node y este guarda historial y snapshot. La rama de contingencia no toca ventas ni costeo.
 
+---
+
+## 4. Qué datos viven en cada base
+
+| Base | Qué guarda | Por qué ahí |
+|---|---|---|
+| **PostgreSQL** (Django) | Las 10 entidades de `PROPUESTA.md` §4: `Proveedor`, `Insumo`, `Compra`, `Producto`, `RecetaItem`, `Venta`, `VentaItem`, `TurnoCaja`, `MovimientoCaja` y `Usuario`. | Son datos contables con relaciones y reglas de integridad (por ejemplo, el costo congelado en cada `VentaItem`); necesitan transacciones y joins. |
+| **MongoDB** (Node) | `historial_precios`: cada cambio de costo, solo se agrega. | Alto volumen, nunca se edita y se consulta por insumo o producto en el tiempo; no requiere joins. |
+| | `snapshots_costeo`: desglose de una receta en un momento dado. | Su estructura varía según los ítems de la receta; un documento la guarda completa sin tablas auxiliares. |
+| | `importaciones_ia`: entrada, salida, latencia y versión de prompt de cada importación. | Es trazabilidad de la IA con forma variable según la salida del modelo; no forma parte del núcleo contable. |
+| | `menu_digital` (historia Could, HU13). | Carta flexible, sin forma fija. |
+
+Los datos de Mongo se derivan de los de PostgreSQL pero no los reemplazan: si Mongo se pierde, ventas, compras y costos siguen intactos.
+
+---
+
+## 5. Degradación
+
+| Si cae... | Qué pasa | Qué sigue funcionando |
+|---|---|---|
+| **Ollama o el proveedor de IA** | La importación devuelve la respuesta de contingencia (§3) y el dueño carga los precios a mano o por CSV. El resumen semanal responde con un mensaje de contingencia. | Ventas, caja, costeo y la carga manual de precios. |
+| **Node** | Se pierde el historial en vivo, el tablero, la orquestación de la importación con IA y los avisos. | Django sigue vendiendo, costeando y recalculando. |
+| **MongoDB** | Se pierde el historial temporalmente (historial de precios, snapshots e importaciones). | Las ventas y el costeo, que viven en PostgreSQL. |
+
+---
+
+## 6. Decisiones de arquitectura
+
+Solo se listan con su estado; los ADR se crean en `docs/adr/` más adelante.
+
+| Decisión | Estado | Detalle |
+|---|---|---|
+| **JWT RS256, Django único emisor** | Tomada · ADR a registrar | Solo Django tiene la clave privada; Node valida con la pública (plan §6, T2.1; `convenciones-node.md` §7). |
+| **Contrato JSON `snake_case` con traducción a `camelCase` en `django.client.js`** | Tomada · ADR a registrar | Django responde en `snake_case` (DRF por defecto); Node traduce en un solo lugar (`convenciones-python.md` §3). |
+| **Adapter de proveedor de IA** | Tomada · ADR a registrar | `ai-service` define una interfaz con Ollama y, opcionalmente, Gemini. Los docentes confirmaron que se puede usar el proveedor que se prefiera; la clave va solo en `.env` y no se envían datos identificables del local. |
+| **Modalidad de despliegue** | **PENDIENTE** (T4.4) | Propuesta del plan: Django, Node y bases en cloud gratuito, y la IA por el adapter. Con unos 8 GB de RAM en el local del dueño no conviene correr todo ahí. El `docker compose` completo debe levantar en una PC del equipo. Se decide y declara antes del TP4. |
+| **Medio del aviso de Django a Node** | **PENDIENTE** (a decidir en TP3) | Cubre el recálculo de costos (paso 5 del flujo) y las ventas para el tablero. **Opción propuesta (no decidida):** HTTP interno con token de servicio. |
+| **Token de Node a Django** | **PENDIENTE** (a decidir en TP2) | **Opción propuesta (no decidida):** reenviar el JWT del usuario en las acciones de personas, y usar un token de servicio en los eventos internos. |
+
+
