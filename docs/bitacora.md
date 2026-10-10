@@ -106,3 +106,45 @@ git diff main feature/T0.2-propuesta --stat
 ```
 
 Checklist manual: las HU1–HU13 coinciden con la tabla del plan (§6), HU14 está marcada Should, y cada historia tiene 2–3 criterios.
+
+---
+
+## T0.3 — Arquitectura (2026-10-10)
+
+**Rama:** `feature/T0.3-arquitectura`
+
+### Qué se hizo
+
+- Se creó `docs/arquitectura.md` en 3 commits: (1) mapa tecnológico y diagrama de componentes; (2) diagrama de secuencia de la importación de precios con IA; (3) datos por base, degradación y decisiones.
+- En un commit aparte se alineó la fila HU6 de `docs/PLAN_IMPLEMENTACION.md` §6 con `docs/PROPUESTA.md` (cuenta propia con nombre completo, usuario y clave inicial). No se tocó nada más del plan.
+
+### Decisiones y por qué
+
+- **Secuencia con rama `alt` de contingencia:** si la IA falla o devuelve una salida que no valida, Node guarda la entrada y el error, avisa y el dueño carga los precios a mano o por CSV. Una segunda rama cubre que el dueño no apruebe: no se crea compra ni cambia ningún costo.
+- **Mermaid:** un diagrama por bloque, etiquetas entre comillas en el flowchart y sin caracteres especiales en los nombres de nodos. En el de secuencia las comillas se quitaron porque se mostrarían literales.
+- **Decisiones pendientes** (sección 6 del documento), cada una con una "opción propuesta" marcada como no decidida:
+  - Aviso de Django a Node: HTTP interno con token de servicio (a decidir en TP3).
+  - Token de Node a Django: reenviar el JWT del usuario en acciones de personas y token de servicio en eventos internos (a decidir en TP2).
+  - Modalidad de despliegue (T4.4).
+- Decisiones tomadas, con ADR a registrar: JWT RS256 con Django como único emisor, contrato `snake_case` con traducción a `camelCase` en `django.client.js` y adapter de proveedor de IA.
+
+### Pendiente para otra tarea
+
+- **Falta agregar `importaciones_ia` a la tabla "Dónde se persiste cada cosa" de `docs/PROPUESTA.md` §4**, que hoy lista solo `historial_precios` y `snapshots_costeo`. `arquitectura.md` sí la incluye, según el plan §2. No se modificó la propuesta en esta tarea.
+
+### Archivos creados/modificados
+
+| Archivo | Estado |
+|---|---|
+| `docs/arquitectura.md` | Creado |
+| `docs/PLAN_IMPLEMENTACION.md` | Modificado (solo la fila HU6) |
+| `docs/bitacora.md` | Modificado (esta entrada) |
+
+### Cómo probarlo
+
+```bash
+git log --oneline main..feature/T0.3-arquitectura
+git diff main --stat   # solo arquitectura.md, una línea del plan y la bitácora
+# Abrir docs/arquitectura.md con la vista previa de Markdown: los dos
+# bloques mermaid deben renderizar sin errores.
+```
