@@ -59,3 +59,50 @@ git log --oneline feature/T0.1-estructura-monorepo
 git diff main feature/T0.1-estructura-monorepo -- .env.example
 # El diff de .env.example no debe tener valores reales
 ```
+
+---
+
+## T0.2 — Propuesta del proyecto (2026-10-10)
+
+**Rama:** `feature/T0.2-propuesta`
+
+### Qué se hizo
+
+- Se creó la rama desde `main` actualizado (`git pull --ff-only`: ya estaba al día con el merge del PR #1).
+- Se creó `docs/PROPUESTA.md` en 4 commits, uno por bloque:
+  1. Problema y usuarios (sección 1).
+  2. Historias HU1–HU14 con prioridad MoSCoW y 2–3 criterios de aceptación (sección 2).
+  3. Fuera de alcance y modelo de dominio con diagrama Mermaid `erDiagram` (secciones 3 y 4).
+  4. Riesgos y supuestos a validar (secciones 5 y 6).
+- Contenido basado solo en `docs/PLAN_IMPLEMENTACION.md`. Sin nombres, teléfonos ni precios reales.
+
+### Decisiones y por qué
+
+- **HU14 (Should)** se agregó a pedido del equipo y se aclaró que **reemplaza al parámetro global `costear_con_iva`** del plan (§0, 2b). Mientras el dueño no declare su condición fiscal, el criterio CA14.2 aplica el valor por defecto del plan (costo con IVA), para no asumir que es responsable inscripto.
+- **Criterios de aceptación** en formato Dado/Cuando/Entonces, cada uno con la regla del plan de la que deriva (§2 o §3). No se fijaron cifras: los valores concretos se definirán en los tests con datos inventados.
+- **ERD:** las 10 entidades pedidas. Se agregó `Usuario → MovimientoCaja` y el atributo `medio_pago` en `Venta`. Las presentaciones de compra se modelan como atributos de `Compra` (la entidad `Presentacion` de T1.1 queda para esa tarea). Las entidades de historias Should (precios de competencia, costos fijos y metas, movimientos de stock) se mencionan en una nota pero no se dibujan.
+- **Persistencia:** las 10 entidades en PostgreSQL; `historial_precios` y `snapshots_costeo` en MongoDB.
+- **HU6 / Usuarios:** se precisó el alta de personal (nombre completo, usuario, clave inicial) y se reescribieron CA6.1–CA6.4; la regla del único dueño activo se conservó como CA6.5. Las cuentas se desactivan, no se borran.
+- **Supuestos:** marcados como resueltos el frontend libre y el proveedor de IA externo (Gemini). Pendientes: aprobación del tema, decisión del dueño sobre el POS, exportación de ventas y condición fiscal.
+
+### Archivos creados/modificados
+
+| Archivo | Estado |
+|---|---|
+| `docs/PROPUESTA.md` | Creado |
+| `docs/bitacora.md` | Modificado (esta entrada) |
+
+### Cómo probarlo
+
+```bash
+# 1. Ver los commits de la rama
+git log --oneline main..feature/T0.2-propuesta
+
+# 2. Revisar el documento. En GitHub o en la vista previa del editor,
+#    el bloque ```mermaid debe renderizar el diagrama sin errores.
+
+# 3. Verificar que no hay datos reales (no debería devolver nada sospechoso)
+git diff main feature/T0.2-propuesta --stat
+```
+
+Checklist manual: las HU1–HU13 coinciden con la tabla del plan (§6), HU14 está marcada Should, y cada historia tiene 2–3 criterios.
