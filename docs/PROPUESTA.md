@@ -211,6 +211,8 @@ erDiagram
     }
 ```
 
+> **Atributos ilustrativos, se definen en el TP 1.** Los atributos del diagrama muestran la intención del modelo; los campos, tipos y restricciones definitivos se fijan al implementar los modelos.
+
 **Cardinalidades destacadas**
 
 - **Producto ↔ Insumo es muchos-a-muchos**, resuelto con `RecetaItem` (un producto usa varios insumos; un insumo se usa en varios productos). La cantidad y la unidad viven en `RecetaItem`.
@@ -252,7 +254,7 @@ La condición fiscal del dueño (HU14) será un dato de configuración; su forma
 
 | Estado | Supuesto o pregunta | Detalle |
 |---|---|---|
-| ✅ **RESUELTO** | Frontend | Los docentes aceptan cualquier frontend; se hace un cliente mínimo (HTML + JS) más Django Admin como back-office. |
+| ✅ **RESUELTO** | Frontend | Resuelto con los docentes: el frontend es de libre elección. Propuesta inicial del equipo: cliente mínimo (HTML + JS) y Django Admin. |
 | ✅ **RESUELTO** | Proveedor de IA | Los docentes aceptan un proveedor de IA externo (Gemini) además de Ollama. Se registrará en un ADR; la clave va solo en `.env` y no se envían datos identificables del local. |
 | ⏳ Pendiente | Aprobación del tema | Debe ser aprobado por ambos docentes antes de cerrar el TP 0. |
 | ⏳ Pendiente | Decisión del dueño sobre el POS | ¿Seguirá usando el POS Abarrotes para cobrar? Define el escenario A, B o C de la sección 3. |
