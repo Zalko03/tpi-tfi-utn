@@ -235,3 +235,26 @@ Se incorporarán al modelo cuando se implementen las historias correspondientes;
 - **Movimientos de stock** (HU12: descuento de insumos por receta y alertas de mínimo).
 
 La condición fiscal del dueño (HU14) será un dato de configuración; su forma exacta se define al implementarla.
+
+---
+
+## 5. Riesgos y mitigación
+
+| # | Riesgo | Mitigación |
+|---|---|---|
+| 1 | **Alcance excesivo:** el dueño pide funciones nuevas y el proyecto no llega a las entregas. | La sección 3 ("Fuera de alcance") es explícita y vinculante tras la defensa del TP 0. Las historias Should y Could se abordan solo si las Must están completas, y se congela la funcionalidad dos semanas antes del TFI. |
+| 2 | **Dependencia de la decisión del dueño sobre el POS:** si no define si conserva Abarrotes ni si exporta ventas, no se sabe de dónde salen las ventas. | El valor central (costeo) no depende del POS. `Venta` lleva el campo `origen` (`propio` / `importado`) y se prevén los escenarios A/B/C de la sección 3. La pregunta al dueño queda en la sección 6. |
+| 3 | **Código generado por IA que el equipo no comprende:** se considera "no entregado" si no se puede explicar en la defensa. | Una tarea por sesión del asistente, commits pequeños, PR revisado por el otro integrante, bitácora por tarea (`docs/bitacora.md`) y rotación de quién explica cada módulo. El uso de IA se declara en el README. |
+
+---
+
+## 6. Supuestos a validar
+
+| Estado | Supuesto o pregunta | Detalle |
+|---|---|---|
+| ✅ **RESUELTO** | Frontend | Los docentes aceptan cualquier frontend; se hace un cliente mínimo (HTML + JS) más Django Admin como back-office. |
+| ✅ **RESUELTO** | Proveedor de IA | Los docentes aceptan un proveedor de IA externo (Gemini) además de Ollama. Se registrará en un ADR; la clave va solo en `.env` y no se envían datos identificables del local. |
+| ⏳ Pendiente | Aprobación del tema | Debe ser aprobado por ambos docentes antes de cerrar el TP 0. |
+| ⏳ Pendiente | Decisión del dueño sobre el POS | ¿Seguirá usando el POS Abarrotes para cobrar? Define el escenario A, B o C de la sección 3. |
+| ⏳ Pendiente | Exportación de ventas del POS | Si conserva el POS: ¿puede sacar las ventas a Excel o CSV? |
+| ⏳ Pendiente | Condición fiscal del dueño | No se mencionó en la entrevista. Es necesaria para HU14 (costo con o sin IVA). |
