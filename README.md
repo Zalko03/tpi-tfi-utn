@@ -92,7 +92,7 @@ cafe-gestion/
 
 | Integrante | Línea principal |
 |---|---|
-| mrleg | Django + FastAPI (miércoles) |
+| nacho | Django + FastAPI (miércoles) |
 | Evilkitty | Node + MongoDB + Socket.IO (jueves) |
 
 Ambos integrantes revisan los PR del otro. Los TP 0, 3 y TFI se corrigen en conjunto.
