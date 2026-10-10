@@ -48,3 +48,54 @@ Quién llama a quién:
 - **ai-service** solo habla con el proveedor de IA. No accede a Django ni a MongoDB.
 - Cada servicio de datos es dueño de su base: Django de PostgreSQL y Node de MongoDB. Nadie más accede directo.
 - Django avisa a Node cuando un costo se recalcula o se registra una venta; el medio de ese aviso está **pendiente** (ver §6).
+
+---
+
+## 3. Flujo de importación de precios con IA
+
+Es el flujo de punta a punta del plan (§2). La aprobación humana es obligatoria: sin ella no se crea ninguna compra ni cambia ningún costo (CA7.3).
+
+```mermaid
+sequenceDiagram
+    actor Dueno as Dueño
+    participant Web as Cliente web
+    participant Node as Node
+    participant IA as ai-service y proveedor de IA
+    participant Mongo as MongoDB
+    participant Django as Django
+    participant PG as PostgreSQL
+
+    Dueno->>Web: Pega la lista del proveedor
+    Web->>Node: POST importación
+    Node-->>Web: 202 recibido, sin bloquear
+    Node->>IA: Extraer precios del texto
+
+    alt Salida válida
+        IA-->>Node: JSON validado con Pydantic
+        Node->>Mongo: Guarda entrada, salida, latencia y versión de prompt
+        Node-->>Web: Socket.IO: importación lista, revisá los cambios
+        Dueno->>Web: Revisa la propuesta de precios
+
+        alt El dueño aprueba
+            Web->>Node: Aprobar importación
+            Node->>Django: Crear compra con el precio nuevo
+            Django->>PG: Guarda la compra
+            Django->>PG: Recalcula el costo de las recetas afectadas
+            Django-->>Node: Aviso: costos actualizados
+            Node->>Mongo: Guarda historial de precios y snapshot de costeo
+            Node-->>Web: Socket.IO: costo actualizado y alerta si el margen baja del objetivo
+        else El dueño no aprueba
+            Web->>Node: Rechazar importación
+            Node->>Mongo: Marca la importación como rechazada
+            Note over Node,Django: No se crea compra ni cambia ningún costo
+        end
+    else La IA falla o devuelve salida inválida
+        IA-->>Node: Error, timeout o salida que no valida
+        Node->>Mongo: Guarda la entrada y el error
+        Node-->>Web: Socket.IO: respuesta de contingencia
+        Web-->>Dueno: Carga manual o por CSV de los precios
+    end
+```
+
+Los cinco pasos del plan quedan así: (1) el `POST` responde 202; (2) Node llama a la IA, valida y guarda en Mongo; (3) Node emite el aviso por Socket.IO; (4) el dueño aprueba y Node llama a Django; (5) Django recalcula las recetas, avisa a Node y este guarda historial y snapshot. La rama de contingencia no toca ventas ni costeo.
+
