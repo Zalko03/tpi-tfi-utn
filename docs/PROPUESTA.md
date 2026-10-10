@@ -108,3 +108,130 @@ Prioridades según `docs/PLAN_IMPLEMENTACION.md` §6. Cada criterio sigue el for
 **HU13 — Resumen semanal con IA y menú digital por QR.** *(Could)*
 - **CA13.1** Dada una semana de ventas, cuando el dueño pide el resumen, entonces recibe el rendimiento del menú con sugerencias de rotación, validado con un esquema tipado. *(§2, FastAPI)*
 - **CA13.2** Dado un proveedor de IA caído, cuando se pide el resumen, entonces el sistema responde con un mensaje de contingencia sin afectar ventas ni costeo. *(§2, degradación documentada)*
+
+---
+
+## 3. Fuera de alcance
+
+- **Facturación electrónica** (la arquitectura no lo bloquea, pero no se construye).
+- **Multi-sucursal:** el sistema atiende a un único local.
+- **Pagos online.**
+
+> **Importación de ventas desde el POS actual (Abarrotes): depende de la decisión del dueño.** El dueño todavía no definió si seguirá cobrando en el POS. Según el plan (§3b):
+>
+> | Escenario | Qué hace el dueño | Qué se construye |
+> |---|---|---|
+> | A. Reemplaza el POS | Cobra en este sistema | Ventas y caja propias (HU4–HU5 completas) |
+> | B. Conserva el POS | Sigue cobrando en Abarrotes | Importación de ventas desde un export CSV/Excel (`Venta.origen = importado`) |
+> | C. Sin datos de ventas | — | Carga manual de totales por producto y día (mínimo) |
+>
+> Solo el escenario B implica construir la importación; hasta que el dueño decida, **no está comprometida**. En cualquiera de los tres, el costeo funciona igual.
+
+Este apartado es vinculante después de la defensa del TP 0.
+
+---
+
+## 4. Modelo de dominio
+
+```mermaid
+erDiagram
+    PROVEEDOR ||--o{ COMPRA : "provee"
+    INSUMO ||--o{ COMPRA : "se compra en"
+    PRODUCTO ||--o{ RECETA_ITEM : "se compone de"
+    INSUMO ||--o{ RECETA_ITEM : "se usa en"
+    VENTA ||--|{ VENTA_ITEM : "contiene"
+    PRODUCTO ||--o{ VENTA_ITEM : "se vende en"
+    TURNO_CAJA ||--o{ VENTA : "agrupa"
+    TURNO_CAJA ||--o{ MOVIMIENTO_CAJA : "registra"
+    USUARIO ||--o{ TURNO_CAJA : "abre"
+    USUARIO ||--o{ VENTA : "cobra"
+    USUARIO ||--o{ MOVIMIENTO_CAJA : "registra"
+
+    PROVEEDOR {
+        int id PK
+        string nombre
+        bool estado_activo
+    }
+    INSUMO {
+        int id PK
+        string nombre
+        string unidad_base "g, ml o un"
+        bool estado_activo
+    }
+    COMPRA {
+        int id PK
+        decimal precio_total
+        decimal cantidad
+        string unidad
+        decimal envio
+        bool iva_incluido
+        decimal alicuota
+    }
+    PRODUCTO {
+        int id PK
+        string nombre
+        decimal precio_venta
+        decimal minutos_mano_obra
+        decimal descartables
+    }
+    RECETA_ITEM {
+        int id PK
+        decimal cantidad
+        string unidad
+    }
+    VENTA {
+        int id PK
+        datetime fecha
+        string medio_pago
+        string origen "propio o importado"
+    }
+    VENTA_ITEM {
+        int id PK
+        decimal cantidad
+        decimal precio_unitario
+        decimal costo_unitario_snapshot
+    }
+    TURNO_CAJA {
+        int id PK
+        datetime apertura
+        datetime cierre
+        decimal efectivo_inicial
+        decimal efectivo_contado
+    }
+    MOVIMIENTO_CAJA {
+        int id PK
+        string tipo "entrada o salida"
+        decimal monto
+    }
+    USUARIO {
+        int id PK
+        string nombre_usuario
+        string rol "DUENIO, ENCARGADO o CAJERO"
+        bool estado_activo
+    }
+```
+
+**Cardinalidades destacadas**
+
+- **Producto ↔ Insumo es muchos-a-muchos**, resuelto con `RecetaItem` (un producto usa varios insumos; un insumo se usa en varios productos). La cantidad y la unidad viven en `RecetaItem`.
+- Un `Proveedor` tiene muchas `Compra`; cada `Compra` es de un `Insumo` y de un `Proveedor`.
+- Una `Venta` tiene uno o más `VentaItem`; cada ítem congela el costo vigente al vender.
+- Un `TurnoCaja` agrupa ventas y movimientos de caja; los abre un `Usuario`, que también cobra ventas y registra movimientos.
+- Las unidades base son g, ml y un; el dinero se maneja con `Decimal`, nunca con `float`.
+
+### Dónde se persiste cada cosa
+
+| Motor | Qué guarda |
+|---|---|
+| **PostgreSQL** (Django) | Las 10 entidades del diagrama: `Proveedor`, `Insumo`, `Compra`, `Producto`, `RecetaItem`, `Venta`, `VentaItem`, `TurnoCaja`, `MovimientoCaja` y `Usuario`. Es la fuente de verdad contable y necesita transacciones y relaciones. |
+| **MongoDB** (Node) | `historial_precios` (cada cambio de costo, solo se agrega) y `snapshots_costeo` (desglose de una receta en el tiempo, estructura variable). No tienen forma fija ni requieren joins. |
+
+### Entidades previstas para historias Should
+
+Se incorporarán al modelo cuando se implementen las historias correspondientes; **no se dibujan** en el diagrama:
+
+- **Precios de competencia** (HU9: precio sugerido acotado por promedio y mínimo).
+- **Costos fijos y metas** (HU11: punto de equilibrio y metas diaria y semanal).
+- **Movimientos de stock** (HU12: descuento de insumos por receta y alertas de mínimo).
+
+La condición fiscal del dueño (HU14) será un dato de configuración; su forma exacta se define al implementarla.
