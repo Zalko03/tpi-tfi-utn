@@ -82,6 +82,7 @@ git diff main feature/T0.1-estructura-monorepo -- .env.example
 - **Criterios de aceptación** en formato Dado/Cuando/Entonces, cada uno con la regla del plan de la que deriva (§2 o §3). No se fijaron cifras: los valores concretos se definirán en los tests con datos inventados.
 - **ERD:** las 10 entidades pedidas. Se agregó `Usuario → MovimientoCaja` y el atributo `medio_pago` en `Venta`. Las presentaciones de compra se modelan como atributos de `Compra` (la entidad `Presentacion` de T1.1 queda para esa tarea). Las entidades de historias Should (precios de competencia, costos fijos y metas, movimientos de stock) se mencionan en una nota pero no se dibujan.
 - **Persistencia:** las 10 entidades en PostgreSQL; `historial_precios` y `snapshots_costeo` en MongoDB.
+- **HU6 / Usuarios:** se precisó el alta de personal (nombre completo, usuario, clave inicial) y se reescribieron CA6.1–CA6.4; la regla del único dueño activo se conservó como CA6.5. Las cuentas se desactivan, no se borran.
 - **Supuestos:** marcados como resueltos el frontend libre y el proveedor de IA externo (Gemini). Pendientes: aprobación del tema, decisión del dueño sobre el POS, exportación de ventas y condición fiscal.
 
 ### Archivos creados/modificados

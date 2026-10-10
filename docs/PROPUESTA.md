@@ -25,11 +25,13 @@ El sistema propuesto reemplaza el Excel por una aplicación que **costea recetas
 
 | Rol | Qué necesita del sistema |
 |---|---|
-| **Dueño** | Conocer costos y márgenes, actualizar precios de proveedores, ver la ganancia y crear al personal definiendo sus permisos. |
+| **Dueño** | Conocer costos y márgenes, actualizar precios de proveedores, ver la ganancia y crear una cuenta para cada integrante del personal (nombre completo, usuario y clave inicial), definiendo su rol y permisos. |
 | **Encargado** | Mantener insumos, compras y recetas; abrir y cerrar caja; aplicar descuentos o anular tickets. |
 | **Cajero** | Cobrar tickets con medio de pago y operar su propio turno de caja. |
 
 Los tres roles funcionan como **plantillas de permisos**: el dueño elige un rol al crear a una persona y puede tildar o destildar permisos individuales.
+
+Cada persona tiene su propia cuenta, de modo que ventas, turnos y cambios quedan registrados a su nombre. Las cuentas se desactivan, no se borran, para conservar el historial.
 
 ---
 
@@ -64,10 +66,12 @@ Prioridades según `docs/PLAN_IMPLEMENTACION.md` §6. Cada criterio sigue el for
 - **CA5.2** Dado el efectivo contado al cierre, cuando se compara con el esperado, entonces se muestra la diferencia (contado − esperado). *(§3, caja)*
 - **CA5.3** Dadas ventas por transferencia, cuando se calcula el efectivo esperado, entonces no se incluyen: se registran aparte. *(§3, caja)*
 
-**HU6 — Como dueño creo personal nuevo, le asigno un rol y ajusto sus permisos (dueño/encargado/cajero como plantillas).** *(Must)*
-- **CA6.1** Dado un usuario nuevo, cuando el dueño elige un rol, entonces se precargan los permisos de esa plantilla y el dueño puede tildar o destildar permisos individuales. *(§3, roles)*
-- **CA6.2** Dado el único dueño activo, cuando se intenta desactivarlo o degradarlo, entonces el sistema lo rechaza. *(§3, roles)*
-- **CA6.3** Dado un usuario desactivado, cuando se consulta el historial de ventas y turnos, entonces sus registros siguen disponibles (borrado lógico). *(§3, roles)*
+**HU6 — Como dueño creo una cuenta para cada integrante del personal (nombre completo, usuario y clave inicial), le asigno un rol y ajusto sus permisos (dueño/encargado/cajero como plantillas).** *(Must)*
+- **CA6.1** Dado que soy Dueño, cuando creo un usuario con nombre completo, usuario, clave inicial y rol, entonces la persona puede ingresar y solo tiene los permisos de ese rol. *(§3, roles)*
+- **CA6.2** Dado un usuario con rol Cajero, cuando el dueño tilda o destilda un permiso individual, entonces el cambio rige solo para esa persona y no modifica la plantilla del rol. *(§3, roles)*
+- **CA6.3** Dado que soy Encargado o Cajero, cuando intento crear un usuario o cambiar permisos, entonces el sistema lo rechaza. *(§3, roles)*
+- **CA6.4** Dado un empleado dado de baja, cuando el dueño lo desactiva, entonces ya no puede ingresar y sus ventas y turnos anteriores se conservan a su nombre. *(§3, borrado lógico)*
+- **CA6.5** Dado el único dueño activo, cuando se intenta desactivarlo o degradarlo, entonces el sistema lo rechaza. *(§3, roles)*
 
 **HU7 — Como dueño pego una lista de proveedor y la IA propone los precios a actualizar.** *(Must, mínimo viable exigido por la arquitectura)*
 - **CA7.1** Dado un texto de lista de proveedor, cuando el dueño lo envía, entonces el sistema responde de inmediato que lo recibió y procesa la importación sin bloquear. *(§2, paso 1)*
