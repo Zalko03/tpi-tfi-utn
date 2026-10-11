@@ -168,7 +168,7 @@ Fechas tomadas de la guía (verificar el calendario vigente). *Def. de hecho (Do
 | HU3 | Al cambiar el precio de un insumo se recalculan todas las recetas y queda historial | Must |
 | HU4 | Como cajero registro una venta con medio de pago | Must |
 | HU5 | Como encargado abro y cierro caja y veo la diferencia | Must |
-| HU6 | Como dueño creo personal nuevo, le asigno un rol y ajusto sus permisos (dueño/encargado/cajero como plantillas) | Must |
+| HU6 | Como dueño creo una cuenta para cada integrante del personal (nombre completo, usuario y clave inicial), le asigno un rol y ajusto sus permisos (dueño/encargado/cajero como plantillas) | Must |
 | HU7 | Como dueño pego una lista de proveedor y la IA propone los precios a actualizar | Must (mínimo viable, exigido por la arquitectura) |
 | HU8 | Tablero en vivo de ventas/ganancia/alertas | Must (mínimo viable) |
 | HU9 | Precio sugerido con margen objetivo y competencia | Should |
