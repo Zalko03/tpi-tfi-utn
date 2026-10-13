@@ -27,87 +27,89 @@ Trabajo Final Integrador — Programación IV, UTN FRRe.
 
 ---
 
-## Puesta en marcha (desarrollo local)
+## Puesta en marcha (desarrollo local, Windows / PowerShell)
 
-> Las instrucciones detalladas se irán completando a medida que avancen los TPs.
+### Requisitos
+- Python 3.11 o superior
+- Node 20 o superior
+- PostgreSQL 16 o superior
+- Git
 
-### 1. Clonar y configurar variables de entorno
+MongoDB todavía no hace falta: se incorpora en el TP 1.
 
-```bash
-git clone <url-del-repo>
-cd cafe-gestion
+### 1. Variables de entorno
+Desde la raíz del repositorio:
 
-# Copiar la plantilla y completar los valores locales
-cp .env.example .env
-# Editar .env con tus credenciales de desarrollo (NUNCA subas este archivo)
+```powershell
+Copy-Item .env.example .env
 ```
 
-### 2. Backend Django
+Abrí `.env` y completá `POSTGRES_PASSWORD` con una clave **propia para el proyecto** (no la del usuario `postgres`). Evitá los caracteres `#`, `'`, `"`, `$` y los espacios. El archivo `.env` no se versiona: cada integrante tiene el suyo.
 
-```bash
+### 2. Base de datos PostgreSQL
+Conectate como administrador (pgAdmin → Query Tool sobre la base `postgres`, o `psql`) y ejecutá **por separado** estas dos sentencias, con la misma clave que pusiste en `.env`:
+
+```sql
+CREATE USER cafe_user WITH PASSWORD 'tu-clave-del-proyecto' CREATEDB;
+```
+
+```sql
+CREATE DATABASE cafe_gestion OWNER cafe_user;
+```
+
+`CREATEDB` es necesario para que los tests de Django puedan crear su base temporal más adelante.
+
+### 3. backend-django
+
+```powershell
 cd backend-django
 python -m venv .venv
-# Windows: .venv\Scripts\activate  |  Linux/macOS: source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python manage.py migrate
 python manage.py runserver
-# Verificar: GET http://localhost:8000/health
 ```
 
-### 3. Backend Node
+Si PowerShell bloquea `Activate.ps1`, ejecutá los comandos con el Python del entorno sin activarlo:
+`.\.venv\Scripts\python.exe -m pip install -r requirements.txt` y `.\.venv\Scripts\python.exe manage.py runserver`.
 
-```bash
+En otra terminal, comprobá que responde:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/health
+```
+
+Debe devolver `estado: ok` y `servicio: backend-django`.
+
+Tests:
+
+```powershell
+pytest
+```
+
+Notas:
+- `runserver` consulta la base al arrancar, por eso necesita el paso 2 hecho y el `.env` completo. El endpoint `/health` en sí **no** consulta la base.
+- El aviso de "migraciones sin aplicar" es normal por ahora: todavía no hay modelos.
+
+### 4. backend-node
+
+```powershell
 cd backend-node
-npm install
+npm ci
 npm run dev
-# Verificar: GET http://localhost:3000/health
 ```
 
----
+En otra terminal:
 
-## Estructura del repositorio
-
-```
-cafe-gestion/
-├── AGENTS.md               # Reglas de trabajo para el asistente de IA
-├── .env.example            # Plantilla de variables de entorno (sin valores reales)
-├── .gitignore
-├── README.md
-├── backend-django/         # Django 5 + DRF + PostgreSQL
-├── backend-node/           # Express + Mongoose + Socket.IO
-├── docs/
-│   ├── PLAN_IMPLEMENTACION.md
-│   ├── adr/                # Architectural Decision Records
-│   ├── dominio/
-│   │   └── seed/           # Datos anonimizados/inventados para pruebas
-│   └── bitacora.md         # Registro de decisiones y trabajo por tarea
-└── .agents/
-    ├── rules/              # Convenciones de código (Node y Python)
-    └── workflows/          # Comandos del asistente (/tarea, /cierre-clase)
+```powershell
+Invoke-RestMethod http://localhost:3000/health
 ```
 
----
+Debe devolver `estado: ok` y `servicio: backend-node`. El puerto se define con `NODE_PORT` en `.env` (3000 por defecto).
 
-## Equipo
+Tests:
 
-| Integrante | Línea principal |
-|---|---|
-| nacho | Django + FastAPI (miércoles) |
-| Evilkitty | Node + MongoDB + Socket.IO (jueves) |
+```powershell
+npm test
+```
 
-Ambos integrantes revisan los PR del otro. Los TP 0, 3 y TFI se corrigen en conjunto.
-
----
-
-## Uso de inteligencia artificial
-
-Este proyecto usa **Google Antigravity (AGY)** como asistente de desarrollo.
-Las reglas de uso están en [`AGENTS.md`](AGENTS.md) y en la bitácora [`docs/bitacora.md`](docs/bitacora.md).
-
-Compromisos del equipo:
-- Cada integrante puede explicar cualquier línea de código en la defensa.
-- El asistente opera una tarea por sesión, en una rama separada.
-- Los commits son del equipo humano (el asistente prepara, el humano empuja y abre el PR).
-- El otro integrante revisa el PR antes del merge.
-- No se versiona ningún dato real del local (precios, nombres, teléfonos de proveedores).
-- No se versiona ningún secreto; solo `.env.example` con valores ficticios.
+Jest muestra un `ExperimentalWarning: VM Modules`. Es esperable: se necesita para usar ES Modules con Jest y no afecta el resultado.
