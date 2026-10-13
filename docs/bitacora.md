@@ -148,3 +148,48 @@ git diff main --stat   # solo arquitectura.md, una línea del plan y la bitácor
 # Abrir docs/arquitectura.md con la vista previa de Markdown: los dos
 # bloques mermaid deben renderizar sin errores.
 ```
+---
+
+## T0.4 — Entornos reproducibles (2026-10-10)
+
+**Rama:** `feature/T0.4-entornos`
+
+### Qué se hizo
+- **backend-django:** proyecto Django 5.2 LTS con `config/` (settings base y dev, urls, wsgi) y `apps/salud` con `GET /health`, que responde `{"estado": "ok", "servicio": "backend-django"}` sin consultar la base. `requirements.txt` con versiones fijadas y un test con `pytest` y `pytest-django`.
+- **backend-node:** proyecto Express con ES Modules. `app.js` arma y exporta la app (helmet, cors, morgan, JSON) y `server.js` solo escucha el puerto, para poder testear con supertest. `GET /health` responde `{ estado: 'ok', servicio: 'backend-node' }` sin conectar a Mongo. Dependencias con versión exacta y `package-lock.json`. 2 tests con Jest y supertest (estado del servicio y encabezado `X-Powered-By` ausente).
+- **`.gitattributes`:** `* text=auto eol=lf`. Tras agregarlo, no aparecieron archivos antiguos como modificados, así que no hizo falta renormalizar.
+- **README:** puesta en marcha para PowerShell, incluida la creación del usuario y la base de PostgreSQL.
+
+### Por qué así
+- **Sin DRF todavía:** `/health` usa `JsonResponse`; DRF se agrega cuando haga falta (T1.4/T1.5).
+- **`python-dotenv`, `dotenv` y `psycopg[binary]`:** no estaban en el alcance, pero hacen falta para leer `.env` y para que Django configure el motor PostgreSQL.
+- **`runserver` consulta la base al arrancar** (`check_migrations`), por lo que necesita PostgreSQL con credenciales válidas; `/health` en sí no la consulta. `pytest` y `manage.py check` pasan sin base. Se verificó `/health` por HTTP de dos formas: con `runserver` y la base creada, y con `wsgiref` sin base.
+- **Jest con ES Modules:** el script `test` usa `node --experimental-vm-modules`, lo que genera un `ExperimentalWarning` inocuo.
+- **`cors()` sin lista blanca:** es temporal; se restringe por origen en la T2.5.
+- **Valores por defecto de desarrollo en Django:** la clave y los hosts de ejemplo solo se aplican con `DJANGO_DEBUG=True`. Con `DEBUG` apagado y sin `DJANGO_SECRET_KEY` o `DJANGO_ALLOWED_HOSTS`, el arranque falla con `ImproperlyConfigured` (`settings/base.py`).
+
+### Pendientes
+- Instalar y configurar **ruff, black, ESLint y Prettier** antes del TP 4 (el CI los necesita).
+- Agregar `importaciones_ia` a la tabla de persistencia de `docs/PROPUESTA.md` §4 (viene de T0.3).
+- Verificación cruzada: el otro integrante clona el repo desde cero, sigue solo el README y comprueba que ambos `/health` respondan.
+
+### Registro de uso de IA
+La parte de Django y la estructura de Node se hicieron con el agente de Antigravity (Claude Sonnet 5.5). Al agotarse la cuota del modelo, los commits de Node, `.gitattributes`, README y bitácora se completaron a mano, y la configuración de PostgreSQL local la hizo el integrante.
+
+### Archivos creados/modificados
+| Archivo | Estado |
+|---|---|
+| `backend-django/` (manage.py, config/, apps/salud/, requirements.txt, pytest.ini) | Creado |
+| `backend-node/` (app.js, server.js, jest, package.json, package-lock.json, src/) | Creado |
+| `backend-django/.gitkeep`, `backend-node/.gitkeep` | Eliminados |
+| `.gitattributes` | Creado |
+| `README.md` | Modificado (puesta en marcha) |
+| `docs/bitacora.md` | Modificado (esta entrada) |
+
+### Cómo probarlo
+```powershell
+# Django (con la base creada y .env completo)
+cd backend-django; .\.venv\Scripts\python.exe -m pytest
+# Node
+cd ..\backend-node; npm test
+```
