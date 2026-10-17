@@ -21,6 +21,72 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-10-17
+Tarea: TP 1 — Núcleo de datos y APIs CRUD (T1.1 a T1.13)
+Rama: feature/tp1-nucleo-crud
+Cambios realizados:
+- Inicialización del repositorio Git, configuración de branch base `main` y creación de rama aislada de trabajo `feature/tp1-nucleo-crud` (sin merge a main).
+- Definición formal del contrato único de errores HTTP en `docs/api-errores.md` (`{ "mensaje": "...", "detalles": ... }`).
+- En `backend-django`:
+  - Incorporación de dependencias `djangorestframework` y `django-filter` en `requirements.txt`.
+  - Configuración de paginación estándar `{ datos, pagina, limite, total }` y manejador de excepciones unificado en `apps/comun/`.
+  - Creación de app `apps.insumos`: modelos `Proveedor`, `Insumo` (unidades base g, ml, un) y `Compra`; servicios de conversión de unidades, prorrateo de envío proporcional al valor de compra y cálculo seguro de costo unitario; ViewSets y Serializers con validaciones para evitar `#DIV/0!` y re-stocks distorsionados.
+  - Creación de app `apps.recetas`: modelos `Producto` (con `codigo_barras`) y `RecetaItem`; servicios de cálculo de costo total (insumos + mano de obra + descartables), ganancia bruta, margen bruto y recálculo explícito ante cambios de insumos (`recalcular_recetas_por_insumo`).
+  - Creación de app `apps.caja`: modelos `TurnoCaja` y `MovimientoCaja`; servicio/acción de cierre de caja calculando efectivo esperado y diferencia.
+  - Creación de app `apps.ventas`: modelos `Venta` (con `origen` propio/importado) y `VentaItem`; servicio de registro atómico con congelamiento de `costo_unitario_snapshot` para auditoría contable histórica.
+  - Comando de gestión `python manage.py seed_demo` con catálogo de cafetería anonimizado.
+  - Migraciones completas generadas y aplicadas.
+  - 24 tests automatizados en `pytest` cubriendo conversión de unidades, casos del Excel, congelamiento de costos en ventas y contrato de endpoints.
+- En `backend-node`:
+  - Instalación de `mongoose` y `express-validator`.
+  - Conexión a MongoDB en `src/config/db.js`.
+  - Creación de modelos Mongoose `HistorialPrecio` y `SnapshotCosteo`.
+  - Arquitectura en capas: repositorios, servicios y controladores para historial y snapshots.
+  - Middleware de errores unificado `src/middlewares/error.middleware.js` y validación de campos.
+  - Cliente HTTP tolerante a fallos `src/clients/django.client.js` hacia Django con timeout acotado (3000ms) y respuesta degradada (`docs/integracion.md`).
+  - Endpoint integrado `GET /api/productos/:id/resumen-costo`.
+  - 6 tests automatizados en `Jest` cubriendo middleware de errores, cliente degradado, salud y persistencia en MongoDB.
+- Creación de colección versionada de peticiones HTTP en `docs/api/requests.http`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `backend-django` ↔ `PostgreSQL` (5432, base `cafe_gestion` con soporte configurable para test/desarrollo).
+- `backend-node` ↔ `MongoDB` (27017, base `cafe_gestion`).
+- `backend-node` ↔ `backend-django` (`/api/productos/:id/` con timeout y degradación elegante).
+Problemas y decisiones técnicas:
+- **Prevención de distorsiones contables por re-stock:** se separó la compra (total pagado por lote + cantidad) del costo unitario base (total / cantidad convertida), resolviendo la falla de márgenes negativos del Excel del dueño.
+- **Congelamiento de costo en ventas:** cada ticket guarda el costo vigente al momento de la transacción en `costo_unitario_snapshot`, evitando que un cambio futuro de costos reescriba la rentabilidad pasada.
+- **Tolerancia a fallos en la integración Node ↔ Django:** si Django cae o sufre retrasos, el endpoint de Node no colapsa; retorna el historial de Mongo con un estado degradado explícito.
+Archivos tocados:
+- `docs/api-errores.md`
+- `docs/integracion.md`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+- `docs/api/requests.http`
+- `backend-django/requirements.txt`
+- `backend-django/config/settings/base.py`
+- `backend-django/config/urls.py`
+- `backend-django/apps/comun/*`
+- `backend-django/apps/insumos/*`
+- `backend-django/apps/recetas/*`
+- `backend-django/apps/caja/*`
+- `backend-django/apps/ventas/*`
+- `backend-node/package.json`
+- `backend-node/server.js`
+- `backend-node/app.js`
+- `backend-node/src/config/*`
+- `backend-node/src/models/*`
+- `backend-node/src/repositories/*`
+- `backend-node/src/services/*`
+- `backend-node/src/controllers/*`
+- `backend-node/src/routes/*`
+- `backend-node/src/middlewares/*`
+- `backend-node/src/clients/*`
+- `backend-node/src/tests/*`
+Cómo probarlo:
+- En `backend-django`: ejecutar `pytest` (24 tests en verde).
+- En `backend-django`: ejecutar `python manage.py seed_demo`.
+- En `backend-node`: ejecutar `npm test` (6 tests en verde).
+- Ejecutar las peticiones de `docs/api/requests.http` para verificar endpoints de ambos servicios.
+---
 Fecha: 2026-10-16
 Tarea: T0.7 - Resolución de arquitectura local, hardware del local y cliente PWA
 Rama: feature/t0.7-arquitectura-local-pwa
