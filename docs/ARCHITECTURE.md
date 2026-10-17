@@ -1,0 +1,18 @@
+# ARCHITECTURE.md - Mapa Actual del Sistema
+
+## 1. Módulos y Servicios
+- **backend-django:** Núcleo transaccional local (Insumos, Recetas, Compras, Caja, Django 5 + DRF + PostgreSQL 16). Corre en el servidor/PC local mediante Docker.
+- **backend-node:** Eventos en tiempo real y proyecciones (Express + Mongoose + MongoDB 7 + Socket.IO). Gestiona el historial y la sincronización del menú digital.
+- **web (PWA / Cliente Local):** Interfaz de gestión y caja instalable como PWA en el escritorio del local. Funciona sobre la red local (LAN), garantizando operación continua ante cortes de internet.
+- **carta-digital (Nube / Should):** Página pública ligera de solo lectura consumida por clientes vía código QR, sincronizada unidireccionalmente desde el backend local.
+- **ai-service:** Extracción de listas de proveedores y reportes (FastAPI + Gemini API, TP3). Con degradación elegante a carga manual/CSV si no hay conexión.
+
+## 2. Decisiones Arquitectónicas Clave (ADR)
+- **Operación sin internet:** Todo el núcleo de caja y stock se ejecuta localmente (Docker Compose en PC local según sección 3.5 de la Guía de cátedra). La pérdida de conectividad externa no interrumpe las ventas.
+- **Cliente de escritorio vía PWA:** Se descarta aplicación nativa/Electron por restricción de hardware (~8 GB de RAM) y sobrecosto de mantenimiento. Se adopta PWA para ofrecer experiencia de escritorio sin consumo excesivo de memoria.
+- **Lector de código de barras:** Integración directa por emulación de teclado (HID) asociada al campo `codigo_barras` en productos.
+
+## 3. Puntos Críticos de Ruptura
+- Modelos de Insumo, Producto (`codigo_barras`) y Receta en Django.
+- Sincronización unidireccional de `menu_digital` hacia la nube.
+- Formato único de error en API (definido en docs/api-errores.md).
