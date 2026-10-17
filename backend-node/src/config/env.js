@@ -8,3 +8,5 @@ dotenv.config({ path: path.resolve(directorioActual, '../../../.env'), quiet: tr
 
 export const entorno = process.env.NODE_ENV || 'development';
 export const puerto = Number(process.env.NODE_PORT) || 3000;
+export const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/cafe_gestion';
+export const djangoBaseUrl = process.env.DJANGO_BASE_URL || 'http://localhost:8000/api';
