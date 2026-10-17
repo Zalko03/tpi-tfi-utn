@@ -56,3 +56,7 @@ Thumbs.db
 
 # ── Datos reales del local (NUNCA versionarlos) ───────────────────────────────
 docs/dominio/real/
+
+# ── Bases de datos locales / temporales ───────────────────────────────────────
+*.sqlite3
+db.sqlite3
