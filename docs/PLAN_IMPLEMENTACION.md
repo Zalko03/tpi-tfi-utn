@@ -11,11 +11,11 @@
 1. El TP 0 todavía no está cerrado o hay margen para ajustarlo. **El tema debe ser aprobado por ambos docentes.**
 2. **POS actual (Abarrotes):** la intención es reemplazarlo, pero el dueño no lo habló y puede preferir conservarlo. Por eso el **valor central del MVP es el costeo** (insumos → recetas → costos/márgenes → historial), que no depende del POS. Ventas y caja se construyen igual (la Guía necesita un núcleo transaccional), pero `Venta` lleva un campo `origen` (`propio` / `importado`) para poder cargar ventas desde un export del POS si el dueño decide quedarse con él. Hay que preguntarle al dueño si el POS exporta ventas (CSV/Excel).
 2b. **IVA:** según la entrevista, algunos proveedores trabajan con IVA y otros no; la categoría fiscal del dueño no se mencionó y la facturación no es necesaria por ahora. Se modela por compra (`iva_incluido`, `alicuota`) y con un parámetro global `costear_con_iva` (por defecto **sí**: el costo es lo que realmente se paga). No se asume nada sobre responsable inscripto.
-2c. **IA diferida:** no se toca hasta el TP 3. Se usará una **interfaz de proveedor de IA** en `ai-service` (adapter): Ollama (lo que pide la Guía) y opcionalmente Gemini API (modelos baratos en tokens). **Los docentes confirmaron que se puede usar el proveedor de IA que prefiramos (incluido Gemini) y que el frontend es de libre elección; dejarlo registrado en un ADR.** Con proveedor externo, la clave va solo en `.env` y nunca se envían datos identificables del local.
-2d. **Hardware del dueño: ~8 GB de RAM.** Docker + 2 bases + 3 servicios + Ollama no entran cómodos ahí. Ver T4.4.
+2c. **IA diferida:** no se toca hasta el TP 3. Se usará una **interfaz de proveedor de IA** en `ai-service` (adapter): soporta proveedor externo (Gemini API, modelos baratos en tokens) y Ollama. **Los docentes confirmaron que se puede usar el proveedor de IA que prefiramos (incluido Gemini) y que el frontend es de libre elección; dejarlo registrado en un ADR.** Para no saturar el equipo del comercio, **no se correrá Ollama local** en la PC del dueño (se consumirá Gemini API con degradación a carga manual/CSV si no hay internet). La clave va solo en `.env` y nunca se envían datos identificables del local.
+2d. **Hardware del dueño (~8 GB de RAM) y modalidad de despliegue:** se confirma la modalidad **PC Local con Docker Compose** (respaldada por la **sección 3.5 de la Guía** de cátedra) para asegurar alta disponibilidad en el local ante cortes de internet. Para operar de forma estable dentro de los **8 GB de RAM** del equipo se aplican tres medidas de mitigación: (1) **no correr Ollama local** (uso de proveedor de IA externo vía adapter), (2) **limitar la memoria de MongoDB** en Docker Compose (acotando el caché de WiredTiger y el límite de RAM del contenedor), y (3) descartar clientes pesados en Electron a favor de una PWA. Ver T4.4.
 3. Equipo de 2 personas (A = línea Python / miércoles, B = línea JavaScript / jueves). La guía exige 2 o 3.
 4. Se usa Antigravity como asistente: **hay que declararlo en el README** y cada integrante debe poder explicar cualquier línea en la defensa.
-5. El frontend no está definido por la guía: se hace un **cliente mínimo** (HTML + JS simple) más Django Admin como back-office. Confirmar con docentes.
+5. **Frontend y operación en caja:** confirmado con los docentes que el frontend es de libre elección. Se adopta una **PWA instalable** en el escritorio para la caja y gestión sobre la red local (LAN) junto con Django Admin como back-office, garantizando experiencia de aplicación de escritorio y operación continua sin internet sin el consumo de memoria de Electron. Además, se contempla una **Carta Digital pública por QR** (Should) de solo lectura en la nube con sincronización unidireccional.
 
 ---
 
@@ -166,7 +166,7 @@ Fechas tomadas de la guía (verificar el calendario vigente). *Def. de hecho (Do
 | HU1 | Como dueño cargo insumos con presentación (pack, cantidad, unidad, precio, IVA, envío) y obtengo el costo unitario | Must |
 | HU2 | Como dueño armo recetas y veo el costo y margen de cada producto | Must |
 | HU3 | Al cambiar el precio de un insumo se recalculan todas las recetas y queda historial | Must |
-| HU4 | Como cajero registro una venta con medio de pago | Must |
+| HU4 | Como cajero registro una venta de productos (incluyendo búsqueda o lectura por `codigo_barras`) con medio de pago | Must |
 | HU5 | Como encargado abro y cierro caja y veo la diferencia | Must |
 | HU6 | Como dueño creo una cuenta para cada integrante del personal (nombre completo, usuario y clave inicial), le asigno un rol y ajusto sus permisos (dueño/encargado/cajero como plantillas) | Must |
 | HU7 | Como dueño pego una lista de proveedor y la IA propone los precios a actualizar | Must (mínimo viable, exigido por la arquitectura) |
@@ -175,8 +175,10 @@ Fechas tomadas de la guía (verificar el calendario vigente). *Def. de hecho (Do
 | HU10 | Ranking de productos más/menos vendidos y ganancia diaria | Should |
 | HU11 | Punto de equilibrio y metas diaria/semanal | Should |
 | HU12 | Stock de insumos descontado por receta + alertas de mínimo | Should |
-| HU13 | Resumen semanal con IA y menú digital por QR | Could |
-| — | Facturación fiscal, multi-sucursal, pagos online, importar del POS Abarrotes | **Fuera de alcance** (la arquitectura no lo bloquea) |
+| HU14 | Como dueño indico mi condición fiscal y el sistema calcula el costo con o sin IVA según corresponda | Should |
+| HU15 | Carta Digital pública por QR (separada de HU13, sincronización unidireccional) | Should |
+| HU13 | Resumen semanal con IA | Could |
+| — | Facturación fiscal, multi-sucursal, pagos online, app de escritorio nativa en Electron, sincronización bidireccional compleja, importar del POS Abarrotes | **Fuera de alcance** (la arquitectura no lo bloquea) |
 
 ### TP 1 — Núcleo de datos y APIs CRUD (Unidad 2 · clases 5–12 · 20 %)
 **Django + DRF + PostgreSQL**
@@ -208,20 +210,20 @@ Fechas tomadas de la guía (verificar el calendario vigente). *Def. de hecho (Do
 - **T2.7** Revisión de secretos (incluido historial) y preparación de la auditoría cruzada (informe de 1 página + plan de remediación).
 
 ### TP 3 — IA, poliglota y tiempo real (Unidad 4 · clases 19–24 · 25 %)
-- **T3.1** `ai-service` FastAPI: `POST /v1/extraer-precios` y `POST /v1/resumen-semanal`; esquemas Pydantic v2; **prompts versionados** (`prompts/v1/`); timeout, reintentos acotados, respuesta de contingencia; OpenAPI con ejemplos. Modelo liviano en Ollama (probar 1–3B parámetros).
+- **T3.1** `ai-service` FastAPI: `POST /v1/extraer-precios` y `POST /v1/resumen-semanal`; esquemas Pydantic v2; **prompts versionados** (`prompts/v1/`); timeout, reintentos acotados, respuesta de contingencia; OpenAPI con ejemplos. Adapter con proveedor externo (Gemini API) y soporte opcional de Ollama.
 - **T3.2** Node consume la IA: `POST /importaciones` (202, asíncrono), valida salida, guarda entrada/salida/latencia/versión de prompt en Mongo.
 - **T3.3** Aprobación humana → Node llama a Django → compra nueva → recálculo de costos (flujo del §2).
 - **T3.4** PostgreSQL: corregir **3 consultas problemáticas** (listado de productos con costo = N+1 con `prefetch_related`; reporte de ventas por producto con índice por fecha; recálculo de productos afectados) con `EXPLAIN ANALYZE` antes/después sobre seed grande (p. ej. 50.000 ventas) → `docs/optimizacion.md`.
 - **T3.5** Socket.IO en Node: handshake con JWT (rechaza no autenticados), salas `local` y `turno:{id}`, eventos reales (`venta.registrada`, `costo.actualizado`, `stock.bajo`, `importacion.lista`), presencia, reconexión automática.
-- **T3.6** Cliente mínimo en `web/` (tablero + importación) y diagrama de secuencia Mermaid.
+- **T3.6** Cliente mínimo PWA en `web/` (tablero + importación + caja) y diagrama de secuencia Mermaid.
 - **T3.7** Ensayo de fallos: apagar cada componente, documentar lo observado.
 - **T3.8** (Should) Reportes: ganancia diaria, ranking de productos, punto de equilibrio y metas (HU10–HU11).
 
 ### TP 4 — Docker, CI/CD, implementación, OpenAPI y GraphQL (Unidad 5 · clases 25–28 · 15 %)
 - **T4.1** Dockerfile por servicio (multietapa, usuario no root, versiones fijadas, `.dockerignore`).
-- **T4.2** `docker-compose.yml`: Django, Node, ai-service, PostgreSQL, MongoDB, Ollama; healthchecks, redes, volúmenes; **un solo comando** desde clon limpio.
+- **T4.2** `docker-compose.yml`: Django, Node, ai-service, PostgreSQL, MongoDB (con límite de memoria configurado); healthchecks, redes, volúmenes; **un solo comando** desde clon limpio.
 - **T4.3** GitHub Actions: instalación, lint, tests de ambos servicios, build de imágenes, badge; demostrar que falla con un test roto.
-- **T4.4** Modalidad de implementación (ADR). Con ~8 GB en el local del dueño, **no conviene correr todo ahí**. Propuesta: Django + Node + bases en **cloud gratuito** (Render/Railway/Fly.io + Postgres gestionado + MongoDB Atlas), y el dueño solo usa el navegador. La IA va por el adapter: Ollama con un modelo de 1–3B en la PC del equipo para la demo (verificar RAM libre), o API externa si los docentes lo aprueban; en ambos casos con degradación si falla. Prever arranque en frío del plan gratuito. Además, el `docker compose` completo debe levantar en una PC del equipo (requisito de la Guía). Decidir y declarar (no se puede cambiar la semana de la presentación).
+- **T4.4** Modalidad de implementación (ADR): **PC Local con Docker Compose** (respaldada por la sección 3.5 de la Guía), garantizando operación continua de caja y stock ante cortes de internet mediante la **PWA instalable** en red local (LAN). Para el equipo de **8 GB de RAM** del local se aplican las medidas de mitigación definidas en §0 (2d): no correr Ollama local (se consume Gemini API mediante el adapter, con degradación a carga manual/CSV sin internet) y limitar la memoria de MongoDB en Docker Compose.
 - **T4.5** OpenAPI: `drf-spectacular` en Django, Swagger UI en Express.
 - **T4.6** GraphQL en Node (Apollo): 3 queries + 1 mutation con resolvers que usan más de una fuente (ej. `productoConCostoEHistorial`, `resumenDelDia`, `menuDigital`; mutation `actualizarPrecioInsumo`) + justificación escrita frente a REST.
 - **T4.7** Tags de Git y **rollback documentado y probado una vez**.
@@ -230,8 +232,8 @@ Fechas tomadas de la guía (verificar el calendario vigente). *Def. de hecho (Do
 - **T5.1** Congelar funcionalidad 2 semanas antes; todas las historias *Must* completas; un usuario demo por rol.
 - **T5.2** Cobertura ≥ 60 % sobre lógica de negocio (pytest-cov, Jest) con informe versionado; pruebas unitarias, de integración y **un caso extremo a extremo**; lint sin errores.
 - **T5.3** Informe PDF con la estructura obligatoria (resumen, proyecto, planificación real vs. ejecutada, desarrollo con ADRs, conclusiones, bibliografía APA) + manual de usuario breve.
-- **T5.4** Retrospectiva escrita, presentación de ≤ 8 diapositivas, ensayo cronometrado (8 min, demo online en vivo).
-- *Could si sobra tiempo:* HU13 (menú digital QR, resumen semanal con IA).
+- **T5.4** Retrospectiva escrita, presentación de ≤ 8 diapositivas, ensayo cronometrado (8 min, demo en vivo).
+- *Could si sobra tiempo:* HU13 (resumen semanal con IA).
 
 ---
 

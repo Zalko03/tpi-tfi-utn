@@ -33,6 +33,10 @@ Los tres roles funcionan como **plantillas de permisos**: el dueño elige un rol
 
 Cada persona tiene su propia cuenta, de modo que ventas, turnos y cambios quedan registrados a su nombre. Las cuentas se desactivan, no se borran, para conservar el historial.
 
+### Requisitos no funcionales clave
+
+- **Alta disponibilidad ante cortes de internet (operación local):** el núcleo transaccional (caja, ventas, stock, recetas y costeo) debe ejecutarse localmente en la PC del comercio mediante Docker Compose sobre la red local (LAN) y operar a través de una **PWA instalable** en el escritorio. Un corte de conectividad a internet **nunca debe interrumpir el cobro en caja ni la gestión operativa del local**; únicamente las funciones que dependen de servicios externos (como la extracción de precios o resúmenes con IA en la nube y la actualización de la Carta Digital pública) se postergan o degradan a carga manual/CSV hasta recuperar la conexión.
+
 ---
 
 ## 2. Historias de usuario (MoSCoW)
@@ -56,10 +60,11 @@ Prioridades según `docs/PLAN_IMPLEMENTACION.md` §6. Cada criterio sigue el for
 - **CA3.2** Dado un cambio de costo, cuando se completa el recálculo, entonces se guarda un registro en `historial_precios` y un snapshot del desglose en `snapshots_costeo`. *(§2, paso 5 del flujo)*
 - **CA3.3** Dada una compra de re-stock de un lote completo, cuando se carga, entonces el costo unitario sale de dividir el total pagado por la cantidad y el margen no se distorsiona. *(§3, costo unitario; §1, falla del re-stock)*
 
-**HU4 — Como cajero registro una venta con medio de pago.** *(Must)*
+**HU4 — Como cajero registro una venta de productos (incluyendo búsqueda o lectura por `codigo_barras`) con medio de pago.** *(Must)*
 - **CA4.1** Dado un turno de caja abierto, cuando el cajero cobra un ticket indicando el medio de pago, entonces la venta queda registrada con ese medio y asociada al turno. *(§3, caja)*
 - **CA4.2** Dado un ítem vendido, cuando se registra la venta, entonces se guarda el costo vigente en ese momento y un cambio posterior de precios no lo altera. *(§3, ganancia diaria con costo congelado)*
 - **CA4.3** Dado un cajero sin permiso para anular tickets, cuando intenta anular uno, entonces el sistema lo rechaza. *(§3, matriz de roles)*
+- **CA4.4** Dado un producto con el campo `codigo_barras` cargado, cuando el cajero lo escanea con el lector (emulación de teclado HID) o lo ingresa en la caja, entonces el sistema identifica el producto y lo agrega al ticket de venta.
 
 **HU5 — Como encargado abro y cierro caja y veo la diferencia.** *(Must)*
 - **CA5.1** Dado un turno abierto con ventas en efectivo y movimientos, cuando el encargado lo cierra, entonces el sistema calcula el efectivo esperado como apertura + ventas en efectivo + entradas − salidas. *(§3, caja)*
@@ -107,11 +112,15 @@ Prioridades según `docs/PLAN_IMPLEMENTACION.md` §6. Cada criterio sigue el for
 - **CA14.2** Dado un dueño que aún no declaró su condición fiscal, cuando se calcula un costo, entonces se aplica el criterio por defecto del plan (el costo es lo que realmente se paga, con IVA) y se avisa que falta la declaración. *(§0, 2b)*
 - **CA14.3** Dado un cambio de la condición fiscal, cuando se guarda, entonces los costos de productos afectados se recalculan y queda historial. *(§3, costo de producto)*
 
+**HU15 (separada de HU13) — Carta Digital pública por QR.** *(Should)*
+- **CA15.1** Dado el catálogo de productos y precios vigente en el sistema local, cuando se actualiza el menú digital (`menu_digital`), entonces se publica de forma unidireccional una vista pública ligera de solo lectura accesible mediante código QR para los clientes. *(§2, MongoDB / Carta Digital)*
+- **CA15.2** Dado un corte de internet en el local o una caída de la vista pública, cuando el cajero opera en el comercio, entonces la caja local continúa funcionando sin interrupciones y la sincronización de la carta se retoma al restablecerse la conexión.
+
 ### Could
 
-**HU13 — Resumen semanal con IA y menú digital por QR.** *(Could)*
+**HU13 — Resumen semanal con IA.** *(Could)*
 - **CA13.1** Dada una semana de ventas, cuando el dueño pide el resumen, entonces recibe el rendimiento del menú con sugerencias de rotación, validado con un esquema tipado. *(§2, FastAPI)*
-- **CA13.2** Dado un proveedor de IA caído, cuando se pide el resumen, entonces el sistema responde con un mensaje de contingencia sin afectar ventas ni costeo. *(§2, degradación documentada)*
+- **CA13.2** Dado un proveedor de IA caído o sin conexión a internet, cuando se pide el resumen, entonces el sistema responde con un mensaje de contingencia sin afectar ventas ni costeo. *(§2, degradación documentada)*
 
 ---
 
@@ -120,6 +129,8 @@ Prioridades según `docs/PLAN_IMPLEMENTACION.md` §6. Cada criterio sigue el for
 - **Facturación electrónica** (la arquitectura no lo bloquea, pero no se construye).
 - **Multi-sucursal:** el sistema atiende a un único local.
 - **Pagos online.**
+- **Aplicación de escritorio nativa en Electron:** se descarta por el alto consumo de memoria RAM en el equipo del local (~8 GB) y el sobrecosto de mantenimiento; en su lugar se utiliza una **PWA instalable** para la caja.
+- **Sincronización bidireccional compleja (nube ↔ local):** no se construirá replicación ni resolución de conflictos bidireccional entre la nube y el servidor local. La fuente de verdad transaccional vive íntegramente en la PC local del comercio y solo existe publicación unidireccional hacia la nube para la Carta Digital pública de solo lectura.
 
 > **Importación de ventas desde el POS actual (Abarrotes): depende de la decisión del dueño.** El dueño todavía no definió si seguirá cobrando en el POS. Según el plan (§3b):
 >
@@ -174,6 +185,7 @@ erDiagram
     PRODUCTO {
         int id PK
         string nombre
+        string codigo_barras
         decimal precio_venta
         decimal minutos_mano_obra
         decimal descartables
@@ -239,6 +251,7 @@ Se incorporarán al modelo cuando se implementen las historias correspondientes;
 - **Precios de competencia** (HU9: precio sugerido acotado por promedio y mínimo).
 - **Costos fijos y metas** (HU11: punto de equilibrio y metas diaria y semanal).
 - **Movimientos de stock** (HU12: descuento de insumos por receta y alertas de mínimo).
+- **Carta Digital (`menu_digital` en MongoDB)** (HU15: menú público de solo lectura por QR, sincronizado unidireccionalmente desde el backend local).
 
 La condición fiscal del dueño (HU14) será un dato de configuración; su forma exacta se define al implementarla.
 
@@ -258,8 +271,8 @@ La condición fiscal del dueño (HU14) será un dato de configuración; su forma
 
 | Estado | Supuesto o pregunta | Detalle |
 |---|---|---|
-| ✅ **RESUELTO** | Frontend | Resuelto con los docentes: el frontend es de libre elección. Propuesta inicial del equipo: cliente mínimo (HTML + JS) y Django Admin. |
-| ✅ **RESUELTO** | Proveedor de IA | Los docentes aceptan un proveedor de IA externo (Gemini) además de Ollama. Se registrará en un ADR; la clave va solo en `.env` y no se envían datos identificables del local. |
+| ✅ **RESUELTO** | Frontend y operación local | Resuelto con los docentes: el frontend es de libre elección. Se adopta una **PWA instalable** en el escritorio para la caja y gestión en red local (LAN) junto con Django Admin, ejecutando el backend en la **PC local con Docker Compose** para garantizar alta disponibilidad ante cortes de internet. |
+| ✅ **RESUELTO** | Proveedor de IA | Los docentes aceptan un proveedor de IA externo (Gemini) además de Ollama. En la PC local de 8 GB de RAM no se correrá Ollama local (se consumirá Gemini API por el adapter con degradación a carga manual/CSV). Se registrará en un ADR; la clave va solo en `.env` y no se envían datos identificables del local. |
 | ⏳ Pendiente | Aprobación del tema | Debe ser aprobado por ambos docentes antes de cerrar el TP 0. |
 | ⏳ Pendiente | Decisión del dueño sobre el POS | ¿Seguirá usando el POS Abarrotes para cobrar? Define el escenario A, B o C de la sección 3. |
 | ⏳ Pendiente | Exportación de ventas del POS | Si conserva el POS: ¿puede sacar las ventas a Excel o CSV? |
