@@ -1,0 +1,173 @@
+### Variables Globales
+@djangoUrl = http://localhost:8000
+@nodeUrl = http://localhost:3000
+
+###############################################################################
+### 1. HEALTH CHECKS
+###############################################################################
+
+### Health Django
+GET {{djangoUrl}}/health
+Accept: application/json
+
+### Health Node
+GET {{nodeUrl}}/health
+Accept: application/json
+
+
+###############################################################################
+### 2. BACKEND-DJANGO (PostgreSQL + DRF)
+###############################################################################
+
+### Listar Proveedores
+GET {{djangoUrl}}/api/proveedores/
+Accept: application/json
+
+### Crear Proveedor
+POST {{djangoUrl}}/api/proveedores/
+Content-Type: application/json
+
+{
+    "nombre": "Distribuidora San Martín SRL",
+    "estado_activo": true
+}
+
+### Listar Insumos (con paginación y filtros)
+GET {{djangoUrl}}/api/insumos/?pagina=1&limite=10
+Accept: application/json
+
+### Crear Insumo (Unidad base: g, ml, un)
+POST {{djangoUrl}}/api/insumos/
+Content-Type: application/json
+
+{
+    "nombre": "Café Bourbon Rojo",
+    "unidad_base": "g",
+    "estado_activo": true
+}
+
+### Registrar Compra con Prorrateo de Envío y Recálculo de Costo
+POST {{djangoUrl}}/api/compras/
+Content-Type: application/json
+
+{
+    "proveedor": 1,
+    "insumo": 1,
+    "precio_total": "28000.00",
+    "cantidad": "1.0000",
+    "unidad": "kg",
+    "envio": "2000.00",
+    "iva_incluido": true,
+    "alicuota": "21.00"
+}
+
+### Listar Productos con Recetas y Costo Calculado
+GET {{djangoUrl}}/api/productos/
+Accept: application/json
+
+### Crear Producto
+POST {{djangoUrl}}/api/productos/
+Content-Type: application/json
+
+{
+    "nombre": "Flat White",
+    "codigo_barras": "7791234567890",
+    "precio_venta": "3900.00",
+    "minutos_mano_obra": "2.00",
+    "costo_hora_mano_obra": "2500.00",
+    "descartables": "80.00"
+}
+
+### Agregar Ítem de Receta al Producto
+POST {{djangoUrl}}/api/recetas-items/
+Content-Type: application/json
+
+{
+    "producto": 1,
+    "insumo": 1,
+    "cantidad": "18.0000",
+    "unidad": "g"
+}
+
+### Forzar Recálculo de Costo de un Producto
+POST {{djangoUrl}}/api/productos/1/recalcular/
+Accept: application/json
+
+### Abrir Turno de Caja
+POST {{djangoUrl}}/api/turnos/
+Content-Type: application/json
+
+{
+    "efectivo_inicial": "15000.00"
+}
+
+### Registrar Venta con Snapshot Congelado
+POST {{djangoUrl}}/api/ventas/
+Content-Type: application/json
+
+{
+    "turno_caja": 1,
+    "medio_pago": "EFECTIVO",
+    "origen": "propio",
+    "items_entrada": [
+        {
+            "producto_id": 1,
+            "cantidad": "2"
+        }
+    ]
+}
+
+### Cerrar Turno de Caja (Calcula esperado y diferencia)
+POST {{djangoUrl}}/api/turnos/1/cerrar/
+Content-Type: application/json
+
+{
+    "efectivo_contado": "19400.00"
+}
+
+
+###############################################################################
+### 3. BACKEND-NODE (Express + MongoDB)
+###############################################################################
+
+### Listar Historial de Precios desde Mongo
+GET {{nodeUrl}}/api/historial-precios?productoId=1&pagina=1&limite=10
+Accept: application/json
+
+### Crear Registro en Historial de Precios
+POST {{nodeUrl}}/api/historial-precios
+Content-Type: application/json
+
+{
+    "productoId": 1,
+    "insumoId": 1,
+    "costoAnterior": "1800.0000",
+    "costoNuevo": "2100.0000",
+    "motivo": "Aumento del proveedor de café"
+}
+
+### Guardar Snapshot de Costeo
+POST {{nodeUrl}}/api/snapshots-costeo
+Content-Type: application/json
+
+{
+    "productoId": 1,
+    "desgloseInsumos": [
+        {
+            "insumoId": 1,
+            "nombre": "Café Bourbon Rojo",
+            "cantidad": "18",
+            "unidad": "g",
+            "costoUnitario": "30.0000",
+            "costoLinea": "540.0000"
+        }
+    ],
+    "costoManoObra": "83.3333",
+    "costoDescartables": "80.0000",
+    "costoTotal": "703.3333",
+    "margenBruto": "0.8196"
+}
+
+### Endpoint de Integración: Resumen Consolidado (Django + Mongo)
+GET {{nodeUrl}}/api/productos/1/resumen-costo
+Accept: application/json
