@@ -21,6 +21,29 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-10-18
+Tarea: Cierre y validación final de TP 1 — Núcleo de datos y APIs CRUD
+Rama: feature/tp1-cierre-bitacora
+Cambios realizados:
+- Fusión y sincronización exitosa del PR #6 (`feature/tp1-nucleo-crud`) en `main`.
+- Estado de pruebas automáticas: 24/24 en Django (`pytest`) y 6/6 en Node (`Jest`) en verde.
+- Ejecución de `seed_demo` para poblar insumos, compras de prueba y recetas.
+- Verificación manual en navegador de la Browsable API de DRF (`/api/insumos/`, `/api/productos/`, `/api/compras/`).
+- Verificación de integración en Node (`/api/productos/1/resumen-costo`): consumo correcto del backend Django en puerto 8000, cálculo exacto de costos (insumos $504 + mano de obra $41.67 = $545.67) y margen bruto ($1654.33, 75.2%).
+- Conclusión: Núcleo funcional y persistencia relacional/documental del TP 1 completados y operativos.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Sin nuevas conexiones; se validaron las existentes entre `backend-django` (PostgreSQL 5432), `backend-node` (MongoDB 27017) y la integración Node ↔ Django (`/api/productos/:id/`).
+Problemas y decisiones técnicas:
+- **Validación end-to-end de consistencia:** Se constató el funcionamiento integrado en entornos locales con datos sembrados vía `seed_demo`, asegurando que tanto la persistencia relacional (Django/PostgreSQL) como documental (Node/MongoDB) responden con el contrato unificado de datos y cálculos precisos de costeo.
+Archivos tocados:
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django`: ejecutar `pytest` (24 pruebas en verde).
+- En `backend-django`: ejecutar `python manage.py seed_demo`.
+- En `backend-node`: ejecutar `npm test` (6 pruebas en verde).
+- Acceder desde el navegador a la Browsable API en `http://localhost:8000/api/insumos/`, `http://localhost:8000/api/productos/` y `http://localhost:8000/api/compras/`.
+- Consultar `http://localhost:3000/api/productos/1/resumen-costo` en Node y verificar el desglose de costos (insumos $504 + mano de obra $41.67 = $545.67) y margen bruto ($1654.33, 75.2%).
+---
 Fecha: 2026-10-17
 Tarea: TP 1 — Núcleo de datos y APIs CRUD (T1.1 a T1.13)
 Rama: feature/tp1-nucleo-crud
