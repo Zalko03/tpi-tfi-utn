@@ -22,6 +22,39 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-18
+Tarea: T2.1 - Especificación de seguridad, matriz de roles y ADR de autenticación asimétrica JWT RS256
+Rama: feature/t2.1-seguridad-matriz-jwt
+Cambios realizados:
+- Creación de `docs/seguridad.md`:
+  - Definición del modelo de roles como plantillas operativas (`DUENIO`, `ENCARGADO`, `CAJERO`) con permisos granulares booleanos por usuario.
+  - Catálogo exhaustivo de permisos granulares por módulo (`ventas`, `caja`, `insumos`, `compras`, `recetas`, `reportes`, `ia`, `personal`, `auditoria`).
+  - Reglas de negocio de seguridad: jerarquía de administración exclusiva del Dueño, imposibilidad de otorgar permisos no poseídos, regla de supervivencia del último Dueño activo y arqueo ciego para cajeros.
+  - Esquema de desactivación lógica (`is_active = False`) sin borrado físico para salvaguardar la integridad referencial y la trazabilidad histórica de ventas, caja, compras y auditoría.
+  - Matriz de endpoints protegidos para Django y Node.
+- Creación de `docs/adr/0001-autenticacion-jwt-rs256.md`:
+  - Registro formal de la decisión arquitectónica de autenticación asimétrica mediante el algoritmo RS256.
+  - Django como único emisor y custodio de la clave privada RSA.
+  - Node como validador autónomo con clave pública RSA en memoria sin consultas a la base de usuarios de PostgreSQL ni latencia inter-proceso.
+  - Especificación exhaustiva del payload del JWT (claims estándar RFC 7519, `user_id`, `username`, `email`, `rol` y array `permisos`).
+  - Políticas de expiración corta (access tokens de 15 min), refresh tokens (24 h) con rotación y lista negra, y gestión de claves en variables de entorno sin versionar secretos en Git.
+- Actualización de `docs/arquitectura.md`: registro de la decisión como Aceptada vinculando a `ADR-0001`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Sin nuevas conexiones físicas de red en esta tarea de documentación/arquitectura. Se estableció el contrato criptográfico para la validación de tokens en `backend-node` y `backend-django` para las tareas T2.2 a T2.4.
+Problemas y decisiones técnicas:
+- **Autonomía y resiliencia en Node sin consultas síncronas:** El esquema asimétrico RS256 permite que `backend-node` valide tokens y autorice sockets en microsegundos sin pegarle a PostgreSQL ni generar un punto de falla si Django está ocupado.
+- **Ventana de exposición acotada:** Dado que la validación en Node es local, los cambios de permisos o desactivaciones de usuarios se reflejan en el siguiente refresco del token de acceso (máximo 15 minutos).
+- **Trazabilidad estricta y protección contable:** Se descartó el borrado físico de usuarios para evitar rupturas de FK en `Venta`, `TurnoCaja` y `MovimientoCaja`.
+Archivos tocados:
+- `docs/seguridad.md`
+- `docs/adr/0001-autenticacion-jwt-rs256.md`
+- `docs/arquitectura.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Inspeccionar `docs/seguridad.md` y verificar la coherencia de la matriz de roles y permisos con las reglas de negocio de `docs/PLAN_IMPLEMENTACION.md` (§3).
+- Inspeccionar `docs/adr/0001-autenticacion-jwt-rs256.md` y comprobar la validez del esquema asimétrico RS256 y la especificación del payload del JWT.
+
+---
+Fecha: 2026-10-18
 Tarea: Cierre y validación final de TP 1 — Núcleo de datos y APIs CRUD
 Rama: feature/tp1-cierre-bitacora
 Cambios realizados:

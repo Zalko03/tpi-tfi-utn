@@ -131,7 +131,7 @@ Solo se listan con su estado; los ADR se crean en `docs/adr/` más adelante.
 
 | Decisión | Estado | Detalle |
 |---|---|---|
-| **JWT RS256, Django único emisor** | Tomada · ADR a registrar | Solo Django tiene la clave privada; Node valida con la pública (plan §6, T2.1; `convenciones-node.md` §7). |
+| **JWT RS256, Django único emisor** | Aceptada · [ADR-0001](adr/0001-autenticacion-jwt-rs256.md) | Solo Django tiene la clave privada; Node valida con la pública (plan §6, T2.1; `convenciones-node.md` §7). |
 | **Contrato JSON `snake_case` con traducción a `camelCase` en `django.client.js`** | Tomada · ADR a registrar | Django responde en `snake_case` (DRF por defecto); Node traduce en un solo lugar (`convenciones-python.md` §3). |
 | **Adapter de proveedor de IA** | Tomada · ADR a registrar | `ai-service` define una interfaz con Ollama y, opcionalmente, Gemini. Los docentes confirmaron que se puede usar el proveedor que se prefiera; la clave va solo en `.env` y no se envían datos identificables del local. |
 | **Modalidad de despliegue** | **PENDIENTE** (T4.4) | Propuesta del plan: Django, Node y bases en cloud gratuito, y la IA por el adapter. Con unos 8 GB de RAM en el local del dueño no conviene correr todo ahí. El `docker compose` completo debe levantar en una PC del equipo. Se decide y declara antes del TP4. |
