@@ -1,0 +1,13 @@
+Nombre del equipo: Materos Segundos
+
+Superpoderes:
+
+Ignacio Zoilo: Alta tolerancia a la frustración; mantengo la cabeza fría para aislar variables, debugear metódicamente y llegar a la raíz del problema sin quemarme ni tirar código a lo loco.
+
+Martín Alcaraz: Uso estratégico de herramientas de IA para resolver problemas, detectar errores (debugging) y redactar documentación clara.
+
+Compromisos / Acuerdos:
+
+Ignacio Zoilo: Me comprometo a subir avances al repo de forma regular y con commits claros, para no acumular todo al final.
+
+Martín Alcaraz: Me comprometo a mantener al día la documentación/bitácora del proyecto en cada avance y a implementar la mayor cantidad posible de tests unitarios, asegurando que todo funcione antes de integrar.
