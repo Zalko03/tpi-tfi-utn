@@ -1,5 +1,7 @@
 Nombre del equipo: Materos Segundos
 
+Integrantes: Ignacio Ramón Zoilo - Martín Elías Alcaraz
+
 Superpoderes:
 
 Ignacio Zoilo: Alta tolerancia a la frustración; mantengo la cabeza fría para aislar variables, debugear metódicamente y llegar a la raíz del problema sin quemarme ni tirar código a lo loco.
