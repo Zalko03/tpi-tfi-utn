@@ -2,8 +2,14 @@ import mongoose from 'mongoose';
 import request from 'supertest';
 import app from '../../app.js';
 import { HistorialPrecio } from '../models/HistorialPrecio.js';
+import { generarTokenTest } from '../../tests/helpers/auth.helper.js';
 
 describe('Historial de Precios en MongoDB (T1.9)', () => {
+    const tokenValido = generarTokenTest({
+        rol: 'DUENIO',
+        permisos: ['insumos.ver'],
+    });
+
     beforeAll(async () => {
         const uriTest = process.env.MONGO_URI || 'mongodb://localhost:27017/cafe_gestion_test';
         if (mongoose.connection.readyState === 0) {
@@ -29,6 +35,7 @@ describe('Historial de Precios en MongoDB (T1.9)', () => {
 
         const resCrear = await request(app)
             .post('/api/historial-precios')
+            .set('Authorization', `Bearer ${tokenValido}`)
             .send(nuevoHistorial)
             .set('Accept', 'application/json');
 
@@ -38,6 +45,7 @@ describe('Historial de Precios en MongoDB (T1.9)', () => {
 
         const resListar = await request(app)
             .get('/api/historial-precios?productoId=101')
+            .set('Authorization', `Bearer ${tokenValido}`)
             .set('Accept', 'application/json');
 
         expect(resListar.status).toBe(200);

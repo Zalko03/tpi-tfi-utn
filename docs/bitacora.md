@@ -22,6 +22,62 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-28
+Tarea: T2.4 — Middleware de validación JWT RS256 y autorización granular en backend-node
+Rama: feature/t2.4-node-middleware-jwt
+Cambios realizados:
+- En `backend-node`:
+  - Instalación de dependencia `jsonwebtoken` (^9.0.3) para verificación criptográfica asimétrica de tokens.
+  - Configuración y lectura de la clave pública RSA en `src/config/env.js` mediante la función `obtenerClavePublicaJwt()`, resolviendo por orden de prioridad: contenido PEM directo (`process.env.JWT_PUBLIC_KEY`), archivo específico (`process.env.JWT_PUBLIC_KEY_PATH`), o rutas por defecto (`config/keys/public.pem`). Documentación en `.env.example`.
+  - Middleware `verificarToken` en `src/middlewares/auth.middleware.js`:
+    - Valida criptográficamente la firma RS256 contra la clave pública RSA en memoria local (sin consultar a Django).
+    - Valida vigencia temporal (`exp`), emisor (`iss = 'cafe-gestion-django'`), y tipo de token (`token_type = 'access'`).
+    - Protección estricta contra ataques de confusión de algoritmos especificando `algorithms: ['RS256']`.
+    - Inyecta el usuario decodificado en `req.usuario` (`id`, `username`, `email`, `rol`, `permisos`).
+  - Middleware `verificarPermiso(permisoRequerido)` y `verificarRol(...roles)` en `src/middlewares/auth.middleware.js`:
+    - Valida la presencia del permiso en `req.usuario.permisos`.
+    - Admite acceso irrestricto automático si el usuario tiene rol `DUENIO` (según matriz de `docs/seguridad.md`).
+    - Respuestas de error estandarizadas 401 Unauthorized y 403 Forbidden siguiendo estrictamente `docs/api-errores.md`.
+  - Protección de rutas HTTP según `docs/seguridad.md` (§5.2):
+    - `GET /api/productos/:id/resumen-costo`: protegido con `verificarToken` y `verificarPermiso('recetas.ver_costos')`.
+    - `/api/historial-precios` (`GET` y `POST`): protegido con `verificarToken` y `verificarPermiso('insumos.ver')`.
+- Suite de pruebas completa en Jest (34 tests en verde, 7 suites):
+  - **Tests unitarios puros aislados en `tests/unit/` (18 tests)**:
+    - `tests/unit/verificarToken.unit.test.js`: token válido RS256 adjunta `req.usuario` y llama a `next()`; rechazo 401 sin cabecera Authorization; rechazo 401 por formato malformado; rechazo 401 por expiración; rechazo 401 por emisor `iss` incorrecto; rechazo 401 por `token_type` "refresh"; rechazo 401 por firma con clave privada ajena; rechazo 401 por ataque de confusión de algoritmo HS256; rechazo 500 por clave pública no configurada.
+    - `tests/unit/verificarPermiso.unit.test.js`: pasa con `next()` ante permiso presente; pasa con `next()` si el rol es `DUENIO` aun sin el permiso explícito en el array; rechaza con 403 cuando el usuario es `CAJERO` y no tiene `recetas.ver_costos`; rechaza con 401 si falta `req.usuario`; pruebas complementarias de `verificarRol`.
+  - **Tests de integración / API (16 tests)**:
+    - `tests/integration/rutasProtegidas.integration.test.js`: validación de rechazo 401 sin token, 403 con token insuficiente y 200/201 con token autorizado para `/api/productos/:id/resumen-costo` y `/api/historial-precios`.
+    - Actualización de `src/tests/error.middleware.test.js` y `src/tests/historialPrecio.test.js` con tokens firmados vía `tests/helpers/auth.helper.js`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-node`: validación autónoma offline en memoria de firma RS256, expiración, emisor y permisos granulares sobre endpoints protegidos con formato unificado de error.
+Problemas y decisiones técnicas:
+- **Separación rigurosa de tests unitarios vs integración:** Se aisló la lógica de middlewares en `tests/unit/` utilizando mocks puros de `req`, `res`, `next` y pares de claves RSA generados en memoria con `crypto.generateKeyPairSync`, garantizando que la suite unitaria no dependa de MongoDB, Express ni red.
+- **Defensa en profundidad en JWT:** Se fuerza `algorithms: ['RS256']` para neutralizar ataques de confusión donde un atacante firma HMAC con la clave pública, y se valida explícitamente `token_type === 'access'` para evitar el uso accidental o malicioso de refresh tokens en peticiones HTTP.
+- **Acceso irrestricto del Dueño:** Conforme a la regla de negocio y matriz de `docs/seguridad.md`, el Dueño posee acceso operativo global, permitiendo el paso tanto si posee el permiso individual como por rol jerárquico.
+Archivos tocados:
+- `.env.example`
+- `backend-node/package.json`
+- `backend-node/package-lock.json`
+- `backend-node/src/config/env.js`
+- `backend-node/src/middlewares/auth.middleware.js`
+- `backend-node/src/routes/historialPrecio.routes.js`
+- `backend-node/src/routes/productoResumen.routes.js`
+- `backend-node/jest.config.js`
+- `backend-node/jest.setup.js`
+- `backend-node/tests/helpers/auth.helper.js`
+- `backend-node/tests/unit/verificarToken.unit.test.js`
+- `backend-node/tests/unit/verificarPermiso.unit.test.js`
+- `backend-node/tests/integration/rutasProtegidas.integration.test.js`
+- `backend-node/src/tests/error.middleware.test.js`
+- `backend-node/src/tests/historialPrecio.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-node/`: ejecutar `npm test` para correr la totalidad de los tests (34 tests en verde).
+- En `backend-node/`: ejecutar solo los tests unitarios: `npx jest tests/unit/` (18 tests en verde).
+- En `backend-node/`: ejecutar solo los tests de integración: `npx jest tests/integration/` y `npx jest src/tests/`.
+
+---
+Fecha: 2026-10-28
 Tarea: T2.2 y T2.3 — Implementación de SimpleJWT RS256, roles como plantillas, permisos granulares y suite de tests unitarios
 Rama: feature/t2.2-t2.3-auth-jwt-permisos
 Cambios realizados:
