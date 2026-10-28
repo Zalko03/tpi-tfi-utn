@@ -13,6 +13,30 @@ export const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/cafe
 export const djangoBaseUrl = process.env.DJANGO_BASE_URL || 'http://localhost:8000/api';
 
 /**
+ * Obtiene la lista blanca de orígenes permitidos para CORS (docs/seguridad.md T2.5).
+ * Se rechaza el uso de comodines '*' para salvaguardar credenciales y tokens.
+ */
+export const obtenerOrigenesPermitidos = () => {
+    const raw = process.env.CORS_ALLOWED_ORIGINS || process.env.CLIENT_ORIGIN;
+    if (raw && raw.trim().length > 0) {
+        return raw
+            .split(',')
+            .map((o) => o.trim())
+            .filter((o) => o.length > 0 && o !== '*');
+    }
+    return [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'http://localhost:8000',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:8000',
+    ];
+};
+
+export const origenesPermitidos = obtenerOrigenesPermitidos();
+
+/**
  * Obtiene la clave pública RSA para validación de tokens JWT (RS256).
  * Prioridad de resolución:
  * 1. process.env.JWT_PUBLIC_KEY (contenido directo en formato PEM)
