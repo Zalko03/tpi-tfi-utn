@@ -21,6 +21,56 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-10-28
+Tarea: T2.2 y T2.3 — Implementación de SimpleJWT RS256, roles como plantillas, permisos granulares y suite de tests unitarios
+Rama: feature/t2.2-t2.3-auth-jwt-permisos
+Cambios realizados:
+- En `apps.usuarios`:
+  - Definición de constantes, catálogo de 30 permisos granulares y plantillas de roles (`DUENIO`, `ENCARGADO`, `CAJERO`) en `constantes.py` conforme a `docs/seguridad.md`.
+  - Definición de excepciones de dominio `ErrorReglaNegocio` y `ErrorSupervivenciaDuenio` en `exceptions.py`.
+  - Modelo `PerfilUsuario` (extensión OneToOne de `User`) con rol plantilla y campo `permisos` JSON para sobreescrituras individuales booleanas. Métodos de dominio: `obtener_permisos_completos()`, `tiene_permiso()` y `obtener_permisos_activos()`.
+  - Modelo inmutable `RegistroAuditoria` para trazabilidad de altas, modificaciones, cambios de rol, ajustes de permisos y estados de actividad.
+  - Servicios de dominio en `services.py`: `crear_personal`, `actualizar_personal`, `desactivar_personal` (desactivación lógica `is_active=False` con revocación en lista negra de tokens), `activar_personal` e `invalidar_tokens_usuario`.
+  - Implementación estricta de la regla de supervivencia del último Dueño activo: bloqueo con excepción de dominio ante intentos de desactivación, degradación de rol a Cajero/Encargado o remoción de permisos administrativos críticos (`personal.*`).
+  - Serializers DRF en `serializers.py` y `tokens.py`: `CustomTokenObtainPairSerializer` y `CustomTokenRefreshSerializer` inyectando todos los claims del ADR-0001 (`iss`, `sub`, `user_id`, `username`, `email`, `rol`, `permisos`).
+  - Generador y cargador de claves criptográficas RSA 2048-bit en `claves.py` con par de desarrollo local en `config/keys/` ignorado por Git.
+  - Vistas y ViewSets delgados en `views.py` (`LoginView`, `RefreshView`, `LogoutView`, `UsuarioViewSet`, `RegistroAuditoriaViewSet`) y URLs en `urls.py`.
+  - Permisos DRF personalizados en `permissions.py`: `TienePermiso`, `EsDuenio`, `EsEncargadoODuenio`, `PermisoObjetoTurnoCaja` y `PermisoObjetoVenta`.
+  - Migración inicial `0001_initial.py` para `apps.usuarios`.
+- Suite de pruebas exhaustiva en pytest (72 tests totales en verde):
+  - **Tests unitarios aislados** (35 tests):
+    - `test_unit_roles_permisos.py`: 8 tests unitarios validando plantillas por rol, overrides booleanos individuales, usuario inactivo, superuser y catálogo.
+    - `test_unit_supervivencia_duenio.py`: 14 tests unitarios validando regla de supervivencia del último Dueño activo (desactivación, degradación, revocación de permisos críticos, múltiples dueños, auditoría).
+    - `test_unit_jwt_rs256.py`: 8 tests unitarios validando cabecera RS256, firma criptográfica con clave privada, verificación con pública, fallo con clave ajena, claims exactos del ADR-0001, tiempos de vida y fallback de claves.
+    - `test_unit_bloqueo_inactivo.py`: 5 tests unitarios validando bloqueo de login y refresh para `is_active=False`, e invalidación en blacklist.
+  - **Tests de integración / API** (12 tests):
+    - `test_api_auth.py`: 5 tests sobre `/api/auth/token/`, `/api/auth/token/refresh/` y `/api/auth/token/blacklist/`.
+    - `test_api_personal.py`: 7 tests sobre `/api/usuarios/`, acciones personalizadas y autorización por permisos y objeto.
+- Documentación:
+  - `.env.example`: actualización con variables `DJANGO_JWT_PRIVATE_KEY_PATH` y `DJANGO_JWT_PUBLIC_KEY_PATH`.
+  - `docs/CONNECTIONS.md`: registro del contrato de emisión centralizada JWT RS256 Django ↔ Node/Clientes.
+  - `docs/ARCHITECTURE.md`: incorporación de autenticación asimétrica y modelo de usuarios a los puntos críticos.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Contrato criptográfico asimétrico: Django emite access tokens firmados con clave privada RSA; Node y clientes validan offline con clave pública sin pegarle a PostgreSQL.
+Problemas y decisiones técnicas:
+- **Diferenciación estricta de tests unitarios vs API:** Se estructuraron carpetas `tests/unit/` y `tests/api/` para que la evaluación académica de tests unitarios verifique la lógica de dominio y servicios de forma aislada sin dependencias de transporte HTTP.
+- **Protección multidimensional del último Dueño:** La supervivencia no solo previene marcar `is_active=False`, sino también la degradación del rol (`rol != ROL_DUENIO`) y la revocación de permisos administrativos críticos (`personal.*`) que dejarían al sistema en orfandad operativa.
+- **Revocación atómica en blacklist:** Al desactivar a un usuario, todos sus refresh tokens pendientes pasan inmediatamente a `BlacklistedToken`, y el serializador de refresh valida tanto la blacklist como el flag `is_active` en PostgreSQL.
+Archivos tocados:
+- `.env.example`
+- `backend-django/requirements.txt`
+- `backend-django/config/settings/base.py`
+- `backend-django/config/urls.py`
+- `backend-django/apps/usuarios/*`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django/`: ejecutar `USE_SQLITE=True .venv/bin/pytest -v` (72 tests en verde).
+- En `backend-django/`: ejecutar específicamente la suite unitaria: `USE_SQLITE=True .venv/bin/pytest apps/usuarios/tests/unit/ -v` (35 tests unitarios en verde).
+- En `backend-django/`: ejecutar la suite de integración de API: `USE_SQLITE=True .venv/bin/pytest apps/usuarios/tests/api/ -v` (12 tests de API en verde).
+
+---
 Fecha: 2026-10-18
 Tarea: T2.1 - Especificación de seguridad, matriz de roles y ADR de autenticación asimétrica JWT RS256
 Rama: feature/t2.1-seguridad-matriz-jwt

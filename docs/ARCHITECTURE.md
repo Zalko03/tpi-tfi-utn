@@ -11,8 +11,10 @@
 - **Operación sin internet:** Todo el núcleo de caja y stock se ejecuta localmente (Docker Compose en PC local según sección 3.5 de la Guía de cátedra). La pérdida de conectividad externa no interrumpe las ventas.
 - **Cliente de escritorio vía PWA:** Se descarta aplicación nativa/Electron por restricción de hardware (~8 GB de RAM) y sobrecosto de mantenimiento. Se adopta PWA para ofrecer experiencia de escritorio sin consumo excesivo de memoria.
 - **Lector de código de barras:** Integración directa por emulación de teclado (HID) asociada al campo `codigo_barras` en productos.
+- **Autenticación Asimétrica RS256 (ADR-0001):** Django es el único emisor y custodio de la clave privada RSA. Node valida tokens en memoria de forma autónoma con la clave pública.
 
 ## 3. Puntos Críticos de Ruptura
-- Modelos de Insumo, Producto (`codigo_barras`) y Receta en Django.
+- Modelos de Insumo, Producto (`codigo_barras`), Receta y PerfilUsuario en Django.
+- Regla de supervivencia del último Dueño activo (protección contra bloqueo total del sistema).
 - Sincronización unidireccional de `menu_digital` hacia la nube.
 - Formato único de error en API (definido en docs/api-errores.md).
