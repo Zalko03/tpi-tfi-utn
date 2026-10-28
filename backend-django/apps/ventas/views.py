@@ -50,7 +50,9 @@ class VentaViewSet(viewsets.ModelViewSet):
         if "ventas.ver_historial_todos" in token_permisos:
             return qs
 
-        return qs.filter(turno_caja__usuario=user)
+        if self.action == "list":
+            return qs.filter(turno_caja__usuario=user)
+        return qs
 
     @action(detail=True, methods=["post"], url_path="anular")
     def anular(self, request, pk=None):

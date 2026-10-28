@@ -56,7 +56,9 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         if "caja.gestionar_turnos_ajenos" in token_permisos:
             return qs
 
-        return qs.filter(usuario=user)
+        if self.action == "list":
+            return qs.filter(usuario=user)
+        return qs
 
     @action(detail=True, methods=["post"], url_path="cerrar")
     def cerrar(self, request, pk=None):
