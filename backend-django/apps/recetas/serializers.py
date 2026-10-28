@@ -1,4 +1,5 @@
 """Serializadores para productos y recetas."""
+
 from decimal import Decimal
 from rest_framework import serializers
 from apps.recetas.models import Producto, RecetaItem
@@ -24,7 +25,9 @@ class RecetaItemSerializer(serializers.ModelSerializer):
 
     def validate_cantidad(self, value):
         if Decimal(str(value)) <= Decimal("0"):
-            raise serializers.ValidationError("La cantidad del insumo en la receta debe ser mayor a cero.")
+            raise serializers.ValidationError(
+                "La cantidad del insumo en la receta debe ser mayor a cero."
+            )
         return value
 
 
@@ -60,12 +63,16 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     def validate_precio_venta(self, value):
         if Decimal(str(value)) <= Decimal("0"):
-            raise serializers.ValidationError("El precio de venta debe ser mayor a cero.")
+            raise serializers.ValidationError(
+                "El precio de venta debe ser mayor a cero."
+            )
         return value
 
     def validate_minutos_mano_obra(self, value):
         if Decimal(str(value or 0)) < Decimal("0"):
-            raise serializers.ValidationError("Los minutos de mano de obra no pueden ser negativos.")
+            raise serializers.ValidationError(
+                "Los minutos de mano de obra no pueden ser negativos."
+            )
         return value
 
     def create(self, validated_data):
@@ -77,3 +84,29 @@ class ProductoSerializer(serializers.ModelSerializer):
         producto = super().update(instance, validated_data)
         actualizar_costo_y_margen_producto(producto)
         return producto
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get("request")
+        if request and hasattr(request, "user"):
+            usuario = request.user
+            tiene_costos = False
+            if getattr(usuario, "is_superuser", False):
+                tiene_costos = True
+            elif hasattr(usuario, "perfil") and usuario.perfil:
+                tiene_costos = usuario.perfil.tiene_permiso("recetas.ver_costos")
+            else:
+                payload = getattr(request.auth, "payload", None)
+                if payload is None and hasattr(request.auth, "get"):
+                    payload = request.auth
+                token_permisos = payload.get("permisos", []) if payload else []
+                tiene_costos = "recetas.ver_costos" in token_permisos
+
+            if not tiene_costos:
+                ret["costo_total_calculado"] = None
+                ret["ganancia_bruta"] = None
+                ret["margen_bruto"] = None
+                if "receta_items" in ret and isinstance(ret["receta_items"], list):
+                    for item in ret["receta_items"]:
+                        item["insumo_costo_unitario"] = None
+        return ret

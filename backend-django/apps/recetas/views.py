@@ -2,12 +2,14 @@
 
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from apps.comun.throttling import RecalculoRateThrottle
 from apps.recetas.models import Producto, RecetaItem
 from apps.recetas.serializers import ProductoSerializer, RecetaItemSerializer
 from apps.recetas.services import actualizar_costo_y_margen_producto
+from apps.usuarios.permissions import TienePermiso
 
 
 class ProductoViewSet(viewsets.ModelViewSet):
@@ -27,6 +29,19 @@ class ProductoViewSet(viewsets.ModelViewSet):
         "margen_bruto",
     ]
     ordering = ["nombre"]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [TienePermiso("recetas.ver")()]
+        elif self.action == "create":
+            return [TienePermiso("recetas.crear")()]
+        elif self.action in ("update", "partial_update"):
+            return [TienePermiso("recetas.editar")()]
+        elif self.action == "destroy":
+            return [TienePermiso("recetas.eliminar")()]
+        elif self.action in ("recalcular", "costo"):
+            return [TienePermiso("recetas.ver_costos")()]
+        return [IsAuthenticated()]
 
     @action(
         detail=True,
@@ -48,12 +63,42 @@ class ProductoViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="costo",
+    )
+    def costo(self, request, pk=None):
+        """Consulta protegida del desglose de costos y márgenes (docs/seguridad.md §5.1)."""
+        producto = self.get_object()
+        return Response(
+            {
+                "producto_id": producto.id,
+                "nombre": producto.nombre,
+                "costo_total_calculado": str(producto.costo_total_calculado),
+                "ganancia_bruta": str(producto.ganancia_bruta),
+                "margen_bruto": str(producto.margen_bruto),
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
 class RecetaItemViewSet(viewsets.ModelViewSet):
     queryset = RecetaItem.objects.select_related("producto", "insumo").all()
     serializer_class = RecetaItemSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["producto", "insumo"]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [TienePermiso("recetas.ver")()]
+        elif self.action == "create":
+            return [TienePermiso("recetas.crear")()]
+        elif self.action in ("update", "partial_update"):
+            return [TienePermiso("recetas.editar")()]
+        elif self.action == "destroy":
+            return [TienePermiso("recetas.eliminar")()]
+        return [IsAuthenticated()]
 
     def perform_create(self, serializer):
         item = serializer.save()

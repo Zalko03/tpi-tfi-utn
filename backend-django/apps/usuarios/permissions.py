@@ -32,7 +32,11 @@ def TienePermiso(clave_permiso: str) -> Type[permissions.BasePermission]:
                 return perfil.tiene_permiso(clave_permiso)
 
             # Verificación complementaria por claim de JWT en auth token si no hay perfil en BD
-            token_permisos = getattr(request.auth, "payload", {}).get("permisos", [])
+            auth = getattr(request, "auth", None)
+            payload = getattr(auth, "payload", None)
+            if payload is None and hasattr(auth, "get"):
+                payload = auth
+            token_permisos = payload.get("permisos", []) if payload else []
             return clave_permiso in token_permisos
 
     return _TienePermiso
@@ -83,6 +87,15 @@ class PermisoObjetoTurnoCaja(permissions.BasePermission):
 
     message = "No tiene permisos para acceder al turno de otro usuario"
 
+    def has_permission(self, request, view):
+        if (
+            not request.user
+            or not request.user.is_authenticated
+            or not request.user.is_active
+        ):
+            return False
+        return True
+
     def has_object_permission(self, request, view, obj):
         if (
             not request.user
@@ -97,6 +110,14 @@ class PermisoObjetoTurnoCaja(permissions.BasePermission):
         if perfil and perfil.tiene_permiso("caja.gestionar_turnos_ajenos"):
             return True
 
+        auth = getattr(request, "auth", None)
+        payload = getattr(auth, "payload", None)
+        if payload is None and hasattr(auth, "get"):
+            payload = auth
+        token_permisos = payload.get("permisos", []) if payload else []
+        if "caja.gestionar_turnos_ajenos" in token_permisos:
+            return True
+
         return obj.usuario_id == request.user.id
 
 
@@ -108,6 +129,15 @@ class PermisoObjetoVenta(permissions.BasePermission):
     """
 
     message = "No tiene permisos para consultar ventas de otros operadores"
+
+    def has_permission(self, request, view):
+        if (
+            not request.user
+            or not request.user.is_authenticated
+            or not request.user.is_active
+        ):
+            return False
+        return True
 
     def has_object_permission(self, request, view, obj):
         if (
@@ -121,6 +151,14 @@ class PermisoObjetoVenta(permissions.BasePermission):
 
         perfil = getattr(request.user, "perfil", None)
         if perfil and perfil.tiene_permiso("ventas.ver_historial_todos"):
+            return True
+
+        auth = getattr(request, "auth", None)
+        payload = getattr(auth, "payload", None)
+        if payload is None and hasattr(auth, "get"):
+            payload = auth
+        token_permisos = payload.get("permisos", []) if payload else []
+        if "ventas.ver_historial_todos" in token_permisos:
             return True
 
         if obj.turno_caja and obj.turno_caja.usuario_id:

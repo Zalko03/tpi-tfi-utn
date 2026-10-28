@@ -24,6 +24,7 @@ describe('Middleware de Errores Unificado (docs/api-errores.md)', () => {
     it('debe responder 400 con { mensaje, detalles } ante datos inválidos en POST /api/snapshots-costeo', async () => {
         const respuesta = await request(app)
             .post('/api/snapshots-costeo')
+            .set('Authorization', `Bearer ${tokenValido}`)
             .send({ productoId: 'no-es-numero' })
             .set('Accept', 'application/json');
 
