@@ -96,6 +96,33 @@ describe('Middleware Unitario verificarPermiso y verificarRol (docs/seguridad.md
                 })
             );
         });
+
+        it.each([
+            ['caja.gestionar_turnos_ajenos'],
+            ['insumos.crear'],
+            ['insumos.eliminar'],
+            ['compras.registrar'],
+            ['personal.crear'],
+            ['personal.ajustar_permisos'],
+            ['ia.importar_listas'],
+            ['auditoria.ver_logs'],
+        ])('debe rechazar sistemáticamente con 403 y formato unificado cuando falta el permiso %s', (permisoRequerido) => {
+            const middleware = verificarPermiso(permisoRequerido);
+            const { req, res, next } = crearMocks({
+                id: 12,
+                rol: 'CAJERO',
+                permisos: ['ventas.cobrar_ticket', 'caja.abrir_turno'],
+            });
+
+            middleware(req, res, next);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.json).toHaveBeenCalledWith({
+                mensaje: 'No tiene permisos para realizar esta acción',
+                detalles: `Se requiere el permiso '${permisoRequerido}'`,
+            });
+        });
     });
 
     describe('verificarRol', () => {
