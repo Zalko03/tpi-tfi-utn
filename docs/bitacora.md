@@ -22,6 +22,66 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-28
+Tarea: T2.6 — Pruebas Negativas Sistemáticas por Permiso y protección completa de endpoints
+Rama: feature/t2.6-tests-negativos-permisos
+Cambios realizados:
+- En `backend-django`:
+  - Protección completa de todos los ViewSets de negocio aplicando verificación granular con `TienePermiso`, `PermisoObjetoTurnoCaja` y `PermisoObjetoVenta` según la matriz de `docs/seguridad.md` (§2 y §5):
+    - `ProveedorViewSet` e `InsumoViewSet`: `insumos.ver` (list/retrieve), `insumos.crear` (create), `insumos.editar` (update/partial_update), `insumos.eliminar` (destroy).
+    - `CompraViewSet`: `compras.ver` (list/retrieve), `compras.registrar` (create/update/destroy).
+    - `ProductoViewSet` y `RecetaItemViewSet`: `recetas.ver` (list/retrieve), `recetas.crear` (create), `recetas.editar` (update/partial_update), `recetas.eliminar` (destroy), `recetas.ver_costos` (recalcular y costo).
+    - Endpoint dedicado `GET /api/productos/:id/costo/` para inspección protegida de márgenes y costo total.
+    - Enmascaramiento contable en `ProductoSerializer`: si el usuario carece de `recetas.ver_costos`, los campos `costo_total_calculado`, `ganancia_bruta`, `margen_bruto` e `insumo_costo_unitario` se serializan como `None`.
+    - `TurnoCajaViewSet`: `caja.abrir_turno` (create/list), `caja.cerrar_turno` y `PermisoObjetoTurnoCaja` (cerrar), `caja.gestionar_turnos_ajenos` (update/destroy). Enrutamiento dual retrocompatible para `/api/turnos/` y `/api/caja/turnos/`.
+    - Implementación del principio de **Arqueo Ciego** en `TurnoCajaViewSet.cerrar` y `TurnoCajaSerializer`: si el usuario no posee `caja.ver_efectivo_esperado` (rol CAJERO por defecto), los campos `efectivo_esperado` y `diferencia` se retornan como `None`.
+    - `MovimientoCajaViewSet`: `caja.registrar_movimiento` (create/list/retrieve) y `caja.gestionar_turnos_ajenos` (update/destroy). Enrutamiento dual para `/api/movimientos-caja/` y `/api/caja/movimientos-caja/`.
+    - `VentaViewSet`: `ventas.cobrar_ticket` (create con validación de turno abierto del propio cajero en `VentaSerializer`), `ventas.ver_historial_propio` (list/retrieve), `ventas.anular_ticket` (anular, update, destroy). Filtrado de queryset por operador en `list` y validación de objeto `PermisoObjetoVenta` en `retrieve`.
+    - Adaptación de fixtures existentes en `apps/comun/tests/test_api_endpoints.py` para autenticar peticiones con usuario con permisos vigentes.
+- En `backend-node`:
+  - Protección de rutas en `src/routes/snapshotCosteo.routes.js` con middlewares `verificarToken` y `verificarPermiso('recetas.ver_costos')`.
+  - Actualización de fixtures de autenticación en `src/tests/error.middleware.test.js`.
+- Suite exhaustiva de pruebas (387 tests totales en verde: 318 Django, 69 Node):
+  - **Tests unitarios puros (`tests/unit/`)**:
+    - `backend-django/apps/usuarios/tests/unit/test_unit_permisos_drf.py` (198 tests): evaluación de `has_permission` para los 30 permisos del catálogo en múltiples estados (habilitado, inhabilitado, no autenticado, inactivo, superuser, fallback a JWT), tests de `EsDuenio` y `EsEncargadoODuenio`, tests de objeto para `PermisoObjetoTurnoCaja` y `PermisoObjetoVenta`, y tests de serializadores para arqueo ciego y ocultamiento de costos sin BD.
+    - `backend-node/tests/unit/verificarPermiso.unit.test.js` (17 tests): parametrización exhaustiva verificando rechazo con 403 Forbidden y contrato `{ mensaje, detalles }` ante la ausencia de permisos del catálogo.
+  - **Tests de integración y API (`tests/api/` y `tests/integration/`)**:
+    - `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py` (37 tests): verificación sistemática de HTTP 403 Forbidden y contrato de error en todos los endpoints de negocio (insumos, proveedores, compras, recetas, productos/costos, ventas, turnos de caja, movimientos, personal y auditoría), overrides booleanos individuales y validaciones de objeto y arqueo ciego.
+    - `backend-node/tests/integration/rutasProtegidas.integration.test.js` (16 tests): cobertura completa para endpoints protegidos `/api/productos/:id/resumen-costo`, `/api/historial-precios` y `/api/snapshots-costeo`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Conexión 11 actualizada: `/api/snapshots-costeo` añadido a rutas con autorización granular en Node.
+- Conexión 13 incorporada: `backend-django` (Autorización Granular y Objeto T2.6) formalizando el control sistemático de acceso en todos los módulos transaccionales.
+Problemas y decisiones técnicas:
+- **Diferenciación entre listado y detalle en reglas de objeto:** Para que los cajeros solo vean sus propios turnos y ventas en listados sin causar errores 404 en operaciones específicas, `get_queryset` aplica filtro por operador únicamente en `action == "list"`, mientras que las acciones individuales (`retrieve`, `cerrar`, `anular`) evalúan las clases de objeto (`PermisoObjetoTurnoCaja`, `PermisoObjetoVenta`), respondiendo exactamente con HTTP 403 Forbidden si el objeto pertenece a otro usuario.
+- **Arqueo Ciego en Serializador y Acción:** Se garantizó que el saldo teórico esperado y la diferencia no se filtren ni en la respuesta inmediata del cierre ni en la consulta posterior del turno por parte de usuarios sin `caja.ver_efectivo_esperado`.
+Archivos tocados:
+- `backend-django/apps/usuarios/permissions.py`
+- `backend-django/apps/insumos/views.py`
+- `backend-django/apps/recetas/views.py`
+- `backend-django/apps/recetas/serializers.py`
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/caja/serializers.py`
+- `backend-django/apps/caja/urls.py`
+- `backend-django/apps/ventas/views.py`
+- `backend-django/apps/ventas/serializers.py`
+- `backend-django/apps/comun/tests/test_api_endpoints.py`
+- `backend-django/apps/usuarios/tests/unit/test_unit_permisos_drf.py`
+- `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`
+- `backend-node/src/routes/snapshotCosteo.routes.js`
+- `backend-node/src/tests/error.middleware.test.js`
+- `backend-node/tests/unit/verificarPermiso.unit.test.js`
+- `backend-node/tests/integration/rutasProtegidas.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django/`: ejecutar `USE_SQLITE=True .venv/bin/pytest -v` (318 tests en verde).
+- En `backend-django/`: ejecutar solo tests unitarios de permisos: `USE_SQLITE=True .venv/bin/pytest apps/usuarios/tests/unit/test_unit_permisos_drf.py -v`.
+- En `backend-django/`: ejecutar solo tests negativos de endpoints: `USE_SQLITE=True .venv/bin/pytest apps/comun/tests/api/test_api_permisos_negativos.py -v`.
+- En `backend-node/`: ejecutar `npm test` (69 tests en verde, 12 suites).
+- En `backend-node/`: ejecutar solo tests unitarios de permisos: `npm test -- tests/unit/verificarPermiso.unit.test.js`.
+- En `backend-node/`: ejecutar solo tests de rutas protegidas: `npm test -- tests/integration/rutasProtegidas.integration.test.js`.
+
+---
+Fecha: 2026-10-28
 Tarea: T2.5 — Endurecimiento de seguridad (Hardening) en backend-django y backend-node
 Rama: feature/t2.5-endurecimiento-seguridad
 Cambios realizados:
