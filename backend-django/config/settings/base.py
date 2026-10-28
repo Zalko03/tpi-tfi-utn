@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.staticfiles",
+    "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -64,6 +65,16 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": os.environ.get("DJANGO_THROTTLE_ANON", "200/day"),
+        "user": os.environ.get("DJANGO_THROTTLE_USER", "2000/day"),
+        "login": os.environ.get("DJANGO_THROTTLE_LOGIN", "10/minute"),
+        "recalcular": os.environ.get("DJANGO_THROTTLE_RECALCULAR", "20/minute"),
+    },
     "DEFAULT_PAGINATION_CLASS": "apps.comun.paginacion.PaginacionEstandar",
     "EXCEPTION_HANDLER": "apps.comun.excepciones.manejador_excepciones_api",
     "DEFAULT_FILTER_BACKENDS": [
@@ -112,9 +123,50 @@ TEMPLATES = [
 STATIC_URL = "/static/"
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
+
+# Política CORS restrictiva sin comodín '*' (T2.5 y docs/seguridad.md)
+_cors_origenes = os.environ.get(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000",
+)
+CORS_ALLOWED_ORIGINS = [
+    origen.strip()
+    for origen in _cors_origenes.split(",")
+    if origen.strip() and origen.strip() != "*"
+]
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_CREDENTIALS = True
+
+# Logging seguro con filtro sanitizador de contraseñas y tokens (T2.5)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "sanitizador_seguridad": {
+            "()": "apps.comun.logging.FiltroSanitizacionSeguridad",
+        },
+    },
+    "formatters": {
+        "estandar": {
+            "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+        },
+    },
+    "handlers": {
+        "consola": {
+            "class": "logging.StreamHandler",
+            "filters": ["sanitizador_seguridad"],
+            "formatter": "estandar",
+        },
+    },
+    "root": {
+        "handlers": ["consola"],
+        "level": os.environ.get("DJANGO_LOG_LEVEL", "INFO"),
+    },
+}
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"

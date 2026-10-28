@@ -1,8 +1,10 @@
 """ViewSets para productos y recetas."""
+
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from apps.comun.throttling import RecalculoRateThrottle
 from apps.recetas.models import Producto, RecetaItem
 from apps.recetas.serializers import ProductoSerializer, RecetaItemSerializer
 from apps.recetas.services import actualizar_costo_y_margen_producto
@@ -11,15 +13,29 @@ from apps.recetas.services import actualizar_costo_y_margen_producto
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = Producto.objects.prefetch_related("receta_items__insumo").all()
     serializer_class = ProductoSerializer
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_fields = ["estado_activo"]
     search_fields = ["nombre", "codigo_barras"]
-    ordering_fields = ["nombre", "precio_venta", "costo_total_calculado", "margen_bruto"]
+    ordering_fields = [
+        "nombre",
+        "precio_venta",
+        "costo_total_calculado",
+        "margen_bruto",
+    ]
     ordering = ["nombre"]
 
-    @action(detail=True, methods=["post"], url_path="recalcular")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="recalcular",
+        throttle_classes=[RecalculoRateThrottle],
+    )
     def recalcular(self, request, pk=None):
-        """Fuerza el recálculo de costos y márgenes del producto."""
+        """Fuerza el recálculo de costos y márgenes del producto (con rate limiting de T2.5)."""
         producto = self.get_object()
         actualizar_costo_y_margen_producto(producto)
         return Response(

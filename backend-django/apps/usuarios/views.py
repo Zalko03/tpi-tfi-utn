@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from apps.comun.throttling import LoginRateThrottle
 from apps.usuarios import services
 from apps.usuarios.models import RegistroAuditoria
 from apps.usuarios.permissions import TienePermiso
@@ -35,10 +36,12 @@ class LoginView(TokenObtainPairView):
     """
     Endpoint de login (POST /api/auth/token/).
     Emite par de tokens JWT RS256 con claims estándar y de dominio (ADR-0001).
+    Aplica rate limiting estricto para mitigar ataques de fuerza bruta (T2.5).
     """
 
     serializer_class = CustomTokenObtainPairSerializer
     permission_classes = (AllowAny,)
+    throttle_classes = (LoginRateThrottle,)
 
 
 class RefreshView(TokenRefreshView):
