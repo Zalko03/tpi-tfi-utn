@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { check } from 'express-validator';
 import { validarCampos } from '../middlewares/validarCampos.middleware.js';
 import { crearHistorial, listarHistorial } from '../controllers/historialPrecio.controller.js';
+import { verificarToken, verificarPermiso } from '../middlewares/auth.middleware.js';
 
 const router = Router();
+
+// Según docs/seguridad.md (§5.2), las rutas de historial de precios requieren token válido y permiso insumos.ver
+router.use(verificarToken, verificarPermiso('insumos.ver'));
 
 router.get('/', listarHistorial);
 
