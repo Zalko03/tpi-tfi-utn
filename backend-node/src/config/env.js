@@ -16,7 +16,7 @@ export const djangoBaseUrl = process.env.DJANGO_BASE_URL || 'http://localhost:80
  * Obtiene la clave pública RSA para validación de tokens JWT (RS256).
  * Prioridad de resolución:
  * 1. process.env.JWT_PUBLIC_KEY (contenido directo en formato PEM)
- * 2. process.env.JWT_PUBLIC_KEY_PATH (ruta a archivo .pem)
+ * 2. process.env.JWT_PUBLIC_KEY_PATH (ruta específica a archivo .pem)
  * 3. Fallback a rutas estándar conocidas (config/keys/public.pem en raíz, backend-node o backend-django)
  * Retorna la clave en string o null si no se encuentra disponible.
  */
@@ -26,17 +26,39 @@ export const obtenerClavePublicaJwt = () => {
         return claveDirecta.replace(/\\n/g, '\n').trim();
     }
 
-    const rutaConfigurada = process.env.JWT_PUBLIC_KEY_PATH || 'config/keys/public.pem';
-    const posiblesRutas = [
-        path.isAbsolute(rutaConfigurada) ? rutaConfigurada : null,
-        path.resolve(directorioActual, '../../../', rutaConfigurada),
-        path.resolve(directorioActual, '../../', rutaConfigurada),
-        path.resolve(directorioActual, '../../../backend-django', rutaConfigurada),
-        path.resolve(process.cwd(), rutaConfigurada),
-        path.resolve(directorioActual, '../../../backend-django/config/keys/public.pem'),
-    ].filter(Boolean);
+    if (process.env.JWT_PUBLIC_KEY_PATH) {
+        const rutaConfigurada = process.env.JWT_PUBLIC_KEY_PATH;
+        const posiblesRutas = [
+            path.isAbsolute(rutaConfigurada) ? rutaConfigurada : null,
+            path.resolve(directorioActual, '../../../', rutaConfigurada),
+            path.resolve(directorioActual, '../../', rutaConfigurada),
+            path.resolve(process.cwd(), rutaConfigurada),
+        ].filter(Boolean);
 
-    for (const ruta of posiblesRutas) {
+        for (const ruta of posiblesRutas) {
+            try {
+                if (fs.existsSync(ruta)) {
+                    const contenido = fs.readFileSync(ruta, 'utf8').trim();
+                    if (contenido.length > 0) {
+                        return contenido;
+                    }
+                }
+            } catch {
+                // Continuar si hay error de lectura
+            }
+        }
+        return null;
+    }
+
+    // Si no se configuró JWT_PUBLIC_KEY ni JWT_PUBLIC_KEY_PATH, probar rutas por defecto
+    const rutasDefault = [
+        path.resolve(directorioActual, '../../../config/keys/public.pem'),
+        path.resolve(directorioActual, '../../config/keys/public.pem'),
+        path.resolve(directorioActual, '../../../backend-django/config/keys/public.pem'),
+        path.resolve(process.cwd(), 'config/keys/public.pem'),
+    ];
+
+    for (const ruta of rutasDefault) {
         try {
             if (fs.existsSync(ruta)) {
                 const contenido = fs.readFileSync(ruta, 'utf8').trim();

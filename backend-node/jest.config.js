@@ -2,6 +2,9 @@
 export default {
     testEnvironment: 'node',
     transform: {},
-    testMatch: ['**/src/tests/**/*.test.js'],
+    testMatch: [
+        '<rootDir>/tests/**/*.test.js',
+        '<rootDir>/src/tests/**/*.test.js',
+    ],
     setupFiles: ['<rootDir>/jest.setup.js'],
 };
