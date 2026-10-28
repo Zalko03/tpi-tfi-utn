@@ -22,6 +22,83 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-28
+Tarea: T2.5 — Endurecimiento de seguridad (Hardening) en backend-django y backend-node
+Rama: feature/t2.5-endurecimiento-seguridad
+Cambios realizados:
+- En `backend-django`:
+  - Instalación y configuración de `django-cors-headers` (>=4.9.0) con lista blanca explícita de orígenes (`CORS_ALLOWED_ORIGINS`) leída desde el entorno, deshabilitando completamente el comodín '*' (`CORS_ALLOW_ALL_ORIGINS = False`).
+  - Configuración de Throttling perimetral en Django REST Framework:
+    - `LoginRateThrottle` (`AnonRateThrottle`, scope: `login`) aplicado sobre `POST /api/auth/token/` para mitigar ataques de fuerza bruta y adivinación de credenciales.
+    - `RecalculoRateThrottle` (`UserRateThrottle`, scope: `recalcular`) aplicado sobre `POST /api/productos/:id/recalcular/` para limitar el uso de endpoints de cómputo intensivo.
+    - Adaptación del manejador de excepciones unificado en `apps/comun/excepciones.py` para devolver HTTP 429 Too Many Requests con el mensaje estandarizado `"Demasiadas peticiones. Intente nuevamente en unos minutos"` y el tiempo de espera en `detalles`.
+  - Configuración de logging de seguridad en `apps/comun/logging.py` con el filtro `FiltroSanitizacionSeguridad` para enmascarar automáticamente credenciales, contraseñas, tokens y cabeceras `Authorization: Bearer` en las salidas de consola y logs del servidor.
+- En `backend-node`:
+  - Instalación y configuración de `express-rate-limit` (^7.5.0) en `src/middlewares/rateLimit.middleware.js`:
+    - `limitadorGeneral`: rate limit perimetral para la API con respuesta uniforme HTTP 429.
+    - `limitadorConsultasCostosas`: limitador restrictivo montado sobre `GET /api/productos/:id/resumen-costo`.
+    - `crearLimitadorTest`: helper configurable para tests aislados.
+  - Endurecimiento de CORS en `src/middlewares/cors.middleware.js`:
+    - Validación contra lista blanca en `src/config/env.js` (`obtenerOrigenesPermitidos`), rechazando orígenes no autorizados con HTTP 403 y prohibiendo el comodín '*'.
+  - Cabeceras HTTP seguras con `helmet` en `app.js` (Content Security Policy, X-Content-Type-Options: nosniff, X-Frame-Options, HidePoweredBy).
+  - Middleware de prevención de inyección NoSQL en `src/middlewares/nosqlSanitize.middleware.js`:
+    - Inspección recursiva de `body`, `query` y `params` para detectar y bloquear operadores MongoDB (`$` o `.`), respondiendo con HTTP 400 Bad Request y formato estandarizado.
+  - Validación estricta de parámetros en `src/routes/productoResumen.routes.js` con `express-validator` (verificando que `:id` sea numérico).
+  - Utilidad de sanitización de logs en `src/utils/sanitizarLogs.js` (`enmascararDatosSensibles`).
+- Suite de pruebas completa (139 tests totales en verde: 83 Django, 56 Node):
+  - **Tests unitarios puros (`tests/unit/`)**:
+    - `backend-node/tests/unit/nosqlSanitize.unit.test.js` (8 tests): detección de operadores `$`, subdocumentos `.`, arrays, rechazo con 400 en body/query y paso de peticiones limpias.
+    - `backend-node/tests/unit/sanitizarLogs.unit.test.js` (4 tests): enmascaramiento recursivo de credenciales en objetos, anidados y arrays.
+    - `backend-node/tests/unit/corsWhitelist.unit.test.js` (3 tests): autorización de orígenes en lista blanca, rechazo 403 a orígenes foráneos y soporte a peticiones sin Origin.
+    - `backend-node/tests/unit/rateLimit.unit.test.js` (2 tests): comportamiento de rate limiter y respuesta HTTP 429 al superar el límite.
+    - `backend-django/apps/comun/tests/unit/test_unit_throttling.py` (4 tests): verificación de scopes, tasas y resolución de IPs remotas.
+    - `backend-django/apps/comun/tests/unit/test_unit_logging_sanitizer.py` (4 tests): enmascaramiento de passwords, cabeceras Bearer, tokens refresh y preservación de mensajes limpios.
+  - **Tests de integración / API**:
+    - `backend-node/tests/integration/seguridadHardening.integration.test.js` (5 tests): cabeceras Helmet, autorización y rechazo CORS, bloqueo NoSQL 400 y validación de parámetros.
+    - `backend-django/apps/comun/tests/api/test_api_hardening.py` (3 tests): emisión de CORS para orígenes autorizados, rechazo para orígenes no permitidos y bloqueo 429 con formato unificado al superar el umbral de login.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Perímetro de transporte endurecido: Clientes HTTP / PWA ↔ `backend-django` / `backend-node` protegido con CORS sin comodín, Rate Limiting perimetral, cabeceras Helmet, filtro anti-inyección NoSQL y sanitización de secretos en logs.
+Problemas y decisiones técnicas:
+- **Rechazo explícito vs sanitización silenciosa en NoSQL:** En lugar de mutar silenciosamente el payload removiendo claves maliciosas, se optó por rechazar inmediatamente la petición con HTTP 400 y formato unificado de error, alertando al cliente y dejando trazas de seguridad claras.
+- **Respeto riguroso de `docs/api-errores.md` en HTTP 429:** Tanto en Django como en Express, la superación de límites de tasa devuelve `{ "mensaje": "Demasiadas peticiones. Intente nuevamente en unos minutos", "detalles": ... }`, garantizando uniformidad en el consumo desde el cliente frontend.
+- **Separación estricta de tests unitarios vs integración:** Las pruebas de middlewares y utilidades (sanitizador NoSQL, sanitizador de logs, helpers de throttling) se ubicaron estrictamente en carpetas `unit/`, sin dependencias de base de datos ni transporte HTTP real.
+Archivos tocados:
+- `.env.example`
+- `backend-django/requirements.txt`
+- `backend-django/config/settings/base.py`
+- `backend-django/apps/comun/throttling.py`
+- `backend-django/apps/comun/logging.py`
+- `backend-django/apps/comun/excepciones.py`
+- `backend-django/apps/usuarios/views.py`
+- `backend-django/apps/recetas/views.py`
+- `backend-django/apps/comun/tests/unit/test_unit_throttling.py`
+- `backend-django/apps/comun/tests/unit/test_unit_logging_sanitizer.py`
+- `backend-django/apps/comun/tests/api/test_api_hardening.py`
+- `backend-node/package.json`
+- `backend-node/package-lock.json`
+- `backend-node/app.js`
+- `backend-node/src/config/env.js`
+- `backend-node/src/middlewares/cors.middleware.js`
+- `backend-node/src/middlewares/rateLimit.middleware.js`
+- `backend-node/src/middlewares/nosqlSanitize.middleware.js`
+- `backend-node/src/utils/sanitizarLogs.js`
+- `backend-node/src/routes/productoResumen.routes.js`
+- `backend-node/tests/unit/nosqlSanitize.unit.test.js`
+- `backend-node/tests/unit/sanitizarLogs.unit.test.js`
+- `backend-node/tests/unit/corsWhitelist.unit.test.js`
+- `backend-node/tests/unit/rateLimit.unit.test.js`
+- `backend-node/tests/integration/seguridadHardening.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django/`: ejecutar `USE_SQLITE=True .venv/bin/pytest -v` (83 tests en verde).
+- En `backend-django/`: ejecutar solo tests unitarios: `USE_SQLITE=True .venv/bin/pytest apps/comun/tests/unit/ -v`.
+- En `backend-django/`: ejecutar solo tests de API: `USE_SQLITE=True .venv/bin/pytest apps/comun/tests/api/ -v`.
+- En `backend-node/`: ejecutar `npm test` (56 tests en verde, 12 suites).
+- En `backend-node/`: ejecutar solo tests unitarios: `npx jest tests/unit/`.
+- En `backend-node/`: ejecutar solo tests de integración: `npx jest tests/integration/`.
+
+---
+Fecha: 2026-10-28
 Tarea: T2.4 — Middleware de validación JWT RS256 y autorización granular en backend-node
 Rama: feature/t2.4-node-middleware-jwt
 Cambios realizados:
