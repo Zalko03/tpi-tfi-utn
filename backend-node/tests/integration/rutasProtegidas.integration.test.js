@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import request from 'supertest';
 import app from '../../app.js';
 import { HistorialPrecio } from '../../src/models/HistorialPrecio.js';
+import { SnapshotCosteo } from '../../src/models/SnapshotCosteo.js';
 import { generarTokenTest } from '../helpers/auth.helper.js';
 
 describe('Integración: Rutas Protegidas de backend-node (docs/seguridad.md §5.2 y T2.4)', () => {
@@ -40,6 +41,7 @@ describe('Integración: Rutas Protegidas de backend-node (docs/seguridad.md §5.
     afterAll(async () => {
         if (mongoose.connection.readyState !== 0) {
             await HistorialPrecio.deleteMany({ motivo: 'Test Integracion Rutas' });
+            await SnapshotCosteo.deleteMany({ productoId: { $in: [300, 301] } });
             await mongoose.disconnect();
         }
     });
@@ -162,6 +164,68 @@ describe('Integración: Rutas Protegidas de backend-node (docs/seguridad.md §5.
 
             expect(res.status).toBe(201);
             expect(res.body.productoId).toBe(201);
+        });
+    });
+
+    describe('GET y POST /api/snapshots-costeo (requiere recetas.ver_costos)', () => {
+        it('debe responder 401 si no hay token en GET /api/snapshots-costeo', async () => {
+            const res = await request(app)
+                .get('/api/snapshots-costeo')
+                .set('Accept', 'application/json');
+
+            expect(res.status).toBe(401);
+            expect(res.body).toHaveProperty('mensaje', 'Token de autenticación no provisto');
+        });
+
+        it('debe responder 403 si el cajero intenta consultar snapshots sin recetas.ver_costos', async () => {
+            const res = await request(app)
+                .get('/api/snapshots-costeo')
+                .set('Authorization', `Bearer ${tokenCajeroSinCostosNiInsumos}`)
+                .set('Accept', 'application/json');
+
+            expect(res.status).toBe(403);
+            expect(res.body).toHaveProperty('mensaje', 'No tiene permisos para realizar esta acción');
+            expect(res.body.detalles).toContain('recetas.ver_costos');
+        });
+
+        it('debe responder 200 OK al listar snapshots con token que contiene recetas.ver_costos', async () => {
+            const res = await request(app)
+                .get('/api/snapshots-costeo')
+                .set('Authorization', `Bearer ${tokenEncargadoConPermisos}`)
+                .set('Accept', 'application/json');
+
+            expect(res.status).toBe(200);
+            expect(res.body).toHaveProperty('datos');
+        });
+
+        it('debe responder 403 si el cajero intenta POST /api/snapshots-costeo sin recetas.ver_costos', async () => {
+            const res = await request(app)
+                .post('/api/snapshots-costeo')
+                .set('Authorization', `Bearer ${tokenCajeroSinCostosNiInsumos}`)
+                .send({
+                    productoId: 300,
+                    costoTotal: '1500.00',
+                    margenBruto: '40.00',
+                })
+                .set('Accept', 'application/json');
+
+            expect(res.status).toBe(403);
+            expect(res.body.detalles).toContain('recetas.ver_costos');
+        });
+
+        it('debe registrar y responder 201 Created cuando tiene permiso recetas.ver_costos', async () => {
+            const res = await request(app)
+                .post('/api/snapshots-costeo')
+                .set('Authorization', `Bearer ${tokenEncargadoConPermisos}`)
+                .send({
+                    productoId: 301,
+                    costoTotal: '1700.00',
+                    margenBruto: '45.00',
+                })
+                .set('Accept', 'application/json');
+
+            expect(res.status).toBe(201);
+            expect(res.body.productoId).toBe(301);
         });
     });
 });
