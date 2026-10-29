@@ -150,3 +150,10 @@ Para garantizar la robustez del modelo (según `T2.6`):
 - **Pruebas positivas:** Verifican que los roles predeterminados puedan realizar sus tareas correspondientes sin bloqueos.
 - **Pruebas negativas sistemáticas:** Cada endpoint y permiso debe contar con un test automatizado que intente la operación sin el permiso o rol correspondiente, comprobando que la API responda exactamente con `HTTP 403 Forbidden` y el formato de error unificado (`docs/api-errores.md`).
 - **Pruebas de frontera:** Intentar la desactivación o degradación del último usuario Dueño, esperando un error `HTTP 400 Bad Request`.
+
+---
+
+## 7. Auditoría Cruzada y Revisión de Secretos (T2.7)
+
+El informe completo de auditoría cruzada de seguridad, escaneo de secretos en el historial de Git, matriz de riesgos mitigados y resumen de cobertura se encuentra detallado en:
+- [docs/auditoria-seguridad-tp2.md](file:///home/evilkitty/Escritorio/tfi/tpi-tfi-utn/docs/auditoria-seguridad-tp2.md)
