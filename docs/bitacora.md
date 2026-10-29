@@ -21,6 +21,48 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-10-29
+Tarea: T3.1 — Construcción de `ai-service` en FastAPI con esquemas Pydantic v2, prompts versionados y patrón Adapter (Gemini API / Ollama)
+Rama: feature/t3.1-ai-service-fastapi
+Cambios realizados:
+- Creación del microservicio `ai-service/` siguiendo la estructura de `.agents/rules/convenciones-python.md` (§4):
+  - `app/main.py` y `app/routers/salud.py`: inicialización de la aplicación FastAPI con documentación OpenAPI y endpoint `GET /health` (`{"estado": "ok", "servicio": "ai-service"}`).
+  - `app/excepciones.py`: manejadores personalizados para `RequestValidationError`, `StarletteHTTPException`, `ErrorDominioIA` y excepciones no controladas, garantizando el contrato único de errores `{ "mensaje": "...", "detalles": ... }` de `docs/api-errores.md` (convirtiendo el 422 por defecto de FastAPI en HTTP 400 Bad Request para paridad con Django y Express).
+  - `app/schemas/`: esquemas Pydantic v2 con ejemplos OpenAPI (`json_schema_extra`) para `POST /v1/extraer-precios` (`SolicitudExtraccionPrecios`, `ItemPrecioExtraido`, `SalidaIAExtraccionPrecios`, `RespuestaExtraccionPrecios`) y `POST /v1/resumen-semanal` (`SolicitudResumenSemanal`, `ProductoRendimientoEntrada`, `SugerenciaRotacionItem`, `SalidaIAResumenSemanal`, `RespuestaResumenSemanal`). Uso estricto de `Decimal` para montos y cantidades, y normalización de unidades compatibles con `backend-django`.
+  - `app/prompts/v1/` y `app/services/prompts.py`: prompts versionados (`extraer_precios.txt` y `resumen_semanal.txt`) con cargador protegido contra *path traversal*.
+  - `app/services/proveedor_ia.py`: interfaz abstracta `ProveedorIA` e implementaciones `GeminiAdapter` (proveedor externo principal por REST HTTPS con cabecera `x-goog-api-key`) y `OllamaAdapter` (soporte local opcional en `/api/chat`), seleccionables mediante `AI_PROVIDER`.
+  - `app/services/extraccion.py`, `app/services/resumen.py` y `app/routers/ia.py`: servicios de negocio que ejecutan las llamadas con timeout (`AI_TIMEOUT_SECONDS`), reintentos acotados (`AI_MAX_RETRIES`), validación estricta de salida con Pydantic v2 y retorno automático de respuesta de contingencia (`contingencia: true`) ante caídas o respuestas inválidas de la IA.
+- Suite de pruebas automatizadas en `pytest` (57 tests en verde):
+  - `app/tests/unit/test_unit_schemas.py`: validaciones de `Decimal`, normalización de unidades y rechazo de montos/cantidades no positivas.
+  - `app/tests/unit/test_unit_prompts.py`: lectura de prompts v1 y bloqueo de *path traversal*.
+  - `app/tests/unit/test_unit_adapters_y_servicios.py`: pruebas aisladas de `GeminiAdapter`, `OllamaAdapter`, separación de `system` y `user`, reintentos y activación de contingencia ante timeouts o fallos de esquema.
+  - `app/tests/api/test_api_endpoints.py`: pruebas de contrato HTTP 200/400/404 y presencia de ejemplos en `/openapi.json`.
+- Documentación y configuración:
+  - Creación de `docs/adr/0002-adaptador-proveedor-ia.md` registrando formalmente la decisión del patrón Adapter y el uso de Gemini API para mitigar el límite de 8 GB de RAM del comercio.
+  - Actualización de `.env.example`, `docs/arquitectura.md`, `docs/ARCHITECTURE.md` y `docs/CONNECTIONS.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `backend-node` / Clientes internos ↔ `ai-service` (`GET /health`, `POST /v1/extraer-precios`, `POST /v1/resumen-semanal` en puerto 8001).
+- `ai-service` (`ProveedorIA`) ↔ Proveedor de IA (`GeminiAdapter` HTTPS / `OllamaAdapter` HTTP 11434).
+Problemas y decisiones técnicas:
+- **Prevención de Prompt Injection (datos separados de instrucciones):** Cumpliendo `.agents/rules/convenciones-python.md` (§4), el texto de la lista del proveedor nunca se concatena dentro de las instrucciones del prompt; las instrucciones viajan en `system_instruction` / `role: "system"` y la entrada del usuario se envía por separado como un JSON de datos en `role: "user"`.
+- **Clave de API en cabecera y no en URL:** En `GeminiAdapter`, `GEMINI_API_KEY` se transmite mediante la cabecera `x-goog-api-key` en lugar del query param `?key=`, evitando que trazas de red o excepciones de `httpx` filtren el secreto en los logs.
+- **Uso directo de `httpx` asíncrono en el Adapter:** Permite manejar timeouts exactos y mantener dependencias livianas sin arrastrar SDKs pesados con extensiones nativas de gRPC.
+Archivos tocados:
+- `.env.example`
+- `ai-service/requirements.txt`
+- `ai-service/pytest.ini`
+- `ai-service/app/*`
+- `docs/adr/0002-adaptador-proveedor-ia.md`
+- `docs/arquitectura.md`
+- `docs/ARCHITECTURE.md`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `ai-service/`: ejecutar `.\.venv\Scripts\python.exe -m pytest -v` (57 tests en verde).
+- Levantar el servidor de desarrollo: `cd ai-service; .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8001` y abrir `http://localhost:8001/docs` para inspeccionar el esquema OpenAPI con sus ejemplos interactivos.
+- Verificar el endpoint de salud: `GET http://localhost:8001/health`.
+
+---
 Fecha: 2026-10-28
 Tarea: T2.7 — Revisión de secretos, auditoría cruzada de seguridad y cierre formal del TP 2
 Rama: feature/t2.7-auditoria-secretos-cierre-tp2
