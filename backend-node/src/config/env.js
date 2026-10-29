@@ -11,6 +11,7 @@ export const entorno = process.env.NODE_ENV || 'development';
 export const puerto = Number(process.env.NODE_PORT) || 3000;
 export const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/cafe_gestion';
 export const djangoBaseUrl = process.env.DJANGO_BASE_URL || 'http://localhost:8000/api';
+export const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8001';
 
 /**
  * Obtiene la lista blanca de orígenes permitidos para CORS (docs/seguridad.md T2.5).
