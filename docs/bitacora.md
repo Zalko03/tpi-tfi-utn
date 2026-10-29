@@ -22,6 +22,48 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-29
+Tarea: T3.2 — Node consume `ai-service` (`POST /api/importaciones` 202 asíncrono) y persistencia de trazabilidad en MongoDB
+Rama: feature/t3.2-node-consume-ia
+Cambios realizados:
+- En `backend-node`:
+  - `src/config/env.js`: incorporación de `aiServiceUrl` (`AI_SERVICE_URL`, por defecto `http://localhost:8001`).
+  - `src/clients/ai.client.js`: cliente HTTP `extraerPreciosIA` hacia `POST /v1/extraer-precios` de `ai-service` con `AbortSignal.timeout(12000)`, traducción de `snake_case` a `camelCase` en un único punto, validación estricta de esquema (`validarItemExtraido` y `validarYNormalizarSalidaIA`) y retorno de estado de contingencia ante errores de red o respuestas inválidas.
+  - `src/models/ImportacionIA.js`: esquema Mongoose para la colección `importaciones_ia` registrando `usuarioId`, `entrada` (`textoLista`, `proveedorNombre`), `salida` (`proveedorDetectado`, `envioDetectado`, `moneda`, `items`, `advertencias`), `estado` (`PENDIENTE`, `PROCESANDO`, `LISTA`, `CONTINGENCIA`, `APROBADA`, `RECHAZADA`, `FALLIDA`), `versionPrompt`, `proveedorIa`, `latenciaMs`, `contingencia` y `mensajeError`. Los importes y cantidades se almacenan como cadenas decimales exactas (`String`) para evitar pérdida de precisión por punto flotante.
+  - `src/repositories/importacionIA.repository.js`: funciones de acceso a datos `crearImportacion`, `obtenerImportacionPorId`, `actualizarImportacionPorId` y `listarImportaciones` con paginación estándar `{ datos, pagina, limite, total }`.
+  - `src/services/importacionIA.service.js`: servicio `iniciarImportacionPrecios` que crea el registro en estado `PENDIENTE`, dispara `procesarImportacionEnSegundoPlano` mediante `setImmediate` sin bloquear el hilo de respuesta HTTP y actualiza el documento en MongoDB al finalizar.
+  - `src/controllers/importacionIA.controller.js` y `src/routes/importacionIA.routes.js`: endpoints `POST /`, `GET /` y `GET /:id` protegidos con `verificarToken` y `verificarPermiso('ia.importar_listas')`, montados en `app.js` bajo `/api/importaciones` y `/importaciones`.
+- Suite de pruebas en Jest (81 tests totales en verde, 14 suites):
+  - `tests/unit/aiClient.unit.test.js`: 6 tests unitarios verificando validación de ítems, normalización `snake_case` → `camelCase`, preservación de strings decimales y contingencia ante caída de `ai-service`.
+  - `tests/integration/importacionIA.integration.test.js`: 6 tests de integración verificando rechazo 401 sin token, rechazo 403 sin `ia.importar_listas`, rechazo 400 ante datos inválidos, respuesta inmediata HTTP 202 Accepted, persistencia completa en MongoDB (`LISTA` y `CONTINGENCIA`), listado paginado y error 404.
+- Documentación:
+  - Actualización de `docs/CONNECTIONS.md`, `docs/seguridad.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-node` (`POST /api/importaciones`, `GET /api/importaciones`, `GET /api/importaciones/:id` con permiso `ia.importar_listas`).
+- `backend-node` (`ai.client.js`) ↔ `ai-service` (`POST /v1/extraer-precios` con timeout y degradación).
+- `backend-node` ↔ MongoDB (nueva colección `importaciones_ia`).
+Problemas y decisiones técnicas:
+- **Procesamiento asíncrono no bloqueante (HTTP 202):** Cumpliendo CA7.1 y el paso 1 del flujo de arquitectura, el endpoint registra la solicitud en estado `PENDIENTE`, responde `202 Accepted` de inmediato con el `importacionId` y delega la llamada a `ai-service` a `procesarImportacionEnSegundoPlano`.
+- **Doble validación de salida de IA:** Además de la validación con Pydantic v2 en `ai-service`, `ai.client.js` verifica en Node que cada ítem recibido tenga cantidad y precio positivos y unidad válida antes de guardarlo en MongoDB (cumpliendo `convenciones-node.md` §8).
+Archivos tocados:
+- `backend-node/app.js`
+- `backend-node/src/config/env.js`
+- `backend-node/src/clients/ai.client.js`
+- `backend-node/src/models/ImportacionIA.js`
+- `backend-node/src/repositories/importacionIA.repository.js`
+- `backend-node/src/services/importacionIA.service.js`
+- `backend-node/src/controllers/importacionIA.controller.js`
+- `backend-node/src/routes/importacionIA.routes.js`
+- `backend-node/tests/unit/aiClient.unit.test.js`
+- `backend-node/tests/integration/importacionIA.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-node/`: ejecutar `npm test` (14 suites, 81 tests en verde).
+- Ejecutar únicamente los tests de importación con IA: `npx jest tests/unit/aiClient.unit.test.js tests/integration/importacionIA.integration.test.js`.
+
+---
+Fecha: 2026-10-29
 Tarea: T3.1 — Construcción de `ai-service` en FastAPI con esquemas Pydantic v2, prompts versionados y patrón Adapter (Gemini API / Ollama)
 Rama: feature/t3.1-ai-service-fastapi
 Cambios realizados:

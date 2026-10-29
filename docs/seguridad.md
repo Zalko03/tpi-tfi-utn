@@ -136,6 +136,7 @@ flowchart TD
 |---|---|---|
 | `/api/productos/:id/resumen-costo` | `GET` | Requiere token válido y permiso `recetas.ver_costos` |
 | `/api/historial-precios` | `GET` | Requiere token válido y permiso `insumos.ver` |
+| `/api/importaciones` (`/importaciones`) | `POST`/`GET` | Requiere token válido y permiso `ia.importar_listas` |
 | Handshake Socket.IO | `CONNECT` | Valida firma del JWT con `JWT_PUBLIC_KEY` y estado activo |
 | Sala `local` | `JOIN` | Requiere token de cualquier empleado activo |
 | Sala `turno:{id}` | `JOIN` | Valida que el `user_id` sea titular del turno o posea `caja.gestionar_turnos_ajenos` |
