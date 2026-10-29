@@ -19,7 +19,7 @@ export const actualizarImportacionPorId = async (id, camposActualizados) => {
     return await ImportacionIA.findOneAndUpdate(
         { _id: id, estadoActivo: true },
         { $set: camposActualizados },
-        { new: true, runValidators: true }
+        { returnDocument: 'after', runValidators: true }
     );
 };
 
