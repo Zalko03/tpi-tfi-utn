@@ -22,6 +22,48 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-28
+Tarea: T2.7 — Revisión de secretos, auditoría cruzada de seguridad y cierre formal del TP 2
+Rama: feature/t2.7-auditoria-secretos-cierre-tp2
+Cambios realizados:
+- Auditoría estática y escaneo de secretos sobre código fuente e historial completo de Git:
+  - Verificación de 0 archivos `.env` versionados tanto en el árbol de trabajo actual como en la totalidad del historial de commits (`git log --all --full-history`).
+  - Verificación de 0 claves privadas RSA versionadas en el repositorio. Los archivos locales `private.pem` y `public.pem` se encuentran correctamente ignorados por `.gitignore` (`backend-django/config/keys/`, `backend-node/config/keys/`, `*.pem`, `*.key`).
+  - Confirmación de uso de generación efímera en memoria para pruebas automáticas (`generar_par_rsa_strings()` en pytest y `crypto.generateKeyPairSync` en Jest), garantizando suites 100% aisladas e independientes de claves fijas en disco.
+  - Verificación de ausencia de datos reales del negocio gastronómico (precios, teléfonos o datos personales reales), empleando datos anonimizados.
+- Verificación y refuerzo de paridad en `.env.example`:
+  - Documentación de correspondencia 1:1 de variables consumidas por Django y Node.
+  - Inclusión de variable opcional `USE_SQLITE=False` para tests aislados y desarrollo ligero sin PostgreSQL.
+  - Documentación de inyección directa de claves PEM en strings para entornos CI/CD (`DJANGO_JWT_PRIVATE_KEY` / `DJANGO_JWT_PUBLIC_KEY`).
+  - Unificación explícita de `CORS_ALLOWED_ORIGINS` para ambos backends (con alias de compatibilidad `CLIENT_ORIGIN` en Node).
+- Redacción del informe de auditoría cruzada en `docs/auditoria-seguridad-tp2.md`:
+  - Registro de metodología de auditoría y comandos de escaneo ejecutados.
+  - Tabla comparativa de paridad de variables de entorno.
+  - Matriz de riesgos mitigados (R1 a R8): Criptografía asimétrica JWT RS256 ([ADR-0001](file:///home/evilkitty/Escritorio/tfi/tpi-tfi-utn/docs/adr/0001-autenticacion-jwt-rs256.md)), escalada de privilegios y autorización a nivel de objeto, regla de supervivencia del Dueño contra orfandad administrativa, principio de arqueo ciego para cajeros en cierre de turno, inyección NoSQL en MongoDB mediante middleware `sanitizarNoSql`, fuerza bruta y DoS mitigados con Throttling en DRF y `express-rate-limit`, lista blanca de CORS restrictiva sin comodín `*`, y sanitización activa de logs en consola y logger.
+  - Resumen de cobertura de pruebas de seguridad: 387 tests automatizados en verde (318 Django + 69 Node).
+  - Plan de remediación y recomendaciones para TP 3 y TP 4 (rotación de claves, secret scanning en CI/CD y handshake seguro en WebSockets).
+- Vinculación del informe desde `docs/seguridad.md` (§7).
+- Cierre formal del hito **TP 2 (Autenticación y Seguridad)**.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Auditoría y validación de conexiones 10, 11, 12 y 13 con cero hallazgos críticos de seguridad.
+Problemas y decisiones técnicas:
+- **Aislamiento criptográfico en testing:** Se constató que las suites de pruebas no requieren claves fijas en disco ni secretos preconfigurados, lo que previene filtraciones accidentales al correr tests o construir entornos de CI.
+- **Transparencia en configuración:** Se consolidaron todas las variables en un único `.env.example` comentado, manteniendo valores de plantilla (`cambia-esto`) para asegurar clonado limpio reproducible.
+Archivos tocados:
+- `.env.example`
+- `docs/auditoria-seguridad-tp2.md`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Escaneo estático en Git: `git log --all --full-history -- "**/.*env*" "*env*"` (verifica que ningún `.env` fue versionado).
+- Escaneo de claves privadas: `git log -p -S "BEGIN " --all` (0 claves privadas en historial).
+- Verificación de exclusión en `.gitignore`: `git check-ignore backend-django/config/keys/private.pem backend-django/config/keys/public.pem`.
+- Ejecutar tests en `backend-django/`: `USE_SQLITE=True .venv/bin/pytest -v` (318 tests en verde).
+- Ejecutar tests en `backend-node/`: `npm test` (69 tests en verde, 12 suites).
+- Inspección del informe de auditoría: `docs/auditoria-seguridad-tp2.md`.
+
+
+---
+Fecha: 2026-10-28
 Tarea: T2.6 — Pruebas Negativas Sistemáticas por Permiso y protección completa de endpoints
 Rama: feature/t2.6-tests-negativos-permisos
 Cambios realizados:
