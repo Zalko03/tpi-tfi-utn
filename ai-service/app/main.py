@@ -1,6 +1,7 @@
 """Punto de entrada de la aplicación FastAPI para ai-service."""
 from fastapi import FastAPI
 from app.excepciones import registrar_manejadores_excepciones
+from app.routers.ia import router as router_ia
 from app.routers.salud import router as router_salud
 
 
@@ -18,6 +19,7 @@ def crear_aplicacion() -> FastAPI:
 
     registrar_manejadores_excepciones(app)
     app.include_router(router_salud)
+    app.include_router(router_ia)
     return app
 
 
