@@ -139,3 +139,56 @@ Solo se listan con su estado; los ADR se crean en `docs/adr/` más adelante.
 | **Token de Node a Django** | **PENDIENTE** (a decidir en TP2) | **Opción propuesta (no decidida):** reenviar el JWT del usuario en las acciones de personas, y usar un token de servicio en los eventos internos. |
 
 
+
+---
+
+## 7. Diagrama de secuencia del Cliente Mínimo PWA (`web/`, Tarea T3.6)
+
+El cliente mínimo en `web/` es una PWA instalable (`manifest.webmanifest` + `sw.js`) servida localmente en `/app` por `backend-node` y conecta los tres módulos principales (**Tablero en Tiempo Real**, **Importación con IA y Revisión Humana** y **Caja Rápida con Lector HID**):
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operador as Dueño / Cajero
+    participant PWA as Cliente PWA (web/)
+    participant Django as backend-django (8000)
+    participant Node as backend-node + Socket.IO (3000)
+    participant IA as ai-service (8001)
+    participant Mongo as MongoDB
+
+    Operador->>PWA: Inicia sesión (usuario y contraseña)
+    PWA->>Django: POST /api/auth/token/
+    Django-->>PWA: 200 OK (JWT RS256 con rol y permisos)
+
+    PWA->>Node: Handshake Socket.IO (auth.token = JWT RS256)
+    Node->>Node: autenticarSocketJwt (verifica firma RS256 y usuario activo)
+    Node-->>PWA: connect + presencia.actualizada (unido a sala "local")
+
+    Note over Operador,Django: Módulo 3 — Caja Rápida y Sala de Turno (HU4)
+    Operador->>PWA: Selecciona Turno #1 y clic en "Unirse a Sala"
+    PWA->>Node: emit("turno:unirse", { turnoId: 1, titularId })
+    Node-->>PWA: ack { ok: true, sala: "turno:1" }
+    Operador->>PWA: Escanea código de barras HID (Enter) y cobra ticket
+    PWA->>Django: POST /api/ventas/ (Bearer JWT)
+    Django-->>PWA: 201 Created (Venta registrada con costo snapshot)
+    Node-->>PWA: Socket.IO "venta.registrada" (salas "local" y "turno:1")
+
+    Note over Operador,Mongo: Módulo 2 — Importación con IA y Aprobación Humana (HU7)
+    Operador->>PWA: Pega lista de precios del proveedor y envía
+    PWA->>Node: POST /api/importaciones (Bearer JWT)
+    Node->>Mongo: Crea ImportacionIA en estado PENDIENTE
+    Node-->>PWA: 202 Accepted (importacionId)
+    Node->>IA: POST /v1/extraer-precios (segundo plano)
+    IA-->>Node: JSON validado con Pydantic v2
+    Node->>Mongo: Actualiza ImportacionIA a estado LISTA
+    Node-->>PWA: Socket.IO "importacion.lista" (sala "local")
+    PWA->>Node: GET /api/importaciones/:id
+    Node-->>PWA: 200 OK (propuesta de ítems y envío detectado)
+    Operador->>PWA: Revisa y hace clic en "Aprobar y Recalcular Recetas"
+    PWA->>Node: POST /api/importaciones/:id/aprobar (Bearer JWT)
+    Node->>Django: POST /api/compras/confirmar-importacion/ (reenvía JWT)
+    Django-->>Node: 201 Created (compras_creadas + productos_recalculados)
+    Node->>Mongo: Guarda HistorialPrecio + SnapshotCosteo y estado APROBADA
+    Node-->>PWA: Socket.IO "costo.actualizado" (sala permiso:recetas.ver_costos)
+    Node-->>PWA: 200 OK (resumen de compras e impacto en recetas)
+```

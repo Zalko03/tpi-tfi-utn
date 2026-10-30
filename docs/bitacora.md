@@ -22,6 +22,55 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-29
+Tarea: T3.6 — Cliente mínimo PWA en `web/` (tablero en tiempo real + importación con IA + caja rápida) y diagrama de secuencia Mermaid
+Rama: feature/t3.6-cliente-pwa-tiempo-real
+Cambios realizados:
+- En `web/` (Cliente mínimo PWA instalable):
+  - `web/manifest.webmanifest` y `web/sw.js`: configuración de PWA instalable (`display: standalone`, `start_url: /app/index.html`) y Service Worker con caché de cáscara estática (`cafe-gestion-pwa-v1`, estrategia Network-First con fallback a caché para recursos estáticos, excluyendo rutas `/api/` y `/socket.io/`).
+  - `web/js/logicaPwa.js`: módulo puro con funciones de negocio del cliente:
+    - `convertirMontoACentavos` y `formatearCentavosADecimal`: aritmética monetaria exacta en centavos enteros para evitar errores de punto flotante (`AGENTS.md`).
+    - `buscarProductoPorCodigoOTexto`: búsqueda instantánea priorizando coincidencia exacta por `codigo_barras` (emulación de teclado HID, `CA4.4`) y luego por nombre.
+    - `agregarProductoAlCarrito` y `calcularResumenCarrito`: gestión inmutable del carrito de caja y armado del payload para `POST /api/ventas/`.
+    - `formatearEventoTiempoReal`: clasificación visual de los eventos de Socket.IO (`venta.registrada`, `costo.actualizado` con bandera `alertaMargenBajo`, `stock.bajo`, `importacion.lista`).
+  - `web/index.html`, `web/css/estilos.css` y `web/js/app.js`: interfaz completa con autenticación JWT RS256 contra Django (`POST /api/auth/token/`), conexión y reconexión automática a Socket.IO y los tres módulos requeridos:
+    1. **Tablero en Tiempo Real:** indicadores de conexión y presencia (`presencia.actualizada`), contadores en vivo y feed de eventos.
+    2. **Importación de Precios con IA (HU7):** envío asíncrono `POST /api/importaciones` (`202 Accepted`), recepción de `importacion.lista`, tabla de revisión de ítems extraídos y botones de **Aprobar y Recalcular Recetas** (`POST /api/importaciones/:id/aprobar`) y **Rechazar Propuesta** (`POST /api/importaciones/:id/rechazar`).
+    3. **Caja Rápida y Turno (HU4):** unión a sala `turno:{id}` (`turno:unirse`), campo para lector de código de barras HID (`Enter`), grilla rápida de productos, tabla de ticket y cobro (`POST /api/ventas/`).
+- En `backend-node`:
+  - `app.js`: montaje estático de `../web` bajo `/app` y ajuste de `connectSrc` en Helmet CSP para permitir llamadas locales a Django (`8000`) y Node/WebSocket (`3000`).
+- Suite de pruebas en Jest (19 suites, 115 tests totales en verde):
+  - `backend-node/tests/unit/logicaPwa.unit.test.js` (5 tests unitarios): aritmética en centavos sin float, búsqueda por lector HID `codigo_barras`, acumulación de carrito y formateo de los 4 eventos en tiempo real.
+  - `backend-node/tests/integration/clientePwa.integration.test.js` (3 tests de integración): entrega HTTP 200 de `/app/index.html`, `/app/manifest.webmanifest`, `/app/sw.js`, `/app/css/estilos.css`, `/app/js/app.js` y `/app/js/logicaPwa.js`.
+- Documentación:
+  - Incorporación del diagrama de secuencia Mermaid completo del cliente PWA en `docs/arquitectura.md` (§7) y `docs/integracion.md` (§4).
+  - Actualización de `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Cliente Mínimo PWA (`web/`) ↔ `backend-node` (`/app`, `/api/importaciones`, Socket.IO) y `backend-django` (`/api/auth/token/`, `/api/ventas/`).
+Problemas y decisiones técnicas:
+- **Aritmética en centavos enteros también en el navegador:** En JavaScript, sumar `0.1 + 0.2` con `Number` produce `0.30000000000000004`. Para cumplir la regla de cero punto flotante para dinero de `AGENTS.md`, `logicaPwa.js` convierte cada precio decimal a centavos enteros antes de multiplicar o sumar subtotales en el carrito de caja.
+- **Montaje de `web/` bajo `/app` en Express:** Permite abrir la PWA en `http://localhost:3000/app/index.html` compartiendo origen con Socket.IO (`/socket.io/socket.io.js`) y la API de Node sin requerir herramientas de bundling adicionales ni romper la política de CSP de Helmet.
+Archivos tocados:
+- `web/index.html`
+- `web/manifest.webmanifest`
+- `web/sw.js`
+- `web/css/estilos.css`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/arquitectura.md`
+- `docs/integracion.md`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar las pruebas unitarias y de integración del cliente PWA: `npm --prefix backend-node test -- tests/unit/logicaPwa.unit.test.js tests/integration/clientePwa.integration.test.js`.
+- Ejecutar la suite completa de Node: `npm --prefix backend-node test`.
+- Con `backend-node` corriendo (`npm --prefix backend-node run dev`), abrir `http://localhost:3000/app/index.html` en el navegador.
+
+---
+Fecha: 2026-10-29
 Tarea: T3.5 — Socket.IO en Node: handshake con JWT RS256, salas `local` y `turno:{id}`, eventos reales (`venta.registrada`, `costo.actualizado`, `stock.bajo`, `importacion.lista`), presencia y reconexión automática
 Rama: feature/t3.5-socketio-tiempo-real
 Cambios realizados:
