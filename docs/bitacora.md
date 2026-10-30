@@ -22,6 +22,33 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-29
+Tarea: T3.7 — Ensayo sistemático de fallos apagando cada componente y documentación de lo observado (`docs/ensayo-fallos.md`)
+Rama: feature/t3.7-ensayo-de-fallos
+Cambios realizados:
+- Creación del informe completo de ensayo de fallos en `docs/ensayo-fallos.md`:
+  - Matriz resumen y análisis detallado paso a paso de los 5 escenarios de caída de componentes:
+    1. **E1 (`ai-service` / proveedor de IA apagado):** `POST /api/importaciones` responde `HTTP 202 Accepted` sin bloquear, `ai.client.js` activa el fallback de contingencia tras el error de red/timeout, MongoDB persiste `estado: "CONTINGENCIA"` (`contingencia: true`) y Socket.IO emite `importacion.lista` indicando continuar por carga manual/CSV.
+    2. **E2 (`backend-django` apagado durante consulta consolidada):** `GET /api/productos/:id/resumen-costo` valida el JWT RS256 en memoria local con `JWT_PUBLIC_KEY` (sin depender de Django) y responde `HTTP 200 OK` con `producto.degradado = true` más `historialReciente` y `ultimoSnapshot` desde MongoDB.
+    3. **E3 (`backend-django` apagado durante aprobación humana `CA7.3` y posterior recuperación):** `POST /api/importaciones/:id/aprobar` responde `HTTP 502 Bad Gateway` con formato único `{ mensaje, detalles }` y **conserva la importación en estado `LISTA`**, permitiendo reintentar y completar la aprobación (`200 OK`, `estado: "APROBADA"`) cuando Django vuelve a estar en línea.
+    4. **E4 (`backend-node` apagado y corte de transporte WebSocket):** `backend-django` y `PostgreSQL` mantienen 100% operativas las ventas, turnos, compras y recálculo de costos; la PWA muestra estado de reconexión y el cliente Socket.IO se reconecta automáticamente al volver Node.
+    5. **E5 (`MongoDB` desconectado / error en consulta documental):** `errorHandler` captura `MongoNetworkError` devolviendo `HTTP 500` con formato único sin derribar el proceso de Node (`GET /health` sigue `200 OK`), mientras el núcleo contable en PostgreSQL sigue intacto.
+- Creación de la suite reproducible de ensayo de fallos en `backend-node/tests/integration/ensayoFallos.integration.test.js` (4 tests integrales verificando E1, E2, E3 con recuperación posterior y E5, sumando 20 suites y 119 tests en verde en `backend-node`).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Verificación empírica de los mecanismos de tolerancia a fallos de todas las conexiones activas entre `web/`, `backend-node`, `backend-django`, `ai-service`, `PostgreSQL` y `MongoDB`.
+Problemas y decisiones técnicas:
+- **Preservación de estado `LISTA` ante caída de Django en escrituras:** Si `backend-django` está apagado cuando el dueño aprueba una lista de precios, marcar la importación como `FALLIDA` obligaría a volver a ejecutar la extracción con IA. Mantener el documento en estado `LISTA` tras devolver `502 Bad Gateway` garantiza idempotencia operativa: apenas Django vuelve a levantar, un nuevo clic en "Aprobar" completa la transacción.
+- **Validación JWT RS256 offline en Node durante caída de Django:** Gracias al esquema asimétrico RS256 (ADR-0001), `backend-node` puede seguir autenticando peticiones y handshakes de Socket.IO con su clave pública local aunque `backend-django` se encuentre temporalmente apagado.
+Archivos tocados:
+- `backend-node/tests/integration/ensayoFallos.integration.test.js`
+- `docs/ensayo-fallos.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar la suite automatizada de ensayo de fallos en Node: `npm --prefix backend-node test -- tests/integration/ensayoFallos.integration.test.js`.
+- Ejecutar la suite completa de Node (20 suites, 119 tests): `npm --prefix backend-node test`.
+- Consultar el documento detallado en `docs/ensayo-fallos.md`.
+
+---
+Fecha: 2026-10-29
 Tarea: T3.6 — Cliente mínimo PWA en `web/` (tablero en tiempo real + importación con IA + caja rápida) y diagrama de secuencia Mermaid
 Rama: feature/t3.6-cliente-pwa-tiempo-real
 Cambios realizados:
