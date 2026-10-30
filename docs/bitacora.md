@@ -22,6 +22,52 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-29
+Tarea: T3.5 — Socket.IO en Node: handshake con JWT RS256, salas `local` y `turno:{id}`, eventos reales (`venta.registrada`, `costo.actualizado`, `stock.bajo`, `importacion.lista`), presencia y reconexión automática
+Rama: feature/t3.5-socketio-tiempo-real
+Cambios realizados:
+- En `backend-node`:
+  - Instalación de `socket.io` y `socket.io-client`.
+  - `src/sockets/middleware/auth.socket.middleware.js`: implementación de `extraerTokenHandshake` (soporta `socket.handshake.auth.token` y cabecera `Authorization: Bearer <token>`) y del middleware `autenticarSocketJwt`, que verifica la firma RS256 con `JWT_PUBLIC_KEY`, expiración, emisor `cafe-gestion-django`, `token_type === 'access'` y estado activo del usuario (`CA9.1` y `docs/seguridad.md` §5.2), rechazando conexiones no autenticadas con estructura `{ mensaje, detalles, codigo }`.
+  - `src/sockets/emitter.js`: implementación de los emisores de eventos de negocio en tiempo real:
+    - `emitirVentaRegistrada`: difunde `venta.registrada` hacia la sala `local` y hacia `turno:{id}` cuando se indica el turno de caja.
+    - `emitirCostoActualizado`: difunde `costo.actualizado` únicamente a la sala interna `permiso:recetas.ver_costos` (usuarios con rol `DUENIO` o permiso `recetas.ver_costos`), calculando la bandera `alertaMargenBajo` cuando el nuevo margen cae por debajo del objetivo (`CA8.3`).
+    - `emitirStockBajo`: difunde `stock.bajo` únicamente a la sala `rol:stock_alertas` (`DUENIO` y `ENCARGADO`).
+    - `emitirImportacionLista`: difunde `importacion.lista` a la sala `local` al completarse la extracción asíncrona con IA.
+  - `src/sockets/index.js`: implementación de `inicializarSocketIO`, `validarAccesoSalaTurno`, `obtenerEstadoPresencia` y `obtenerOpcionesClienteReconexion`:
+    - Unión automática a `local` al conectar y asignación a salas de permisos (`permiso:recetas.ver_costos` y `rol:stock_alertas`).
+    - Control de acceso sobre `turno:unirse` para la sala `turno:{id}`: solo permite unirse al titular del turno (`titularId === usuario.id`), al rol `DUENIO` o a quien posea el permiso `caja.gestionar_turnos_ajenos`, emitiendo `error:autorizacion` en caso contrario.
+    - Registro y difusión en vivo de presencia (`presencia.actualizada` y `presencia:consultar`) al conectar y desconectar.
+  - `src/services/importacionIA.service.js`: integración con `emitirImportacionLista` al finalizar `procesarImportacionEnSegundoPlano` y con `emitirCostoActualizado` por cada producto recalculado en `aprobarImportacionPrecios`.
+  - `server.js`: creación explícita del servidor HTTP (`http.createServer(app)`) y montaje de `inicializarSocketIO(servidorHttp)`.
+- Suite de pruebas en Jest (17 suites, 107 tests totales en verde):
+  - `backend-node/tests/unit/socketAuth.unit.test.js` (14 tests unitarios): extracción de token desde `auth.token` y `headers.authorization`, validación RS256, rechazo por token ausente, tipo `refresh`, usuario inactivo, token expirado o clave RSA ajena, reglas de `validarAccesoSalaTurno` y opciones de reconexión automática.
+  - `backend-node/tests/integration/socketio.integration.test.js` (5 tests de integración con `socket.io-client`): rechazo en el handshake sin token o con token inválido, presencia en tiempo real al conectar/desconectar, autorización de sala `turno:{id}` y recepción de `venta.registrada`, filtrado estricto por rol/permiso de `costo.actualizado` (`alertaMargenBajo: true`), `stock.bajo` e `importacion.lista`, y reconexión automática tras corte del transporte.
+- Documentación:
+  - Actualización de `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes Web / PWA ↔ `backend-node` (Socket.IO con handshake JWT RS256, salas `local` y `turno:{id}`, presencia y eventos en tiempo real).
+Problemas y decisiones técnicas:
+- **Aislamiento de eventos sensibles mediante salas internas de permisos:** En lugar de emitir `costo.actualizado` o `stock.bajo` a toda la sala `local` (lo que expondría costos y márgenes a cajeros sin permiso en el tráfico WebSocket), el servidor clasifica cada socket durante la conexión en salas internas (`permiso:recetas.ver_costos` y `rol:stock_alertas`) verificadas contra las claims firmadas del JWT RS256, cumpliendo `docs/seguridad.md` §5.2.
+- **Emisión desacoplada y segura en tests HTTP:** Los emisores de `src/sockets/emitter.js` verifican si hay una instancia de Socket.IO activa antes de emitir (`if (!ioInstancia) return false`), permitiendo que los tests de servicios e integración con `supertest` corran sin requerir levantar un servidor WebSocket a menos que se pruebe específicamente tiempo real.
+Archivos tocados:
+- `backend-node/package.json`
+- `backend-node/package-lock.json`
+- `backend-node/server.js`
+- `backend-node/src/sockets/middleware/auth.socket.middleware.js`
+- `backend-node/src/sockets/emitter.js`
+- `backend-node/src/sockets/index.js`
+- `backend-node/src/services/importacionIA.service.js`
+- `backend-node/tests/unit/socketAuth.unit.test.js`
+- `backend-node/tests/integration/socketio.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar los tests unitarios e integrales de Socket.IO: `npm --prefix backend-node test -- tests/unit/socketAuth.unit.test.js tests/integration/socketio.integration.test.js`.
+- Ejecutar la suite completa de Node: `npm --prefix backend-node test`.
+
+---
+Fecha: 2026-10-29
 Tarea: T3.4 — Optimización de 3 consultas problemáticas en PostgreSQL con `EXPLAIN ANALYZE` sobre seed de 50.000 ventas (`docs/optimizacion.md`)
 Rama: feature/t3.4-optimizacion-consultas-postgres
 Cambios realizados:
