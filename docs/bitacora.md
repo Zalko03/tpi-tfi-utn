@@ -22,6 +22,51 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-29
+Tarea: T3.4 — Optimización de 3 consultas problemáticas en PostgreSQL con `EXPLAIN ANALYZE` sobre seed de 50.000 ventas (`docs/optimizacion.md`)
+Rama: feature/t3.4-optimizacion-consultas-postgres
+Cambios realizados:
+- En `backend-django`:
+  - **Consulta 1 (Listado de productos con costo sin N+1):**
+    - `apps/recetas/services.py` y `apps/recetas/views.py`: incorporación de `listar_productos_con_costos_optimizado()` con `Prefetch("receta_items", queryset=RecetaItem.objects.select_related("insumo").order_by("id"))` y reutilización de `_prefetched_objects_cache` en `obtener_desglose_costeo_producto()`, reduciendo las consultas de $1 + N$ a constante = 2 consultas SQL.
+    - `apps/recetas/models.py` y migración `0002_indices_optimizacion_t34.py`: incorporación del índice compuesto `idx_producto_activo_nombre` sobre `(estado_activo, nombre)`.
+  - **Consulta 2 (Reporte de ventas por producto con índice por fecha):**
+    - `apps/ventas/models.py` y migración `0002_indices_optimizacion_t34.py`: creación de los índices B-Tree `idx_venta_fecha` sobre `Venta(fecha)`, `idx_venta_fecha_id_desc` sobre `Venta(-fecha, -id)`, `idx_ventaitem_venta_prod` sobre `VentaItem(venta, producto)` e `idx_ventaitem_prod_venta` sobre `VentaItem(producto, venta)`.
+    - `apps/ventas/services.py` y `apps/ventas/views.py`: implementación de `construir_queryset_reporte_ventas_por_producto()`, `obtener_reporte_ventas_por_producto()` y la acción `GET /api/ventas/reporte-por-producto/` en `VentaViewSet` (protegida con `TienePermiso("reportes.ver_operativos")`), resolviendo el reporte en una única consulta agregada SQL (`GROUP BY`).
+  - **Consulta 3 (Recálculo de productos afectados por insumo):**
+    - `apps/recetas/models.py` y migración `0002_indices_optimizacion_t34.py`: creación del índice compuesto invertido `idx_recetaitem_insumo_prod` sobre `(insumo, producto)` para búsquedas inversas por `insumo_id` mediante `Index Only Scan`.
+    - `apps/recetas/services.py`: refactorización de `recalcular_recetas_por_insumo()` combinando `Prefetch` con `Producto.objects.bulk_update(...)`, reduciendo las sentencias SQL de $1 + 2M$ a constante = 3 sentencias SQL.
+  - **Seed volumétrico y comando de medición:**
+    - `apps/insumos/management/commands/seed_rendimiento.py`: comando que genera por lotes (`bulk_create`) hasta 50.000 ventas, 40 productos y 25 insumos, y ejecuta `explain()` sobre las consultas críticas.
+- Suite de pruebas en `pytest` (329 tests totales en verde):
+  - `backend-django/apps/comun/tests/test_optimizacion_consultas.py`: 6 tests verificando presencia de índices en `_meta.indexes`, conteo exacto de queries con `django_assert_num_queries` (2 queries en listado de 15 productos, 1 query en reporte de ventas por fecha, 3 queries en recálculo masivo de 12 productos), permisos (403 negativo para Cajero y 200 para Dueño) y ejecución de `seed_rendimiento`.
+- Documentación:
+  - Creación de `docs/optimizacion.md` con el análisis comparativo completo de `EXPLAIN (ANALYZE, BUFFERS)` antes y después sobre 50.000 ventas.
+  - Actualización de `docs/seguridad.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-django` (`GET /api/ventas/reporte-por-producto/` protegido con `reportes.ver_operativos`).
+Problemas y decisiones técnicas:
+- **Reutilización explícita de `_prefetched_objects_cache`:** En Django, invocar `.select_related("insumo").all()` sobre un manager relacionado invalida la caché cargada por `prefetch_related` y dispara una nueva consulta SQL por cada objeto padre. Declarar el `select_related("insumo")` dentro de `Prefetch(...)` y consumir `.all()` cuando `"receta_items"` ya está en `_prefetched_objects_cache` elimina por completo el N+1 tanto en la API como en el servicio de costeo.
+- **Índice invertido `(insumo, producto)` en `RecetaItem`:** El constraint `unique_together = ("producto", "insumo")` indexa primero `producto_id`, por lo que filtrar únicamente por `insumo_id` al recalcular costos forzaba un `Seq Scan`. El nuevo índice `idx_recetaitem_insumo_prod` coloca `insumo_id` como primera columna y permite un `Index Only Scan`.
+Archivos tocados:
+- `backend-django/apps/recetas/models.py`
+- `backend-django/apps/recetas/migrations/0002_indices_optimizacion_t34.py`
+- `backend-django/apps/recetas/services.py`
+- `backend-django/apps/recetas/views.py`
+- `backend-django/apps/ventas/models.py`
+- `backend-django/apps/ventas/migrations/0002_indices_optimizacion_t34.py`
+- `backend-django/apps/ventas/services.py`
+- `backend-django/apps/ventas/views.py`
+- `backend-django/apps/insumos/management/commands/seed_rendimiento.py`
+- `backend-django/apps/comun/tests/test_optimizacion_consultas.py`
+- `docs/optimizacion.md`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar los tests de optimización y conteo de queries: `.\backend-django\.venv\Scripts\python.exe -m pytest backend-django/apps/comun/tests/test_optimizacion_consultas.py -v`.
+- Ejecutar el seed de rendimiento y planes `EXPLAIN`: `.\backend-django\.venv\Scripts\python.exe backend-django/manage.py seed_rendimiento --ventas 5000 --productos 40 --lote 2500` (o `--ventas 50000`).
+
+---
+Fecha: 2026-10-29
 Tarea: T3.3 — Aprobación humana de precios importados (Node llama a Django → compra nueva → recálculo de costos → historial y snapshots en MongoDB)
 Rama: feature/t3.3-aprobacion-humana-compra
 Cambios realizados:

@@ -121,6 +121,7 @@ flowchart TD
 | `/api/ventas/` | `POST` | `ventas.cobrar_ticket` | Debe pertenecer al turno abierto del cajero |
 | `/api/ventas/` | `GET` | `ventas.ver_historial_propio` | Cajero: filtra solo sus ventas. Con `ventas.ver_historial_todos`: lista global |
 | `/api/ventas/:id/anular/` | `POST` | `ventas.anular_ticket` | Requiere autorización de Encargado o Dueño |
+| `/api/ventas/reporte-por-producto/` | `GET` | `reportes.ver_operativos` | Reporte agregado por rango de fechas (Dueño y Encargado) |
 | `/api/caja/turnos/` | `POST` | `caja.abrir_turno` | Solo si no tiene un turno previo sin cerrar |
 | `/api/caja/turnos/:id/cerrar/`| `POST` | `caja.cerrar_turno` | Cajero solo puede cerrar su propio turno |
 | `/api/caja/movimientos/` | `POST` | `caja.registrar_movimiento` | Registrar extracciones o ingresos |
