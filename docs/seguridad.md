@@ -126,6 +126,7 @@ flowchart TD
 | `/api/caja/movimientos/` | `POST` | `caja.registrar_movimiento` | Registrar extracciones o ingresos |
 | `/api/insumos/` | `POST`/`PUT` | `insumos.crear` / `insumos.editar` | CRUD operativo |
 | `/api/compras/` | `POST` | `compras.registrar` | Alta de facturas y prorrateo |
+| `/api/compras/confirmar-importacion/` | `POST` | `compras.registrar` | Registro atómico de compras aprobadas por revisión humana |
 | `/api/recetas/` | `POST`/`PUT` | `recetas.crear` / `recetas.editar` | Modificación de fórmulas |
 | `/api/productos/:id/costo/`| `GET` | `recetas.ver_costos` | Protege desglose de costos y márgenes |
 | `/api/usuarios/` | `CRUD` | `personal.*` | Exclusivo Dueño |
@@ -137,6 +138,8 @@ flowchart TD
 | `/api/productos/:id/resumen-costo` | `GET` | Requiere token válido y permiso `recetas.ver_costos` |
 | `/api/historial-precios` | `GET` | Requiere token válido y permiso `insumos.ver` |
 | `/api/importaciones` (`/importaciones`) | `POST`/`GET` | Requiere token válido y permiso `ia.importar_listas` |
+| `/api/importaciones/:id/aprobar` | `POST` | Requiere token válido y permiso `ia.importar_listas` (y reenvía JWT a Django) |
+| `/api/importaciones/:id/rechazar` | `POST` | Requiere token válido y permiso `ia.importar_listas` |
 | Handshake Socket.IO | `CONNECT` | Valida firma del JWT con `JWT_PUBLIC_KEY` y estado activo |
 | Sala `local` | `JOIN` | Requiere token de cualquier empleado activo |
 | Sala `turno:{id}` | `JOIN` | Valida que el `user_id` sea titular del turno o posea `caja.gestionar_turnos_ajenos` |

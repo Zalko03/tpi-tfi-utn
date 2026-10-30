@@ -22,6 +22,56 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-29
+Tarea: T3.3 — Aprobación humana de precios importados (Node llama a Django → compra nueva → recálculo de costos → historial y snapshots en MongoDB)
+Rama: feature/t3.3-aprobacion-humana-compra
+Cambios realizados:
+- En `backend-django`:
+  - `apps/recetas/services.py`: incorporación de `obtener_desglose_costeo_producto` y ampliación retrocompatible de `recalcular_recetas_por_insumo` para devolver, además de `producto_id`, `nombre`, `costo_anterior`, `costo_nuevo` y `margen_nuevo`, el `insumo_id` disparador, `costo_mano_obra`, `costo_descartables` y el arreglo `desglose_insumos` requerido por `SnapshotCosteo` sin realizar consultas N+1.
+  - `apps/insumos/services.py`: creación de `inferir_unidad_base` y del servicio transaccional `@transaction.atomic` `registrar_lote_compras_importacion`, que resuelve proveedor e insumos (por ID o nombre), prorratea el envío total proporcionalmente al valor de cada línea (`prorratear_envio`), persiste cada `Compra`, actualiza `Insumo.costo_unitario` y recopila las recetas recalculadas con su desglose.
+  - `apps/insumos/serializers.py` y `apps/insumos/views.py`: incorporación de `ItemConfirmacionImportacionSerializer`, `ConfirmarImportacionComprasSerializer` y la acción `POST /api/compras/confirmar-importacion/` en `CompraViewSet` protegida con `TienePermiso("compras.registrar")`.
+- En `backend-node`:
+  - `src/clients/django.client.js`: incorporación de `normalizarRespuestaConfirmacionDjango` y `confirmarImportacionComprasDjango` con reenvío de la cabecera `Authorization: Bearer <token>`, traducción `snake_case` ↔ `camelCase` en un único punto, timeout de 5000ms y manejo de errores HTTP 400/502 según `docs/api-errores.md`.
+  - `src/models/ImportacionIA.js`: incorporación de campos de auditoría de revisión humana (`aprobadoPorId`, `rechazadoPorId`, `motivoRechazo`, `comprasGeneradasIds`, `productosRecalculadosIds`).
+  - `src/services/importacionIA.service.js`: implementación de `aprobarImportacionPrecios` (valida estado `LISTA`/`CONTINGENCIA`, llama a Django, persiste automáticamente en MongoDB un `HistorialPrecio` y un `SnapshotCosteo` por cada producto recalculado según CA3.2 y marca la importación como `APROBADA`) y `rechazarImportacionPrecios` (marca la importación como `RECHAZADA` sin llamar a Django ni alterar compras ni costos según CA7.3).
+  - `src/controllers/importacionIA.controller.js` y `src/routes/importacionIA.routes.js`: endpoints `POST /:id/aprobar` y `POST /:id/rechazar` protegidos con `verificarToken`, `verificarPermiso('ia.importar_listas')` y validaciones `express-validator`.
+- Suites de pruebas automatizadas en `pytest` y `Jest`:
+  - `backend-django/apps/insumos/tests/test_confirmar_importacion.py`: 5 tests verificando prorrateo de envío y desglose de recálculo, rollback atómico `@transaction.atomic` ante unidad incompatible, éxito 201 con Dueño, rechazo negativo 403 con Cajero y rechazo 400 ante datos inválidos.
+  - `backend-node/tests/unit/djangoClient.unit.test.js`: 4 tests unitarios verificando normalización `snake_case` → `camelCase`, reenvío de JWT RS256, propagación de error 400 y manejo de caída de red con 502.
+  - `backend-node/tests/integration/importacionIA.integration.test.js`: ampliación con tests de aprobación humana (persistencia de `HistorialPrecio` y `SnapshotCosteo` + transición a `APROBADA`), rechazo humano (CA7.3: transición a `RECHAZADA` con 0 llamadas a Django), bloqueo 400 ante doble procesamiento y respuesta 502 conservando estado `LISTA` si Django está caído.
+- Documentación:
+  - Actualización de `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md`, `docs/integracion.md`, `docs/seguridad.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-node` (`POST /api/importaciones/:id/aprobar`, `POST /api/importaciones/:id/rechazar`).
+- `backend-node` (`django.client.js`) ↔ `backend-django` (`POST /api/compras/confirmar-importacion/` con reenvío de JWT RS256).
+Problemas y decisiones técnicas:
+- **Humano en el circuito obligatorio (CA7.3):** Ninguna propuesta de la IA modifica PostgreSQL automáticamente; solo `POST /:id/aprobar` dispara la llamada transaccional a Django, mientras que `POST /:id/rechazar` cierra el flujo en MongoDB sin tocar compras ni costos.
+- **Atomicidad en Django y preservación de estado en Node:** Si una línea del lote falla en Django, `@transaction.atomic` revierte todo el lote. Si Django no está disponible cuando el humano aprueba, Node responde `502 Bad Gateway` pero mantiene la importación en estado `LISTA` para que el usuario pueda reintentar sin perder la propuesta extraída.
+- **Desglose de recálculo en la misma respuesta transaccional:** Al incluir `desglose_insumos`, `costo_mano_obra` y `costo_descartables` en la salida de `recalcular_recetas_por_insumo`, Node persiste `historial_precios` y `snapshots_costeo` (CA3.2) en el acto sin hacer peticiones N+1 adicionales a Django.
+Archivos tocados:
+- `backend-django/apps/recetas/services.py`
+- `backend-django/apps/insumos/services.py`
+- `backend-django/apps/insumos/serializers.py`
+- `backend-django/apps/insumos/views.py`
+- `backend-django/apps/insumos/tests/test_confirmar_importacion.py`
+- `backend-node/src/clients/django.client.js`
+- `backend-node/src/models/ImportacionIA.js`
+- `backend-node/src/services/importacionIA.service.js`
+- `backend-node/src/controllers/importacionIA.controller.js`
+- `backend-node/src/routes/importacionIA.routes.js`
+- `backend-node/tests/unit/djangoClient.unit.test.js`
+- `backend-node/tests/integration/importacionIA.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/integracion.md`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django/`: ejecutar tests de confirmación de importación con `pytest apps/insumos/tests/test_confirmar_importacion.py -v` (con `USE_SQLITE=True`).
+- En `backend-node/`: ejecutar `npm test` (15 suites, 88 tests en verde).
+- En `backend-node/`: ejecutar específicamente los tests de T3.2 y T3.3: `npm test -- tests/unit/djangoClient.unit.test.js tests/unit/aiClient.unit.test.js tests/integration/importacionIA.integration.test.js`.
+
+---
+Fecha: 2026-10-29
 Tarea: T3.2 — Node consume `ai-service` (`POST /api/importaciones` 202 asíncrono) y persistencia de trazabilidad en MongoDB
 Rama: feature/t3.2-node-consume-ia
 Cambios realizados:
