@@ -122,6 +122,9 @@ flowchart TD
 | `/api/ventas/` | `GET` | `ventas.ver_historial_propio` | Cajero: filtra solo sus ventas. Con `ventas.ver_historial_todos`: lista global |
 | `/api/ventas/:id/anular/` | `POST` | `ventas.anular_ticket` | Requiere autorización de Encargado o Dueño |
 | `/api/ventas/reporte-por-producto/` | `GET` | `reportes.ver_operativos` | Reporte agregado por rango de fechas (Dueño y Encargado) |
+| `/api/ventas/ranking-productos/` | `GET` | `reportes.ver_operativos` | Ranking de productos más y menos vendidos (Dueño y Encargado, HU10) |
+| `/api/ventas/ganancia-diaria/` | `GET` | `reportes.ver_financieros` | Ganancia diaria con costo congelado (Exclusivo Dueño, HU10) |
+| `/api/ventas/punto-equilibrio/` | `GET`/`POST` | `reportes.ver_financieros` | Punto de equilibrio y metas diaria y semanal (Exclusivo Dueño, HU11) |
 | `/api/caja/turnos/` | `POST` | `caja.abrir_turno` | Solo si no tiene un turno previo sin cerrar |
 | `/api/caja/turnos/:id/cerrar/`| `POST` | `caja.cerrar_turno` | Cajero solo puede cerrar su propio turno |
 | `/api/caja/movimientos/` | `POST` | `caja.registrar_movimiento` | Registrar extracciones o ingresos |

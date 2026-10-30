@@ -22,6 +22,43 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-10-29
+Tarea: T3.8 (Should) — Reportes financieros y operativos: ganancia diaria, ranking de productos, punto de equilibrio y metas (HU10–HU11)
+Rama: feature/t3.8-reportes-ganancia-pe-metas
+Cambios realizados:
+- En `backend-django`:
+  - `apps/ventas/services.py`:
+    - `obtener_ganancia_diaria`: calcula la ganancia diaria y por rango de fechas (`CA10.1`) sumando `(precio_unitario − costo_unitario_snapshot) × cantidad` sobre `VentaItem`, garantizando que subas posteriores de insumos no reescriban la ganancia histórica, e incluye el desglose diario agrupado por `TruncDate("fecha")`.
+    - `obtener_ranking_productos`: calcula el ranking de productos en un rango de fechas (`CA10.2`), devolviendo `mas_vendidos` (orden descendente por unidades vendidas) y `menos_vendidos` (orden ascendente incluyendo productos activos con `0.00` unidades vendidas para detectar ítems sin rotación).
+    - `calcular_punto_equilibrio_y_metas`: implementa las fórmulas exactas de `docs/PLAN_IMPLEMENTACION.md` §3 (`CA11.1` y `CA11.2`) con `Decimal`:
+      - `PE ($) = costos_fijos / (1 - (costos_variables / ventas))`
+      - `meta_diaria = PE_mensual / dias_operativos`
+      - `meta_semanal = meta_diaria * dias_semana`
+      Permite calcular tanto con montos explícitos como tomando automáticamente `ventas` (`ingresos_totales`) y `costos_variables` (`costo_total_congelado`) de los tickets registrados en el período.
+  - `apps/ventas/views.py`:
+    - Incorporación de las acciones en `VentaViewSet`:
+      - `GET /api/ventas/ganancia-diaria/` protegida con `TienePermiso("reportes.ver_financieros")`.
+      - `GET /api/ventas/ranking-productos/` protegida con `TienePermiso("reportes.ver_operativos")`.
+      - `GET` y `POST /api/ventas/punto-equilibrio/` protegida con `TienePermiso("reportes.ver_financieros")`.
+- Suite de pruebas en `pytest`:
+  - `backend-django/apps/ventas/tests/test_reportes_hu10_hu11.py`: 3 tests integrales verificando invariabilidad de la ganancia diaria ante aumentos posteriores de costos (`CA10.1`), ordenamiento de más y menos vendidos incluyendo productos con 0 ventas (`CA10.2`), cálculo exacto de punto de equilibrio y metas (`CA11.1`, `CA11.2`), validación HTTP 400 cuando `costos_variables >= ventas` y control de acceso 403/200 según rol y permiso.
+- Documentación:
+  - Actualización de `docs/seguridad.md` (§5.1) y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-django` (`GET /api/ventas/ganancia-diaria/`, `GET /api/ventas/ranking-productos/`, `GET|POST /api/ventas/punto-equilibrio/`).
+Problemas y decisiones técnicas:
+- **Inclusión de productos activos con 0 ventas en `menos_vendidos`:** Si el ranking solo consultara `VentaItem`, los productos que no se vendieron nunca en el período ni siquiera aparecerían entre los menos vendidos. Cruzar el agregado SQL con `Producto.objects.filter(estado_activo=True)` permite que el dueño identifique de inmediato qué productos de la carta tuvieron rotación cero.
+- **Validación del margen de contribución en Punto de Equilibrio:** Cuando `costos_variables >= ventas`, la razón `1 - (costos_variables / ventas)` es cero o negativa, lo que matemática y financieramente significa que cada venta pierde dinero y no existe punto de equilibrio alcanzable por volumen; el servicio lo detecta y responde con un mensaje claro en HTTP 400.
+Archivos tocados:
+- `backend-django/apps/ventas/services.py`
+- `backend-django/apps/ventas/views.py`
+- `backend-django/apps/ventas/tests/test_reportes_hu10_hu11.py`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar las pruebas de reportes HU10 y HU11: `.\backend-django\.venv\Scripts\python.exe -m pytest backend-django/apps/ventas/tests/test_reportes_hu10_hu11.py -v`.
+
+---
+Fecha: 2026-10-29
 Tarea: T3.7 — Ensayo sistemático de fallos apagando cada componente y documentación de lo observado (`docs/ensayo-fallos.md`)
 Rama: feature/t3.7-ensayo-de-fallos
 Cambios realizados:
