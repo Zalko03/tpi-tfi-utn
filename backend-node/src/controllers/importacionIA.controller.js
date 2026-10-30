@@ -47,3 +47,50 @@ export const listarImportaciones = async (req, res, next) => {
         return next(error);
     }
 };
+
+export const aprobarImportacion = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { proveedorId, proveedorNombre, envio, items } = req.body;
+        const usuarioId = req.usuario?.id;
+        const tokenJwt = req.headers.authorization || null;
+
+        const resultado = await importacionService.aprobarImportacionPrecios(id, {
+            usuarioId,
+            tokenJwt,
+            proveedorId,
+            proveedorNombre,
+            envio,
+            items,
+        });
+
+        return res.status(200).json({
+            mensaje: 'Importación aprobada, compras registradas y costos recalculados',
+            importacion: resultado.importacion,
+            comprasCreadas: resultado.comprasCreadas,
+            productosRecalculados: resultado.productosRecalculados,
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
+export const rechazarImportacion = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { motivo } = req.body;
+        const usuarioId = req.usuario?.id;
+
+        const importacion = await importacionService.rechazarImportacionPrecios(id, {
+            usuarioId,
+            motivo,
+        });
+
+        return res.status(200).json({
+            mensaje: 'Importación rechazada sin modificar compras ni costos',
+            importacion,
+        });
+    } catch (error) {
+        return next(error);
+    }
+};

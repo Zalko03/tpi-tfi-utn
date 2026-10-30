@@ -12,6 +12,10 @@ export const ESTADOS_IMPORTACION_IA = [
 
 const itemImportadoSchema = new mongoose.Schema(
     {
+        insumoId: {
+            type: Number,
+            default: null,
+        },
         nombreInsumo: {
             type: String,
             required: [true, 'El nombre del insumo es obligatorio'],
@@ -123,6 +127,27 @@ const importacionIASchema = new mongoose.Schema(
         mensajeError: {
             type: String,
             default: null,
+        },
+        aprobadoPorId: {
+            type: Number,
+            default: null,
+        },
+        rechazadoPorId: {
+            type: Number,
+            default: null,
+        },
+        motivoRechazo: {
+            type: String,
+            default: null,
+            trim: true,
+        },
+        comprasGeneradasIds: {
+            type: [Number],
+            default: [],
+        },
+        productosRecalculadosIds: {
+            type: [Number],
+            default: [],
         },
         estadoActivo: {
             type: Boolean,
