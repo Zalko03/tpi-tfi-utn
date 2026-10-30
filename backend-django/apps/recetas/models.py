@@ -68,6 +68,12 @@ class Producto(models.Model):
         verbose_name = "Producto"
         verbose_name_plural = "Productos"
         ordering = ["nombre"]
+        indexes = [
+            models.Index(
+                fields=["estado_activo", "nombre"],
+                name="idx_producto_activo_nombre",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.nombre} (${self.precio_venta})"
@@ -100,6 +106,12 @@ class RecetaItem(models.Model):
         verbose_name = "Ítem de Receta"
         verbose_name_plural = "Ítems de Receta"
         unique_together = ("producto", "insumo")
+        indexes = [
+            models.Index(
+                fields=["insumo", "producto"],
+                name="idx_recetaitem_insumo_prod",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.producto.nombre} -> {self.insumo.nombre} ({self.cantidad} {self.unidad})"

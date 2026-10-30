@@ -21,6 +21,397 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-10-30
+Tarea: Estandarización y ampliación de tests unitarios y de API en backend-django (Cierre TP 3)
+Rama: tp3-completo
+Cambios realizados:
+- Reestructuración completa y separación física en subcarpetas `tests/unit/` y `tests/api/` en todos los módulos de `backend-django` para homogeneizar la arquitectura con `backend-node` y `ai-service`:
+  - `apps/insumos/tests/`:
+    - `unit/test_unit_insumos_services.py`: tests unitarios puros de conversión de unidades base (g, ml, un), costeo unitario con/sin IVA y prorrateo proporcional de flete.
+    - `unit/test_unit_confirmar_importacion.py`: tests unitarios del servicio `registrar_lote_compras_importacion` verificando prorrateo de envío, recálculo en cascada con desglose para snapshots, rollback atómico `@transaction.atomic` ante fallos, envío cero y validación de parámetros.
+    - `api/test_api_confirmar_importacion.py`: tests de integración del endpoint `POST /api/compras/confirmar-importacion/` verificando éxito 201 para Dueño, rechazo 403 para Cajero, 401 para anónimo y 400 para payloads inválidos.
+  - `apps/recetas/tests/`:
+    - `unit/test_unit_costeo_services.py`: tests unitarios de cálculo de costo de productos (insumos + MO + descartables), márgenes y recálculo automático ante aumentos de insumos.
+  - `apps/ventas/tests/`:
+    - `unit/test_unit_ventas_services.py`: tests unitarios de creación de venta, totales y congelamiento de snapshot de costos (`CA4.2`).
+    - `unit/test_unit_reportes_servicios.py`: 11 tests unitarios exhaustivos sobre las fórmulas de negocio de HU10 y HU11:
+      - Ganancia diaria con costo unitario congelado (`CA10.1`), inmunidad ante subas de costos posteriores y caso borde de período sin ventas (retorno de ceros y desglose vacío).
+      - Ranking de más y menos vendidos (`CA10.2`), límite configurable y detección de productos activos con 0 ventas.
+      - Punto de equilibrio y metas diaria y semanal (`CA11.1` y `CA11.2`) con cálculo explícito y con agregación de tickets reales.
+      - Casos borde y robustez matemática: costos fijos nulos/negativos, sin ventas en el período, costos variables superiores a ventas (margen de contribución negativo) y días operativos/semanales <= 0.
+    - `api/test_api_reportes.py`: 14 tests de integración de endpoints DRF:
+      - `GET /api/ventas/ganancia-diaria/`: 200 para Dueño, 403 para Encargado y Cajero, 400 para fechas inválidas.
+      - `GET /api/ventas/ranking-productos/`: 200 para Dueño y Encargado (`reportes.ver_operativos`), 403 para Cajero, 400 para límite inválido.
+      - `GET` y `POST /api/ventas/punto-equilibrio/`: 200 para Dueño (`reportes.ver_financieros`), 403 para Encargado y Cajero, 400 sin costos fijos o con costos variables excesivos.
+  - `apps/salud/tests/`:
+    - `api/test_api_health.py`: reubicación del test del endpoint `/health` y configuración de arranque en `tests/api/`.
+  - `apps/comun/tests/`:
+    - `api/test_api_endpoints.py`: reubicación de pruebas de paginación y contrato unificado de errores 404 en `tests/api/`.
+- Conteo total de pruebas en verde en el monorepo:
+  - `backend-django`: 357 tests (25 tests nuevos añadidos).
+  - `backend-node`: 119 tests.
+  - `ai-service`: 57 tests.
+  - Total monorepo: 533 tests pasando al 100%.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna conexión de arquitectura fue alterada; se preservaron intactos todos los contratos JSON, permisos granulares y rutas de API.
+Problemas y decisiones técnicas:
+- **Separación física `unit/` y `api/` a nivel de filesystem:** Al organizar cada suite en su directorio específico, las herramientas de CI y los evaluadores docentes pueden ejecutar exclusivamente pruebas unitarias en memoria (`pytest apps/*/tests/unit/`) o pruebas de integración HTTP (`pytest apps/*/tests/api/`) de manera determinista e independiente.
+- **Validación matemática exhaustiva de reportes:** Se reforzaron los tests con todos los casos borde posibles (costos fijos nulos/negativos, catálogo sin rotación, período sin tickets y márgenes de contribución negativos) comprobando que las excepciones se originen en los servicios y se traduzcan limpiamente en respuestas HTTP 400 por los ViewSets.
+Archivos tocados:
+- `backend-django/apps/insumos/tests/unit/test_unit_confirmar_importacion.py`
+- `backend-django/apps/insumos/tests/unit/test_unit_insumos_services.py`
+- `backend-django/apps/insumos/tests/api/test_api_confirmar_importacion.py`
+- `backend-django/apps/recetas/tests/unit/test_unit_costeo_services.py`
+- `backend-django/apps/ventas/tests/unit/test_unit_reportes_servicios.py`
+- `backend-django/apps/ventas/tests/unit/test_unit_ventas_services.py`
+- `backend-django/apps/ventas/tests/api/test_api_reportes.py`
+- `backend-django/apps/salud/tests/api/test_api_health.py`
+- `backend-django/apps/comun/tests/api/test_api_endpoints.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django/`: `cd backend-django && USE_SQLITE=True .venv/bin/pytest` (357 tests en verde).
+- En `backend-node/`: `cd backend-node && DJANGO_BASE_URL=http://localhost:59999 npm test` (119 tests en verde).
+- En `ai-service/`: `cd ai-service && .venv/bin/pytest -v` (57 tests en verde).
+
+---
+Fecha: 2026-10-29
+Tarea: T3.8 (Should) — Reportes financieros y operativos: ganancia diaria, ranking de productos, punto de equilibrio y metas (HU10–HU11)
+Rama: feature/t3.8-reportes-ganancia-pe-metas
+Cambios realizados:
+- En `backend-django`:
+  - `apps/ventas/services.py`:
+    - `obtener_ganancia_diaria`: calcula la ganancia diaria y por rango de fechas (`CA10.1`) sumando `(precio_unitario − costo_unitario_snapshot) × cantidad` sobre `VentaItem`, garantizando que subas posteriores de insumos no reescriban la ganancia histórica, e incluye el desglose diario agrupado por `TruncDate("fecha")`.
+    - `obtener_ranking_productos`: calcula el ranking de productos en un rango de fechas (`CA10.2`), devolviendo `mas_vendidos` (orden descendente por unidades vendidas) y `menos_vendidos` (orden ascendente incluyendo productos activos con `0.00` unidades vendidas para detectar ítems sin rotación).
+    - `calcular_punto_equilibrio_y_metas`: implementa las fórmulas exactas de `docs/PLAN_IMPLEMENTACION.md` §3 (`CA11.1` y `CA11.2`) con `Decimal`:
+      - `PE ($) = costos_fijos / (1 - (costos_variables / ventas))`
+      - `meta_diaria = PE_mensual / dias_operativos`
+      - `meta_semanal = meta_diaria * dias_semana`
+      Permite calcular tanto con montos explícitos como tomando automáticamente `ventas` (`ingresos_totales`) y `costos_variables` (`costo_total_congelado`) de los tickets registrados en el período.
+  - `apps/ventas/views.py`:
+    - Incorporación de las acciones en `VentaViewSet`:
+      - `GET /api/ventas/ganancia-diaria/` protegida con `TienePermiso("reportes.ver_financieros")`.
+      - `GET /api/ventas/ranking-productos/` protegida con `TienePermiso("reportes.ver_operativos")`.
+      - `GET` y `POST /api/ventas/punto-equilibrio/` protegida con `TienePermiso("reportes.ver_financieros")`.
+- Suite de pruebas en `pytest`:
+  - `backend-django/apps/ventas/tests/test_reportes_hu10_hu11.py`: 3 tests integrales verificando invariabilidad de la ganancia diaria ante aumentos posteriores de costos (`CA10.1`), ordenamiento de más y menos vendidos incluyendo productos con 0 ventas (`CA10.2`), cálculo exacto de punto de equilibrio y metas (`CA11.1`, `CA11.2`), validación HTTP 400 cuando `costos_variables >= ventas` y control de acceso 403/200 según rol y permiso.
+- Documentación:
+  - Actualización de `docs/seguridad.md` (§5.1) y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-django` (`GET /api/ventas/ganancia-diaria/`, `GET /api/ventas/ranking-productos/`, `GET|POST /api/ventas/punto-equilibrio/`).
+Problemas y decisiones técnicas:
+- **Inclusión de productos activos con 0 ventas en `menos_vendidos`:** Si el ranking solo consultara `VentaItem`, los productos que no se vendieron nunca en el período ni siquiera aparecerían entre los menos vendidos. Cruzar el agregado SQL con `Producto.objects.filter(estado_activo=True)` permite que el dueño identifique de inmediato qué productos de la carta tuvieron rotación cero.
+- **Validación del margen de contribución en Punto de Equilibrio:** Cuando `costos_variables >= ventas`, la razón `1 - (costos_variables / ventas)` es cero o negativa, lo que matemática y financieramente significa que cada venta pierde dinero y no existe punto de equilibrio alcanzable por volumen; el servicio lo detecta y responde con un mensaje claro en HTTP 400.
+Archivos tocados:
+- `backend-django/apps/ventas/services.py`
+- `backend-django/apps/ventas/views.py`
+- `backend-django/apps/ventas/tests/test_reportes_hu10_hu11.py`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar las pruebas de reportes HU10 y HU11: `.\backend-django\.venv\Scripts\python.exe -m pytest backend-django/apps/ventas/tests/test_reportes_hu10_hu11.py -v`.
+
+---
+Fecha: 2026-10-29
+Tarea: T3.7 — Ensayo sistemático de fallos apagando cada componente y documentación de lo observado (`docs/ensayo-fallos.md`)
+Rama: feature/t3.7-ensayo-de-fallos
+Cambios realizados:
+- Creación del informe completo de ensayo de fallos en `docs/ensayo-fallos.md`:
+  - Matriz resumen y análisis detallado paso a paso de los 5 escenarios de caída de componentes:
+    1. **E1 (`ai-service` / proveedor de IA apagado):** `POST /api/importaciones` responde `HTTP 202 Accepted` sin bloquear, `ai.client.js` activa el fallback de contingencia tras el error de red/timeout, MongoDB persiste `estado: "CONTINGENCIA"` (`contingencia: true`) y Socket.IO emite `importacion.lista` indicando continuar por carga manual/CSV.
+    2. **E2 (`backend-django` apagado durante consulta consolidada):** `GET /api/productos/:id/resumen-costo` valida el JWT RS256 en memoria local con `JWT_PUBLIC_KEY` (sin depender de Django) y responde `HTTP 200 OK` con `producto.degradado = true` más `historialReciente` y `ultimoSnapshot` desde MongoDB.
+    3. **E3 (`backend-django` apagado durante aprobación humana `CA7.3` y posterior recuperación):** `POST /api/importaciones/:id/aprobar` responde `HTTP 502 Bad Gateway` con formato único `{ mensaje, detalles }` y **conserva la importación en estado `LISTA`**, permitiendo reintentar y completar la aprobación (`200 OK`, `estado: "APROBADA"`) cuando Django vuelve a estar en línea.
+    4. **E4 (`backend-node` apagado y corte de transporte WebSocket):** `backend-django` y `PostgreSQL` mantienen 100% operativas las ventas, turnos, compras y recálculo de costos; la PWA muestra estado de reconexión y el cliente Socket.IO se reconecta automáticamente al volver Node.
+    5. **E5 (`MongoDB` desconectado / error en consulta documental):** `errorHandler` captura `MongoNetworkError` devolviendo `HTTP 500` con formato único sin derribar el proceso de Node (`GET /health` sigue `200 OK`), mientras el núcleo contable en PostgreSQL sigue intacto.
+- Creación de la suite reproducible de ensayo de fallos en `backend-node/tests/integration/ensayoFallos.integration.test.js` (4 tests integrales verificando E1, E2, E3 con recuperación posterior y E5, sumando 20 suites y 119 tests en verde en `backend-node`).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Verificación empírica de los mecanismos de tolerancia a fallos de todas las conexiones activas entre `web/`, `backend-node`, `backend-django`, `ai-service`, `PostgreSQL` y `MongoDB`.
+Problemas y decisiones técnicas:
+- **Preservación de estado `LISTA` ante caída de Django en escrituras:** Si `backend-django` está apagado cuando el dueño aprueba una lista de precios, marcar la importación como `FALLIDA` obligaría a volver a ejecutar la extracción con IA. Mantener el documento en estado `LISTA` tras devolver `502 Bad Gateway` garantiza idempotencia operativa: apenas Django vuelve a levantar, un nuevo clic en "Aprobar" completa la transacción.
+- **Validación JWT RS256 offline en Node durante caída de Django:** Gracias al esquema asimétrico RS256 (ADR-0001), `backend-node` puede seguir autenticando peticiones y handshakes de Socket.IO con su clave pública local aunque `backend-django` se encuentre temporalmente apagado.
+Archivos tocados:
+- `backend-node/tests/integration/ensayoFallos.integration.test.js`
+- `docs/ensayo-fallos.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar la suite automatizada de ensayo de fallos en Node: `npm --prefix backend-node test -- tests/integration/ensayoFallos.integration.test.js`.
+- Ejecutar la suite completa de Node (20 suites, 119 tests): `npm --prefix backend-node test`.
+- Consultar el documento detallado en `docs/ensayo-fallos.md`.
+
+---
+Fecha: 2026-10-29
+Tarea: T3.6 — Cliente mínimo PWA en `web/` (tablero en tiempo real + importación con IA + caja rápida) y diagrama de secuencia Mermaid
+Rama: feature/t3.6-cliente-pwa-tiempo-real
+Cambios realizados:
+- En `web/` (Cliente mínimo PWA instalable):
+  - `web/manifest.webmanifest` y `web/sw.js`: configuración de PWA instalable (`display: standalone`, `start_url: /app/index.html`) y Service Worker con caché de cáscara estática (`cafe-gestion-pwa-v1`, estrategia Network-First con fallback a caché para recursos estáticos, excluyendo rutas `/api/` y `/socket.io/`).
+  - `web/js/logicaPwa.js`: módulo puro con funciones de negocio del cliente:
+    - `convertirMontoACentavos` y `formatearCentavosADecimal`: aritmética monetaria exacta en centavos enteros para evitar errores de punto flotante (`AGENTS.md`).
+    - `buscarProductoPorCodigoOTexto`: búsqueda instantánea priorizando coincidencia exacta por `codigo_barras` (emulación de teclado HID, `CA4.4`) y luego por nombre.
+    - `agregarProductoAlCarrito` y `calcularResumenCarrito`: gestión inmutable del carrito de caja y armado del payload para `POST /api/ventas/`.
+    - `formatearEventoTiempoReal`: clasificación visual de los eventos de Socket.IO (`venta.registrada`, `costo.actualizado` con bandera `alertaMargenBajo`, `stock.bajo`, `importacion.lista`).
+  - `web/index.html`, `web/css/estilos.css` y `web/js/app.js`: interfaz completa con autenticación JWT RS256 contra Django (`POST /api/auth/token/`), conexión y reconexión automática a Socket.IO y los tres módulos requeridos:
+    1. **Tablero en Tiempo Real:** indicadores de conexión y presencia (`presencia.actualizada`), contadores en vivo y feed de eventos.
+    2. **Importación de Precios con IA (HU7):** envío asíncrono `POST /api/importaciones` (`202 Accepted`), recepción de `importacion.lista`, tabla de revisión de ítems extraídos y botones de **Aprobar y Recalcular Recetas** (`POST /api/importaciones/:id/aprobar`) y **Rechazar Propuesta** (`POST /api/importaciones/:id/rechazar`).
+    3. **Caja Rápida y Turno (HU4):** unión a sala `turno:{id}` (`turno:unirse`), campo para lector de código de barras HID (`Enter`), grilla rápida de productos, tabla de ticket y cobro (`POST /api/ventas/`).
+- En `backend-node`:
+  - `app.js`: montaje estático de `../web` bajo `/app` y ajuste de `connectSrc` en Helmet CSP para permitir llamadas locales a Django (`8000`) y Node/WebSocket (`3000`).
+- Suite de pruebas en Jest (19 suites, 115 tests totales en verde):
+  - `backend-node/tests/unit/logicaPwa.unit.test.js` (5 tests unitarios): aritmética en centavos sin float, búsqueda por lector HID `codigo_barras`, acumulación de carrito y formateo de los 4 eventos en tiempo real.
+  - `backend-node/tests/integration/clientePwa.integration.test.js` (3 tests de integración): entrega HTTP 200 de `/app/index.html`, `/app/manifest.webmanifest`, `/app/sw.js`, `/app/css/estilos.css`, `/app/js/app.js` y `/app/js/logicaPwa.js`.
+- Documentación:
+  - Incorporación del diagrama de secuencia Mermaid completo del cliente PWA en `docs/arquitectura.md` (§7) y `docs/integracion.md` (§4).
+  - Actualización de `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Cliente Mínimo PWA (`web/`) ↔ `backend-node` (`/app`, `/api/importaciones`, Socket.IO) y `backend-django` (`/api/auth/token/`, `/api/ventas/`).
+Problemas y decisiones técnicas:
+- **Aritmética en centavos enteros también en el navegador:** En JavaScript, sumar `0.1 + 0.2` con `Number` produce `0.30000000000000004`. Para cumplir la regla de cero punto flotante para dinero de `AGENTS.md`, `logicaPwa.js` convierte cada precio decimal a centavos enteros antes de multiplicar o sumar subtotales en el carrito de caja.
+- **Montaje de `web/` bajo `/app` en Express:** Permite abrir la PWA en `http://localhost:3000/app/index.html` compartiendo origen con Socket.IO (`/socket.io/socket.io.js`) y la API de Node sin requerir herramientas de bundling adicionales ni romper la política de CSP de Helmet.
+Archivos tocados:
+- `web/index.html`
+- `web/manifest.webmanifest`
+- `web/sw.js`
+- `web/css/estilos.css`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/arquitectura.md`
+- `docs/integracion.md`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar las pruebas unitarias y de integración del cliente PWA: `npm --prefix backend-node test -- tests/unit/logicaPwa.unit.test.js tests/integration/clientePwa.integration.test.js`.
+- Ejecutar la suite completa de Node: `npm --prefix backend-node test`.
+- Con `backend-node` corriendo (`npm --prefix backend-node run dev`), abrir `http://localhost:3000/app/index.html` en el navegador.
+
+---
+Fecha: 2026-10-29
+Tarea: T3.5 — Socket.IO en Node: handshake con JWT RS256, salas `local` y `turno:{id}`, eventos reales (`venta.registrada`, `costo.actualizado`, `stock.bajo`, `importacion.lista`), presencia y reconexión automática
+Rama: feature/t3.5-socketio-tiempo-real
+Cambios realizados:
+- En `backend-node`:
+  - Instalación de `socket.io` y `socket.io-client`.
+  - `src/sockets/middleware/auth.socket.middleware.js`: implementación de `extraerTokenHandshake` (soporta `socket.handshake.auth.token` y cabecera `Authorization: Bearer <token>`) y del middleware `autenticarSocketJwt`, que verifica la firma RS256 con `JWT_PUBLIC_KEY`, expiración, emisor `cafe-gestion-django`, `token_type === 'access'` y estado activo del usuario (`CA9.1` y `docs/seguridad.md` §5.2), rechazando conexiones no autenticadas con estructura `{ mensaje, detalles, codigo }`.
+  - `src/sockets/emitter.js`: implementación de los emisores de eventos de negocio en tiempo real:
+    - `emitirVentaRegistrada`: difunde `venta.registrada` hacia la sala `local` y hacia `turno:{id}` cuando se indica el turno de caja.
+    - `emitirCostoActualizado`: difunde `costo.actualizado` únicamente a la sala interna `permiso:recetas.ver_costos` (usuarios con rol `DUENIO` o permiso `recetas.ver_costos`), calculando la bandera `alertaMargenBajo` cuando el nuevo margen cae por debajo del objetivo (`CA8.3`).
+    - `emitirStockBajo`: difunde `stock.bajo` únicamente a la sala `rol:stock_alertas` (`DUENIO` y `ENCARGADO`).
+    - `emitirImportacionLista`: difunde `importacion.lista` a la sala `local` al completarse la extracción asíncrona con IA.
+  - `src/sockets/index.js`: implementación de `inicializarSocketIO`, `validarAccesoSalaTurno`, `obtenerEstadoPresencia` y `obtenerOpcionesClienteReconexion`:
+    - Unión automática a `local` al conectar y asignación a salas de permisos (`permiso:recetas.ver_costos` y `rol:stock_alertas`).
+    - Control de acceso sobre `turno:unirse` para la sala `turno:{id}`: solo permite unirse al titular del turno (`titularId === usuario.id`), al rol `DUENIO` o a quien posea el permiso `caja.gestionar_turnos_ajenos`, emitiendo `error:autorizacion` en caso contrario.
+    - Registro y difusión en vivo de presencia (`presencia.actualizada` y `presencia:consultar`) al conectar y desconectar.
+  - `src/services/importacionIA.service.js`: integración con `emitirImportacionLista` al finalizar `procesarImportacionEnSegundoPlano` y con `emitirCostoActualizado` por cada producto recalculado en `aprobarImportacionPrecios`.
+  - `server.js`: creación explícita del servidor HTTP (`http.createServer(app)`) y montaje de `inicializarSocketIO(servidorHttp)`.
+- Suite de pruebas en Jest (17 suites, 107 tests totales en verde):
+  - `backend-node/tests/unit/socketAuth.unit.test.js` (14 tests unitarios): extracción de token desde `auth.token` y `headers.authorization`, validación RS256, rechazo por token ausente, tipo `refresh`, usuario inactivo, token expirado o clave RSA ajena, reglas de `validarAccesoSalaTurno` y opciones de reconexión automática.
+  - `backend-node/tests/integration/socketio.integration.test.js` (5 tests de integración con `socket.io-client`): rechazo en el handshake sin token o con token inválido, presencia en tiempo real al conectar/desconectar, autorización de sala `turno:{id}` y recepción de `venta.registrada`, filtrado estricto por rol/permiso de `costo.actualizado` (`alertaMargenBajo: true`), `stock.bajo` e `importacion.lista`, y reconexión automática tras corte del transporte.
+- Documentación:
+  - Actualización de `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes Web / PWA ↔ `backend-node` (Socket.IO con handshake JWT RS256, salas `local` y `turno:{id}`, presencia y eventos en tiempo real).
+Problemas y decisiones técnicas:
+- **Aislamiento de eventos sensibles mediante salas internas de permisos:** En lugar de emitir `costo.actualizado` o `stock.bajo` a toda la sala `local` (lo que expondría costos y márgenes a cajeros sin permiso en el tráfico WebSocket), el servidor clasifica cada socket durante la conexión en salas internas (`permiso:recetas.ver_costos` y `rol:stock_alertas`) verificadas contra las claims firmadas del JWT RS256, cumpliendo `docs/seguridad.md` §5.2.
+- **Emisión desacoplada y segura en tests HTTP:** Los emisores de `src/sockets/emitter.js` verifican si hay una instancia de Socket.IO activa antes de emitir (`if (!ioInstancia) return false`), permitiendo que los tests de servicios e integración con `supertest` corran sin requerir levantar un servidor WebSocket a menos que se pruebe específicamente tiempo real.
+Archivos tocados:
+- `backend-node/package.json`
+- `backend-node/package-lock.json`
+- `backend-node/server.js`
+- `backend-node/src/sockets/middleware/auth.socket.middleware.js`
+- `backend-node/src/sockets/emitter.js`
+- `backend-node/src/sockets/index.js`
+- `backend-node/src/services/importacionIA.service.js`
+- `backend-node/tests/unit/socketAuth.unit.test.js`
+- `backend-node/tests/integration/socketio.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar los tests unitarios e integrales de Socket.IO: `npm --prefix backend-node test -- tests/unit/socketAuth.unit.test.js tests/integration/socketio.integration.test.js`.
+- Ejecutar la suite completa de Node: `npm --prefix backend-node test`.
+
+---
+Fecha: 2026-10-29
+Tarea: T3.4 — Optimización de 3 consultas problemáticas en PostgreSQL con `EXPLAIN ANALYZE` sobre seed de 50.000 ventas (`docs/optimizacion.md`)
+Rama: feature/t3.4-optimizacion-consultas-postgres
+Cambios realizados:
+- En `backend-django`:
+  - **Consulta 1 (Listado de productos con costo sin N+1):**
+    - `apps/recetas/services.py` y `apps/recetas/views.py`: incorporación de `listar_productos_con_costos_optimizado()` con `Prefetch("receta_items", queryset=RecetaItem.objects.select_related("insumo").order_by("id"))` y reutilización de `_prefetched_objects_cache` en `obtener_desglose_costeo_producto()`, reduciendo las consultas de $1 + N$ a constante = 2 consultas SQL.
+    - `apps/recetas/models.py` y migración `0002_indices_optimizacion_t34.py`: incorporación del índice compuesto `idx_producto_activo_nombre` sobre `(estado_activo, nombre)`.
+  - **Consulta 2 (Reporte de ventas por producto con índice por fecha):**
+    - `apps/ventas/models.py` y migración `0002_indices_optimizacion_t34.py`: creación de los índices B-Tree `idx_venta_fecha` sobre `Venta(fecha)`, `idx_venta_fecha_id_desc` sobre `Venta(-fecha, -id)`, `idx_ventaitem_venta_prod` sobre `VentaItem(venta, producto)` e `idx_ventaitem_prod_venta` sobre `VentaItem(producto, venta)`.
+    - `apps/ventas/services.py` y `apps/ventas/views.py`: implementación de `construir_queryset_reporte_ventas_por_producto()`, `obtener_reporte_ventas_por_producto()` y la acción `GET /api/ventas/reporte-por-producto/` en `VentaViewSet` (protegida con `TienePermiso("reportes.ver_operativos")`), resolviendo el reporte en una única consulta agregada SQL (`GROUP BY`).
+  - **Consulta 3 (Recálculo de productos afectados por insumo):**
+    - `apps/recetas/models.py` y migración `0002_indices_optimizacion_t34.py`: creación del índice compuesto invertido `idx_recetaitem_insumo_prod` sobre `(insumo, producto)` para búsquedas inversas por `insumo_id` mediante `Index Only Scan`.
+    - `apps/recetas/services.py`: refactorización de `recalcular_recetas_por_insumo()` combinando `Prefetch` con `Producto.objects.bulk_update(...)`, reduciendo las sentencias SQL de $1 + 2M$ a constante = 3 sentencias SQL.
+  - **Seed volumétrico y comando de medición:**
+    - `apps/insumos/management/commands/seed_rendimiento.py`: comando que genera por lotes (`bulk_create`) hasta 50.000 ventas, 40 productos y 25 insumos, y ejecuta `explain()` sobre las consultas críticas.
+- Suite de pruebas en `pytest` (329 tests totales en verde):
+  - `backend-django/apps/comun/tests/test_optimizacion_consultas.py`: 6 tests verificando presencia de índices en `_meta.indexes`, conteo exacto de queries con `django_assert_num_queries` (2 queries en listado de 15 productos, 1 query en reporte de ventas por fecha, 3 queries en recálculo masivo de 12 productos), permisos (403 negativo para Cajero y 200 para Dueño) y ejecución de `seed_rendimiento`.
+- Documentación:
+  - Creación de `docs/optimizacion.md` con el análisis comparativo completo de `EXPLAIN (ANALYZE, BUFFERS)` antes y después sobre 50.000 ventas.
+  - Actualización de `docs/seguridad.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-django` (`GET /api/ventas/reporte-por-producto/` protegido con `reportes.ver_operativos`).
+Problemas y decisiones técnicas:
+- **Reutilización explícita de `_prefetched_objects_cache`:** En Django, invocar `.select_related("insumo").all()` sobre un manager relacionado invalida la caché cargada por `prefetch_related` y dispara una nueva consulta SQL por cada objeto padre. Declarar el `select_related("insumo")` dentro de `Prefetch(...)` y consumir `.all()` cuando `"receta_items"` ya está en `_prefetched_objects_cache` elimina por completo el N+1 tanto en la API como en el servicio de costeo.
+- **Índice invertido `(insumo, producto)` en `RecetaItem`:** El constraint `unique_together = ("producto", "insumo")` indexa primero `producto_id`, por lo que filtrar únicamente por `insumo_id` al recalcular costos forzaba un `Seq Scan`. El nuevo índice `idx_recetaitem_insumo_prod` coloca `insumo_id` como primera columna y permite un `Index Only Scan`.
+Archivos tocados:
+- `backend-django/apps/recetas/models.py`
+- `backend-django/apps/recetas/migrations/0002_indices_optimizacion_t34.py`
+- `backend-django/apps/recetas/services.py`
+- `backend-django/apps/recetas/views.py`
+- `backend-django/apps/ventas/models.py`
+- `backend-django/apps/ventas/migrations/0002_indices_optimizacion_t34.py`
+- `backend-django/apps/ventas/services.py`
+- `backend-django/apps/ventas/views.py`
+- `backend-django/apps/insumos/management/commands/seed_rendimiento.py`
+- `backend-django/apps/comun/tests/test_optimizacion_consultas.py`
+- `docs/optimizacion.md`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar los tests de optimización y conteo de queries: `.\backend-django\.venv\Scripts\python.exe -m pytest backend-django/apps/comun/tests/test_optimizacion_consultas.py -v`.
+- Ejecutar el seed de rendimiento y planes `EXPLAIN`: `.\backend-django\.venv\Scripts\python.exe backend-django/manage.py seed_rendimiento --ventas 5000 --productos 40 --lote 2500` (o `--ventas 50000`).
+
+---
+Fecha: 2026-10-29
+Tarea: T3.3 — Aprobación humana de precios importados (Node llama a Django → compra nueva → recálculo de costos → historial y snapshots en MongoDB)
+Rama: feature/t3.3-aprobacion-humana-compra
+Cambios realizados:
+- En `backend-django`:
+  - `apps/recetas/services.py`: incorporación de `obtener_desglose_costeo_producto` y ampliación retrocompatible de `recalcular_recetas_por_insumo` para devolver, además de `producto_id`, `nombre`, `costo_anterior`, `costo_nuevo` y `margen_nuevo`, el `insumo_id` disparador, `costo_mano_obra`, `costo_descartables` y el arreglo `desglose_insumos` requerido por `SnapshotCosteo` sin realizar consultas N+1.
+  - `apps/insumos/services.py`: creación de `inferir_unidad_base` y del servicio transaccional `@transaction.atomic` `registrar_lote_compras_importacion`, que resuelve proveedor e insumos (por ID o nombre), prorratea el envío total proporcionalmente al valor de cada línea (`prorratear_envio`), persiste cada `Compra`, actualiza `Insumo.costo_unitario` y recopila las recetas recalculadas con su desglose.
+  - `apps/insumos/serializers.py` y `apps/insumos/views.py`: incorporación de `ItemConfirmacionImportacionSerializer`, `ConfirmarImportacionComprasSerializer` y la acción `POST /api/compras/confirmar-importacion/` en `CompraViewSet` protegida con `TienePermiso("compras.registrar")`.
+- En `backend-node`:
+  - `src/clients/django.client.js`: incorporación de `normalizarRespuestaConfirmacionDjango` y `confirmarImportacionComprasDjango` con reenvío de la cabecera `Authorization: Bearer <token>`, traducción `snake_case` ↔ `camelCase` en un único punto, timeout de 5000ms y manejo de errores HTTP 400/502 según `docs/api-errores.md`.
+  - `src/models/ImportacionIA.js`: incorporación de campos de auditoría de revisión humana (`aprobadoPorId`, `rechazadoPorId`, `motivoRechazo`, `comprasGeneradasIds`, `productosRecalculadosIds`).
+  - `src/services/importacionIA.service.js`: implementación de `aprobarImportacionPrecios` (valida estado `LISTA`/`CONTINGENCIA`, llama a Django, persiste automáticamente en MongoDB un `HistorialPrecio` y un `SnapshotCosteo` por cada producto recalculado según CA3.2 y marca la importación como `APROBADA`) y `rechazarImportacionPrecios` (marca la importación como `RECHAZADA` sin llamar a Django ni alterar compras ni costos según CA7.3).
+  - `src/controllers/importacionIA.controller.js` y `src/routes/importacionIA.routes.js`: endpoints `POST /:id/aprobar` y `POST /:id/rechazar` protegidos con `verificarToken`, `verificarPermiso('ia.importar_listas')` y validaciones `express-validator`.
+- Suites de pruebas automatizadas en `pytest` y `Jest`:
+  - `backend-django/apps/insumos/tests/test_confirmar_importacion.py`: 5 tests verificando prorrateo de envío y desglose de recálculo, rollback atómico `@transaction.atomic` ante unidad incompatible, éxito 201 con Dueño, rechazo negativo 403 con Cajero y rechazo 400 ante datos inválidos.
+  - `backend-node/tests/unit/djangoClient.unit.test.js`: 4 tests unitarios verificando normalización `snake_case` → `camelCase`, reenvío de JWT RS256, propagación de error 400 y manejo de caída de red con 502.
+  - `backend-node/tests/integration/importacionIA.integration.test.js`: ampliación con tests de aprobación humana (persistencia de `HistorialPrecio` y `SnapshotCosteo` + transición a `APROBADA`), rechazo humano (CA7.3: transición a `RECHAZADA` con 0 llamadas a Django), bloqueo 400 ante doble procesamiento y respuesta 502 conservando estado `LISTA` si Django está caído.
+- Documentación:
+  - Actualización de `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md`, `docs/integracion.md`, `docs/seguridad.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-node` (`POST /api/importaciones/:id/aprobar`, `POST /api/importaciones/:id/rechazar`).
+- `backend-node` (`django.client.js`) ↔ `backend-django` (`POST /api/compras/confirmar-importacion/` con reenvío de JWT RS256).
+Problemas y decisiones técnicas:
+- **Humano en el circuito obligatorio (CA7.3):** Ninguna propuesta de la IA modifica PostgreSQL automáticamente; solo `POST /:id/aprobar` dispara la llamada transaccional a Django, mientras que `POST /:id/rechazar` cierra el flujo en MongoDB sin tocar compras ni costos.
+- **Atomicidad en Django y preservación de estado en Node:** Si una línea del lote falla en Django, `@transaction.atomic` revierte todo el lote. Si Django no está disponible cuando el humano aprueba, Node responde `502 Bad Gateway` pero mantiene la importación en estado `LISTA` para que el usuario pueda reintentar sin perder la propuesta extraída.
+- **Desglose de recálculo en la misma respuesta transaccional:** Al incluir `desglose_insumos`, `costo_mano_obra` y `costo_descartables` en la salida de `recalcular_recetas_por_insumo`, Node persiste `historial_precios` y `snapshots_costeo` (CA3.2) en el acto sin hacer peticiones N+1 adicionales a Django.
+Archivos tocados:
+- `backend-django/apps/recetas/services.py`
+- `backend-django/apps/insumos/services.py`
+- `backend-django/apps/insumos/serializers.py`
+- `backend-django/apps/insumos/views.py`
+- `backend-django/apps/insumos/tests/test_confirmar_importacion.py`
+- `backend-node/src/clients/django.client.js`
+- `backend-node/src/models/ImportacionIA.js`
+- `backend-node/src/services/importacionIA.service.js`
+- `backend-node/src/controllers/importacionIA.controller.js`
+- `backend-node/src/routes/importacionIA.routes.js`
+- `backend-node/tests/unit/djangoClient.unit.test.js`
+- `backend-node/tests/integration/importacionIA.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/integracion.md`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django/`: ejecutar tests de confirmación de importación con `pytest apps/insumos/tests/test_confirmar_importacion.py -v` (con `USE_SQLITE=True`).
+- En `backend-node/`: ejecutar `npm test` (15 suites, 88 tests en verde).
+- En `backend-node/`: ejecutar específicamente los tests de T3.2 y T3.3: `npm test -- tests/unit/djangoClient.unit.test.js tests/unit/aiClient.unit.test.js tests/integration/importacionIA.integration.test.js`.
+
+---
+Fecha: 2026-10-29
+Tarea: T3.2 — Node consume `ai-service` (`POST /api/importaciones` 202 asíncrono) y persistencia de trazabilidad en MongoDB
+Rama: feature/t3.2-node-consume-ia
+Cambios realizados:
+- En `backend-node`:
+  - `src/config/env.js`: incorporación de `aiServiceUrl` (`AI_SERVICE_URL`, por defecto `http://localhost:8001`).
+  - `src/clients/ai.client.js`: cliente HTTP `extraerPreciosIA` hacia `POST /v1/extraer-precios` de `ai-service` con `AbortSignal.timeout(12000)`, traducción de `snake_case` a `camelCase` en un único punto, validación estricta de esquema (`validarItemExtraido` y `validarYNormalizarSalidaIA`) y retorno de estado de contingencia ante errores de red o respuestas inválidas.
+  - `src/models/ImportacionIA.js`: esquema Mongoose para la colección `importaciones_ia` registrando `usuarioId`, `entrada` (`textoLista`, `proveedorNombre`), `salida` (`proveedorDetectado`, `envioDetectado`, `moneda`, `items`, `advertencias`), `estado` (`PENDIENTE`, `PROCESANDO`, `LISTA`, `CONTINGENCIA`, `APROBADA`, `RECHAZADA`, `FALLIDA`), `versionPrompt`, `proveedorIa`, `latenciaMs`, `contingencia` y `mensajeError`. Los importes y cantidades se almacenan como cadenas decimales exactas (`String`) para evitar pérdida de precisión por punto flotante.
+  - `src/repositories/importacionIA.repository.js`: funciones de acceso a datos `crearImportacion`, `obtenerImportacionPorId`, `actualizarImportacionPorId` y `listarImportaciones` con paginación estándar `{ datos, pagina, limite, total }`.
+  - `src/services/importacionIA.service.js`: servicio `iniciarImportacionPrecios` que crea el registro en estado `PENDIENTE`, dispara `procesarImportacionEnSegundoPlano` mediante `setImmediate` sin bloquear el hilo de respuesta HTTP y actualiza el documento en MongoDB al finalizar.
+  - `src/controllers/importacionIA.controller.js` y `src/routes/importacionIA.routes.js`: endpoints `POST /`, `GET /` y `GET /:id` protegidos con `verificarToken` y `verificarPermiso('ia.importar_listas')`, montados en `app.js` bajo `/api/importaciones` y `/importaciones`.
+- Suite de pruebas en Jest (81 tests totales en verde, 14 suites):
+  - `tests/unit/aiClient.unit.test.js`: 6 tests unitarios verificando validación de ítems, normalización `snake_case` → `camelCase`, preservación de strings decimales y contingencia ante caída de `ai-service`.
+  - `tests/integration/importacionIA.integration.test.js`: 6 tests de integración verificando rechazo 401 sin token, rechazo 403 sin `ia.importar_listas`, rechazo 400 ante datos inválidos, respuesta inmediata HTTP 202 Accepted, persistencia completa en MongoDB (`LISTA` y `CONTINGENCIA`), listado paginado y error 404.
+- Documentación:
+  - Actualización de `docs/CONNECTIONS.md`, `docs/seguridad.md` y `docs/bitacora.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Clientes HTTP / PWA ↔ `backend-node` (`POST /api/importaciones`, `GET /api/importaciones`, `GET /api/importaciones/:id` con permiso `ia.importar_listas`).
+- `backend-node` (`ai.client.js`) ↔ `ai-service` (`POST /v1/extraer-precios` con timeout y degradación).
+- `backend-node` ↔ MongoDB (nueva colección `importaciones_ia`).
+Problemas y decisiones técnicas:
+- **Procesamiento asíncrono no bloqueante (HTTP 202):** Cumpliendo CA7.1 y el paso 1 del flujo de arquitectura, el endpoint registra la solicitud en estado `PENDIENTE`, responde `202 Accepted` de inmediato con el `importacionId` y delega la llamada a `ai-service` a `procesarImportacionEnSegundoPlano`.
+- **Doble validación de salida de IA:** Además de la validación con Pydantic v2 en `ai-service`, `ai.client.js` verifica en Node que cada ítem recibido tenga cantidad y precio positivos y unidad válida antes de guardarlo en MongoDB (cumpliendo `convenciones-node.md` §8).
+Archivos tocados:
+- `backend-node/app.js`
+- `backend-node/src/config/env.js`
+- `backend-node/src/clients/ai.client.js`
+- `backend-node/src/models/ImportacionIA.js`
+- `backend-node/src/repositories/importacionIA.repository.js`
+- `backend-node/src/services/importacionIA.service.js`
+- `backend-node/src/controllers/importacionIA.controller.js`
+- `backend-node/src/routes/importacionIA.routes.js`
+- `backend-node/tests/unit/aiClient.unit.test.js`
+- `backend-node/tests/integration/importacionIA.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-node/`: ejecutar `npm test` (14 suites, 81 tests en verde).
+- Ejecutar únicamente los tests de importación con IA: `npx jest tests/unit/aiClient.unit.test.js tests/integration/importacionIA.integration.test.js`.
+
+---
+Fecha: 2026-10-29
+Tarea: T3.1 — Construcción de `ai-service` en FastAPI con esquemas Pydantic v2, prompts versionados y patrón Adapter (Gemini API / Ollama)
+Rama: feature/t3.1-ai-service-fastapi
+Cambios realizados:
+- Creación del microservicio `ai-service/` siguiendo la estructura de `.agents/rules/convenciones-python.md` (§4):
+  - `app/main.py` y `app/routers/salud.py`: inicialización de la aplicación FastAPI con documentación OpenAPI y endpoint `GET /health` (`{"estado": "ok", "servicio": "ai-service"}`).
+  - `app/excepciones.py`: manejadores personalizados para `RequestValidationError`, `StarletteHTTPException`, `ErrorDominioIA` y excepciones no controladas, garantizando el contrato único de errores `{ "mensaje": "...", "detalles": ... }` de `docs/api-errores.md` (convirtiendo el 422 por defecto de FastAPI en HTTP 400 Bad Request para paridad con Django y Express).
+  - `app/schemas/`: esquemas Pydantic v2 con ejemplos OpenAPI (`json_schema_extra`) para `POST /v1/extraer-precios` (`SolicitudExtraccionPrecios`, `ItemPrecioExtraido`, `SalidaIAExtraccionPrecios`, `RespuestaExtraccionPrecios`) y `POST /v1/resumen-semanal` (`SolicitudResumenSemanal`, `ProductoRendimientoEntrada`, `SugerenciaRotacionItem`, `SalidaIAResumenSemanal`, `RespuestaResumenSemanal`). Uso estricto de `Decimal` para montos y cantidades, y normalización de unidades compatibles con `backend-django`.
+  - `app/prompts/v1/` y `app/services/prompts.py`: prompts versionados (`extraer_precios.txt` y `resumen_semanal.txt`) con cargador protegido contra *path traversal*.
+  - `app/services/proveedor_ia.py`: interfaz abstracta `ProveedorIA` e implementaciones `GeminiAdapter` (proveedor externo principal por REST HTTPS con cabecera `x-goog-api-key`) y `OllamaAdapter` (soporte local opcional en `/api/chat`), seleccionables mediante `AI_PROVIDER`.
+  - `app/services/extraccion.py`, `app/services/resumen.py` y `app/routers/ia.py`: servicios de negocio que ejecutan las llamadas con timeout (`AI_TIMEOUT_SECONDS`), reintentos acotados (`AI_MAX_RETRIES`), validación estricta de salida con Pydantic v2 y retorno automático de respuesta de contingencia (`contingencia: true`) ante caídas o respuestas inválidas de la IA.
+- Suite de pruebas automatizadas en `pytest` (57 tests en verde):
+  - `app/tests/unit/test_unit_schemas.py`: validaciones de `Decimal`, normalización de unidades y rechazo de montos/cantidades no positivas.
+  - `app/tests/unit/test_unit_prompts.py`: lectura de prompts v1 y bloqueo de *path traversal*.
+  - `app/tests/unit/test_unit_adapters_y_servicios.py`: pruebas aisladas de `GeminiAdapter`, `OllamaAdapter`, separación de `system` y `user`, reintentos y activación de contingencia ante timeouts o fallos de esquema.
+  - `app/tests/api/test_api_endpoints.py`: pruebas de contrato HTTP 200/400/404 y presencia de ejemplos en `/openapi.json`.
+- Documentación y configuración:
+  - Creación de `docs/adr/0002-adaptador-proveedor-ia.md` registrando formalmente la decisión del patrón Adapter y el uso de Gemini API para mitigar el límite de 8 GB de RAM del comercio.
+  - Actualización de `.env.example`, `docs/arquitectura.md`, `docs/ARCHITECTURE.md` y `docs/CONNECTIONS.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `backend-node` / Clientes internos ↔ `ai-service` (`GET /health`, `POST /v1/extraer-precios`, `POST /v1/resumen-semanal` en puerto 8001).
+- `ai-service` (`ProveedorIA`) ↔ Proveedor de IA (`GeminiAdapter` HTTPS / `OllamaAdapter` HTTP 11434).
+Problemas y decisiones técnicas:
+- **Prevención de Prompt Injection (datos separados de instrucciones):** Cumpliendo `.agents/rules/convenciones-python.md` (§4), el texto de la lista del proveedor nunca se concatena dentro de las instrucciones del prompt; las instrucciones viajan en `system_instruction` / `role: "system"` y la entrada del usuario se envía por separado como un JSON de datos en `role: "user"`.
+- **Clave de API en cabecera y no en URL:** En `GeminiAdapter`, `GEMINI_API_KEY` se transmite mediante la cabecera `x-goog-api-key` en lugar del query param `?key=`, evitando que trazas de red o excepciones de `httpx` filtren el secreto en los logs.
+- **Uso directo de `httpx` asíncrono en el Adapter:** Permite manejar timeouts exactos y mantener dependencias livianas sin arrastrar SDKs pesados con extensiones nativas de gRPC.
+Archivos tocados:
+- `.env.example`
+- `ai-service/requirements.txt`
+- `ai-service/pytest.ini`
+- `ai-service/app/*`
+- `docs/adr/0002-adaptador-proveedor-ia.md`
+- `docs/arquitectura.md`
+- `docs/ARCHITECTURE.md`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `ai-service/`: ejecutar `.\.venv\Scripts\python.exe -m pytest -v` (57 tests en verde).
+- Levantar el servidor de desarrollo: `cd ai-service; .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8001` y abrir `http://localhost:8001/docs` para inspeccionar el esquema OpenAPI con sus ejemplos interactivos.
+- Verificar el endpoint de salud: `GET http://localhost:8001/health`.
+
+---
 Fecha: 2026-10-28
 Tarea: T2.7 — Revisión de secretos, auditoría cruzada de seguridad y cierre formal del TP 2
 Rama: feature/t2.7-auditoria-secretos-cierre-tp2

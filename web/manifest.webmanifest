@@ -1,0 +1,20 @@
+{
+    "name": "Café Gestión — Caja, Costeo y Tablero en Vivo",
+    "short_name": "Café Gestión",
+    "description": "Cliente PWA local para gestión de cafetería: tablero en tiempo real, importación de listas con IA y punto de venta con lector de código de barras.",
+    "start_url": "/app/index.html",
+    "scope": "/app/",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#b45309",
+    "orientation": "any",
+    "lang": "es-AR",
+    "icons": [
+        {
+            "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='24' fill='%23b45309'/%3E%3Cpath d='M32 44h52v28a24 24 0 0 1-24 24H56a24 24 0 0 1-24-24V44zm52 8h8a10 10 0 0 1 0 20h-8V52zM28 104h64v6H28v-6z' fill='%23fffbeb'/%3E%3C/svg%3E",
+            "sizes": "128x128",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}

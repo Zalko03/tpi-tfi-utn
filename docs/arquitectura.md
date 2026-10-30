@@ -133,9 +133,62 @@ Solo se listan con su estado; los ADR se crean en `docs/adr/` más adelante.
 |---|---|---|
 | **JWT RS256, Django único emisor** | Aceptada · [ADR-0001](adr/0001-autenticacion-jwt-rs256.md) | Solo Django tiene la clave privada; Node valida con la pública (plan §6, T2.1; `convenciones-node.md` §7). |
 | **Contrato JSON `snake_case` con traducción a `camelCase` en `django.client.js`** | Tomada · ADR a registrar | Django responde en `snake_case` (DRF por defecto); Node traduce en un solo lugar (`convenciones-python.md` §3). |
-| **Adapter de proveedor de IA** | Tomada · ADR a registrar | `ai-service` define una interfaz con Ollama y, opcionalmente, Gemini. Los docentes confirmaron que se puede usar el proveedor que se prefiera; la clave va solo en `.env` y no se envían datos identificables del local. |
+| **Adapter de proveedor de IA** | Aceptada · [ADR-0002](adr/0002-adaptador-proveedor-ia.md) | `ai-service` define una interfaz `ProveedorIA` con Gemini API y soporte opcional de Ollama. Los docentes confirmaron que se puede usar el proveedor que se prefiera; la clave va solo en `.env` y no se envían datos identificables del local. |
 | **Modalidad de despliegue** | **PENDIENTE** (T4.4) | Propuesta del plan: Django, Node y bases en cloud gratuito, y la IA por el adapter. Con unos 8 GB de RAM en el local del dueño no conviene correr todo ahí. El `docker compose` completo debe levantar en una PC del equipo. Se decide y declara antes del TP4. |
 | **Medio del aviso de Django a Node** | **PENDIENTE** (a decidir en TP3) | Cubre el recálculo de costos (paso 5 del flujo) y las ventas para el tablero. **Opción propuesta (no decidida):** HTTP interno con token de servicio. |
 | **Token de Node a Django** | **PENDIENTE** (a decidir en TP2) | **Opción propuesta (no decidida):** reenviar el JWT del usuario en las acciones de personas, y usar un token de servicio en los eventos internos. |
 
 
+
+---
+
+## 7. Diagrama de secuencia del Cliente Mínimo PWA (`web/`, Tarea T3.6)
+
+El cliente mínimo en `web/` es una PWA instalable (`manifest.webmanifest` + `sw.js`) servida localmente en `/app` por `backend-node` y conecta los tres módulos principales (**Tablero en Tiempo Real**, **Importación con IA y Revisión Humana** y **Caja Rápida con Lector HID**):
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operador as Dueño / Cajero
+    participant PWA as Cliente PWA (web/)
+    participant Django as backend-django (8000)
+    participant Node as backend-node + Socket.IO (3000)
+    participant IA as ai-service (8001)
+    participant Mongo as MongoDB
+
+    Operador->>PWA: Inicia sesión (usuario y contraseña)
+    PWA->>Django: POST /api/auth/token/
+    Django-->>PWA: 200 OK (JWT RS256 con rol y permisos)
+
+    PWA->>Node: Handshake Socket.IO (auth.token = JWT RS256)
+    Node->>Node: autenticarSocketJwt (verifica firma RS256 y usuario activo)
+    Node-->>PWA: connect + presencia.actualizada (unido a sala "local")
+
+    Note over Operador,Django: Módulo 3 — Caja Rápida y Sala de Turno (HU4)
+    Operador->>PWA: Selecciona Turno #1 y clic en "Unirse a Sala"
+    PWA->>Node: emit("turno:unirse", { turnoId: 1, titularId })
+    Node-->>PWA: ack { ok: true, sala: "turno:1" }
+    Operador->>PWA: Escanea código de barras HID (Enter) y cobra ticket
+    PWA->>Django: POST /api/ventas/ (Bearer JWT)
+    Django-->>PWA: 201 Created (Venta registrada con costo snapshot)
+    Node-->>PWA: Socket.IO "venta.registrada" (salas "local" y "turno:1")
+
+    Note over Operador,Mongo: Módulo 2 — Importación con IA y Aprobación Humana (HU7)
+    Operador->>PWA: Pega lista de precios del proveedor y envía
+    PWA->>Node: POST /api/importaciones (Bearer JWT)
+    Node->>Mongo: Crea ImportacionIA en estado PENDIENTE
+    Node-->>PWA: 202 Accepted (importacionId)
+    Node->>IA: POST /v1/extraer-precios (segundo plano)
+    IA-->>Node: JSON validado con Pydantic v2
+    Node->>Mongo: Actualiza ImportacionIA a estado LISTA
+    Node-->>PWA: Socket.IO "importacion.lista" (sala "local")
+    PWA->>Node: GET /api/importaciones/:id
+    Node-->>PWA: 200 OK (propuesta de ítems y envío detectado)
+    Operador->>PWA: Revisa y hace clic en "Aprobar y Recalcular Recetas"
+    PWA->>Node: POST /api/importaciones/:id/aprobar (Bearer JWT)
+    Node->>Django: POST /api/compras/confirmar-importacion/ (reenvía JWT)
+    Django-->>Node: 201 Created (compras_creadas + productos_recalculados)
+    Node->>Mongo: Guarda HistorialPrecio + SnapshotCosteo y estado APROBADA
+    Node-->>PWA: Socket.IO "costo.actualizado" (sala permiso:recetas.ver_costos)
+    Node-->>PWA: 200 OK (resumen de compras e impacto en recetas)
+```

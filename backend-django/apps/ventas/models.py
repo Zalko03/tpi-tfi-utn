@@ -57,6 +57,12 @@ class Venta(models.Model):
         verbose_name = "Venta"
         verbose_name_plural = "Ventas"
         ordering = ["-fecha", "-id"]
+        indexes = [
+            models.Index(fields=["fecha"], name="idx_venta_fecha"),
+            models.Index(
+                fields=["-fecha", "-id"], name="idx_venta_fecha_id_desc"
+            ),
+        ]
 
     def __str__(self):
         return f"Ticket #{self.id} (${self.total}) - {self.medio_pago}"
@@ -95,6 +101,14 @@ class VentaItem(models.Model):
     class Meta:
         verbose_name = "Ítem de Venta"
         verbose_name_plural = "Ítems de Venta"
+        indexes = [
+            models.Index(
+                fields=["venta", "producto"], name="idx_ventaitem_venta_prod"
+            ),
+            models.Index(
+                fields=["producto", "venta"], name="idx_ventaitem_prod_venta"
+            ),
+        ]
 
     def __str__(self):
         return f"{self.cantidad}x {self.producto.nombre} (${self.precio_unitario})"

@@ -121,11 +121,16 @@ flowchart TD
 | `/api/ventas/` | `POST` | `ventas.cobrar_ticket` | Debe pertenecer al turno abierto del cajero |
 | `/api/ventas/` | `GET` | `ventas.ver_historial_propio` | Cajero: filtra solo sus ventas. Con `ventas.ver_historial_todos`: lista global |
 | `/api/ventas/:id/anular/` | `POST` | `ventas.anular_ticket` | Requiere autorización de Encargado o Dueño |
+| `/api/ventas/reporte-por-producto/` | `GET` | `reportes.ver_operativos` | Reporte agregado por rango de fechas (Dueño y Encargado) |
+| `/api/ventas/ranking-productos/` | `GET` | `reportes.ver_operativos` | Ranking de productos más y menos vendidos (Dueño y Encargado, HU10) |
+| `/api/ventas/ganancia-diaria/` | `GET` | `reportes.ver_financieros` | Ganancia diaria con costo congelado (Exclusivo Dueño, HU10) |
+| `/api/ventas/punto-equilibrio/` | `GET`/`POST` | `reportes.ver_financieros` | Punto de equilibrio y metas diaria y semanal (Exclusivo Dueño, HU11) |
 | `/api/caja/turnos/` | `POST` | `caja.abrir_turno` | Solo si no tiene un turno previo sin cerrar |
 | `/api/caja/turnos/:id/cerrar/`| `POST` | `caja.cerrar_turno` | Cajero solo puede cerrar su propio turno |
 | `/api/caja/movimientos/` | `POST` | `caja.registrar_movimiento` | Registrar extracciones o ingresos |
 | `/api/insumos/` | `POST`/`PUT` | `insumos.crear` / `insumos.editar` | CRUD operativo |
 | `/api/compras/` | `POST` | `compras.registrar` | Alta de facturas y prorrateo |
+| `/api/compras/confirmar-importacion/` | `POST` | `compras.registrar` | Registro atómico de compras aprobadas por revisión humana |
 | `/api/recetas/` | `POST`/`PUT` | `recetas.crear` / `recetas.editar` | Modificación de fórmulas |
 | `/api/productos/:id/costo/`| `GET` | `recetas.ver_costos` | Protege desglose de costos y márgenes |
 | `/api/usuarios/` | `CRUD` | `personal.*` | Exclusivo Dueño |
@@ -136,6 +141,9 @@ flowchart TD
 |---|---|---|
 | `/api/productos/:id/resumen-costo` | `GET` | Requiere token válido y permiso `recetas.ver_costos` |
 | `/api/historial-precios` | `GET` | Requiere token válido y permiso `insumos.ver` |
+| `/api/importaciones` (`/importaciones`) | `POST`/`GET` | Requiere token válido y permiso `ia.importar_listas` |
+| `/api/importaciones/:id/aprobar` | `POST` | Requiere token válido y permiso `ia.importar_listas` (y reenvía JWT a Django) |
+| `/api/importaciones/:id/rechazar` | `POST` | Requiere token válido y permiso `ia.importar_listas` |
 | Handshake Socket.IO | `CONNECT` | Valida firma del JWT con `JWT_PUBLIC_KEY` y estado activo |
 | Sala `local` | `JOIN` | Requiere token de cualquier empleado activo |
 | Sala `turno:{id}` | `JOIN` | Valida que el `user_id` sea titular del turno o posea `caja.gestionar_turnos_ajenos` |

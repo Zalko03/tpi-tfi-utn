@@ -1,14 +1,18 @@
 """ViewSets delgados para proveedores, insumos y compras."""
 
-from rest_framework import viewsets, filters
+from rest_framework import viewsets, filters, serializers, status
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from apps.insumos.models import Proveedor, Insumo, Compra
 from apps.insumos.serializers import (
     ProveedorSerializer,
     InsumoSerializer,
     CompraSerializer,
+    ConfirmarImportacionComprasSerializer,
 )
+from apps.insumos.services import registrar_lote_compras_importacion
 from apps.usuarios.permissions import TienePermiso
 
 
@@ -73,6 +77,44 @@ class CompraViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
             return [TienePermiso("compras.ver")()]
-        elif self.action in ("create", "update", "partial_update", "destroy"):
+        elif self.action in (
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+            "confirmar_importacion",
+        ):
             return [TienePermiso("compras.registrar")()]
         return [IsAuthenticated()]
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="confirmar-importacion",
+    )
+    def confirmar_importacion(self, request):
+        """
+        Registra de forma atómica el lote de compras derivado de una importación
+        aprobada por el humano (T3.3), prorrateando envío y recalculando recetas.
+        """
+        serializer = ConfirmarImportacionComprasSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            resultado = registrar_lote_compras_importacion(
+                items=datos["items"],
+                proveedor_id=datos.get("proveedor_id"),
+                proveedor_nombre=datos.get("proveedor_nombre"),
+                envio_total=datos.get("envio"),
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+        return Response(
+            {
+                "mensaje": "Importación de compras registrada y recetas recalculadas exitosamente",
+                **resultado,
+            },
+            status=status.HTTP_201_CREATED,
+        )

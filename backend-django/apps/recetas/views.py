@@ -6,14 +6,17 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from apps.comun.throttling import RecalculoRateThrottle
-from apps.recetas.models import Producto, RecetaItem
+from apps.recetas.models import RecetaItem
 from apps.recetas.serializers import ProductoSerializer, RecetaItemSerializer
-from apps.recetas.services import actualizar_costo_y_margen_producto
+from apps.recetas.services import (
+    actualizar_costo_y_margen_producto,
+    listar_productos_con_costos_optimizado,
+)
 from apps.usuarios.permissions import TienePermiso
 
 
 class ProductoViewSet(viewsets.ModelViewSet):
-    queryset = Producto.objects.prefetch_related("receta_items__insumo").all()
+    queryset = listar_productos_con_costos_optimizado()
     serializer_class = ProductoSerializer
     filter_backends = [
         DjangoFilterBackend,
