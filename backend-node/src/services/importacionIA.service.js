@@ -1,12 +1,13 @@
 import { extraerPreciosIA } from '../clients/ai.client.js';
 import { confirmarImportacionComprasDjango } from '../clients/django.client.js';
 import * as importacionRepo from '../repositories/importacionIA.repository.js';
+import { emitirCostoActualizado, emitirImportacionLista } from '../sockets/emitter.js';
 import { registrarCambioPrecio } from './historialPrecio.service.js';
 import { guardarSnapshot } from './snapshotCosteo.service.js';
 
 /**
- * Ejecuta en segundo plano la consulta a ai-service y persiste la salida,
- * latencia y versión de prompt en MongoDB sin bloquear la petición HTTP original.
+ * Ejecuta en segundo plano la consulta a ai-service, persiste la salida,
+ * latencia y versión de prompt en MongoDB y emite 'importacion.lista' por Socket.IO.
  */
 export const procesarImportacionEnSegundoPlano = async (
     importacionId,
@@ -25,7 +26,7 @@ export const procesarImportacionEnSegundoPlano = async (
 
         const estadoFinal = resultadoIA.contingencia ? 'CONTINGENCIA' : 'LISTA';
 
-        return await importacionRepo.actualizarImportacionPorId(importacionId, {
+        const actualizada = await importacionRepo.actualizarImportacionPorId(importacionId, {
             estado: estadoFinal,
             salida: {
                 proveedorDetectado: resultadoIA.proveedorDetectado,
@@ -40,6 +41,17 @@ export const procesarImportacionEnSegundoPlano = async (
             contingencia: resultadoIA.contingencia,
             mensajeError: resultadoIA.mensajeContingencia || resultadoIA.error || null,
         });
+
+        // Paso 3 del flujo de arquitectura: aviso en tiempo real por Socket.IO
+        emitirImportacionLista({
+            importacionId: String(importacionId),
+            estado: estadoFinal,
+            contingencia: resultadoIA.contingencia,
+            proveedorDetectado: resultadoIA.proveedorDetectado,
+            cantidadItems: resultadoIA.items.length,
+        });
+
+        return actualizada;
     } catch (error) {
         return await importacionRepo.actualizarImportacionPorId(importacionId, {
             estado: 'FALLIDA',
@@ -108,10 +120,10 @@ export const obtenerListadoImportaciones = async ({ estado, pagina = 1, limite =
 };
 
 /**
- * Paso 4 y 5 del flujo de arquitectura (T3.3):
+ * Paso 4 y 5 del flujo de arquitectura (T3.3 y T3.5):
  * El humano aprueba la propuesta de precios -> Node llama a Django para crear
  * las compras y recalcular recetas -> Node guarda historial_precios y snapshots_costeo
- * en MongoDB y marca la importación como APROBADA.
+ * en MongoDB, emite 'costo.actualizado' por Socket.IO y marca la importación como APROBADA.
  */
 export const aprobarImportacionPrecios = async (
     id,
@@ -172,7 +184,7 @@ export const aprobarImportacionPrecios = async (
         tokenJwt
     );
 
-    // Por cada receta recalculada en Django, guardamos HistorialPrecio y SnapshotCosteo (CA3.2)
+    // Por cada receta recalculada en Django, guardamos HistorialPrecio + SnapshotCosteo y emitimos evento Socket.IO
     for (const prod of resultadoDjango.productosRecalculados) {
         await registrarCambioPrecio({
             productoId: prod.productoId,
@@ -189,6 +201,15 @@ export const aprobarImportacionPrecios = async (
             costoDescartables: prod.costoDescartables,
             costoTotal: prod.costoNuevo,
             margenBruto: prod.margenNuevo,
+        });
+
+        emitirCostoActualizado({
+            productoId: prod.productoId,
+            insumoId: prod.insumoId,
+            nombre: prod.nombre,
+            costoAnterior: prod.costoAnterior,
+            costoNuevo: prod.costoNuevo,
+            margenNuevo: prod.margenNuevo,
         });
     }
 
