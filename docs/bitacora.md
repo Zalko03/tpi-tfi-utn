@@ -21,6 +21,59 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-10-30
+Tarea: Estandarización y ampliación de tests unitarios y de API en backend-django (Cierre TP 3)
+Rama: tp3-completo
+Cambios realizados:
+- Reestructuración completa y separación física en subcarpetas `tests/unit/` y `tests/api/` en todos los módulos de `backend-django` para homogeneizar la arquitectura con `backend-node` y `ai-service`:
+  - `apps/insumos/tests/`:
+    - `unit/test_unit_insumos_services.py`: tests unitarios puros de conversión de unidades base (g, ml, un), costeo unitario con/sin IVA y prorrateo proporcional de flete.
+    - `unit/test_unit_confirmar_importacion.py`: tests unitarios del servicio `registrar_lote_compras_importacion` verificando prorrateo de envío, recálculo en cascada con desglose para snapshots, rollback atómico `@transaction.atomic` ante fallos, envío cero y validación de parámetros.
+    - `api/test_api_confirmar_importacion.py`: tests de integración del endpoint `POST /api/compras/confirmar-importacion/` verificando éxito 201 para Dueño, rechazo 403 para Cajero, 401 para anónimo y 400 para payloads inválidos.
+  - `apps/recetas/tests/`:
+    - `unit/test_unit_costeo_services.py`: tests unitarios de cálculo de costo de productos (insumos + MO + descartables), márgenes y recálculo automático ante aumentos de insumos.
+  - `apps/ventas/tests/`:
+    - `unit/test_unit_ventas_services.py`: tests unitarios de creación de venta, totales y congelamiento de snapshot de costos (`CA4.2`).
+    - `unit/test_unit_reportes_servicios.py`: 11 tests unitarios exhaustivos sobre las fórmulas de negocio de HU10 y HU11:
+      - Ganancia diaria con costo unitario congelado (`CA10.1`), inmunidad ante subas de costos posteriores y caso borde de período sin ventas (retorno de ceros y desglose vacío).
+      - Ranking de más y menos vendidos (`CA10.2`), límite configurable y detección de productos activos con 0 ventas.
+      - Punto de equilibrio y metas diaria y semanal (`CA11.1` y `CA11.2`) con cálculo explícito y con agregación de tickets reales.
+      - Casos borde y robustez matemática: costos fijos nulos/negativos, sin ventas en el período, costos variables superiores a ventas (margen de contribución negativo) y días operativos/semanales <= 0.
+    - `api/test_api_reportes.py`: 14 tests de integración de endpoints DRF:
+      - `GET /api/ventas/ganancia-diaria/`: 200 para Dueño, 403 para Encargado y Cajero, 400 para fechas inválidas.
+      - `GET /api/ventas/ranking-productos/`: 200 para Dueño y Encargado (`reportes.ver_operativos`), 403 para Cajero, 400 para límite inválido.
+      - `GET` y `POST /api/ventas/punto-equilibrio/`: 200 para Dueño (`reportes.ver_financieros`), 403 para Encargado y Cajero, 400 sin costos fijos o con costos variables excesivos.
+  - `apps/salud/tests/`:
+    - `api/test_api_health.py`: reubicación del test del endpoint `/health` y configuración de arranque en `tests/api/`.
+  - `apps/comun/tests/`:
+    - `api/test_api_endpoints.py`: reubicación de pruebas de paginación y contrato unificado de errores 404 en `tests/api/`.
+- Conteo total de pruebas en verde en el monorepo:
+  - `backend-django`: 357 tests (25 tests nuevos añadidos).
+  - `backend-node`: 119 tests.
+  - `ai-service`: 57 tests.
+  - Total monorepo: 533 tests pasando al 100%.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna conexión de arquitectura fue alterada; se preservaron intactos todos los contratos JSON, permisos granulares y rutas de API.
+Problemas y decisiones técnicas:
+- **Separación física `unit/` y `api/` a nivel de filesystem:** Al organizar cada suite en su directorio específico, las herramientas de CI y los evaluadores docentes pueden ejecutar exclusivamente pruebas unitarias en memoria (`pytest apps/*/tests/unit/`) o pruebas de integración HTTP (`pytest apps/*/tests/api/`) de manera determinista e independiente.
+- **Validación matemática exhaustiva de reportes:** Se reforzaron los tests con todos los casos borde posibles (costos fijos nulos/negativos, catálogo sin rotación, período sin tickets y márgenes de contribución negativos) comprobando que las excepciones se originen en los servicios y se traduzcan limpiamente en respuestas HTTP 400 por los ViewSets.
+Archivos tocados:
+- `backend-django/apps/insumos/tests/unit/test_unit_confirmar_importacion.py`
+- `backend-django/apps/insumos/tests/unit/test_unit_insumos_services.py`
+- `backend-django/apps/insumos/tests/api/test_api_confirmar_importacion.py`
+- `backend-django/apps/recetas/tests/unit/test_unit_costeo_services.py`
+- `backend-django/apps/ventas/tests/unit/test_unit_reportes_servicios.py`
+- `backend-django/apps/ventas/tests/unit/test_unit_ventas_services.py`
+- `backend-django/apps/ventas/tests/api/test_api_reportes.py`
+- `backend-django/apps/salud/tests/api/test_api_health.py`
+- `backend-django/apps/comun/tests/api/test_api_endpoints.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django/`: `cd backend-django && USE_SQLITE=True .venv/bin/pytest` (357 tests en verde).
+- En `backend-node/`: `cd backend-node && DJANGO_BASE_URL=http://localhost:59999 npm test` (119 tests en verde).
+- En `ai-service/`: `cd ai-service && .venv/bin/pytest -v` (57 tests en verde).
+
+---
 Fecha: 2026-10-29
 Tarea: T3.8 (Should) — Reportes financieros y operativos: ganancia diaria, ranking de productos, punto de equilibrio y metas (HU10–HU11)
 Rama: feature/t3.8-reportes-ganancia-pe-metas

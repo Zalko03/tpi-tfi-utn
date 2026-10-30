@@ -1,4 +1,5 @@
 """Tests unitarios para servicios de insumos, conversión de unidades y costeo."""
+
 from decimal import Decimal
 import pytest
 from apps.insumos.services import (

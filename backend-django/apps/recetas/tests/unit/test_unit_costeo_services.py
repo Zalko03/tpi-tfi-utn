@@ -1,4 +1,5 @@
 """Tests unitarios para cálculo de recetas, costeo, márgenes y recálculo."""
+
 from decimal import Decimal
 import pytest
 from apps.insumos.models import Insumo
