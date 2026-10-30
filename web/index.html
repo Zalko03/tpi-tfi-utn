@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#b45309" />
+    <title>Café Gestión — Tablero en Vivo, Importación IA y Caja PWA</title>
+    <link rel="manifest" href="/app/manifest.webmanifest" />
+    <link rel="stylesheet" href="/app/css/estilos.css" />
+</head>
+<body>
+    <header class="barra-superior">
+        <div class="marca">
+            <div class="marca-icono">CG</div>
+            <div>
+                <h1>Café Gestión · Cliente Local PWA</h1>
+                <span>Operación en red local (LAN) · Django + Node + Socket.IO + IA</span>
+            </div>
+        </div>
+        <div class="estado-barra">
+            <span id="insignia-presencia" class="insignia">Presencia activa: 0 usuarios</span>
+            <span id="insignia-socket" class="insignia desconectado">Tiempo Real: Desconectado</span>
+        </div>
+    </header>
+
+    <main class="contenedor-principal">
+        <!-- Panel de Autenticación JWT RS256 -->
+        <form id="form-login" class="panel-autenticacion">
+            <div class="grupo-campo">
+                <label for="input-username">Usuario (Django Auth)</label>
+                <input id="input-username" type="text" placeholder="duenio_demo" autocomplete="username" />
+            </div>
+            <div class="grupo-campo">
+                <label for="input-password">Contraseña</label>
+                <input id="input-password" type="password" placeholder="••••••••" autocomplete="current-password" />
+            </div>
+            <div class="grupo-campo">
+                <label for="input-token-jwt">O pegar Access Token JWT RS256</label>
+                <input id="input-token-jwt" type="text" placeholder="eyJhbGciOiJSUzI1NiIs..." />
+            </div>
+            <button type="submit" class="btn-primario">Conectar y Autenticar</button>
+            <span id="mensaje-auth" class="mensaje-estado">Ingrese credenciales o token JWT para iniciar el handshake.</span>
+        </form>
+
+        <div class="grilla-modulos">
+            <!-- Módulo 1: Tablero en Tiempo Real (Socket.IO) -->
+            <section class="tarjeta" aria-labelledby="titulo-tablero">
+                <div class="tarjeta-cabecera">
+                    <h2 id="titulo-tablero">1. Tablero en Tiempo Real (Sala Local y Turno)</h2>
+                </div>
+
+                <div class="metricas-vivo">
+                    <div class="metrica-item">
+                        <div id="metrica-ventas" class="metrica-valor">0</div>
+                        <div class="metrica-etiqueta">Ventas en vivo</div>
+                    </div>
+                    <div class="metrica-item">
+                        <div id="metrica-alertas-margen" class="metrica-valor">0</div>
+                        <div class="metrica-etiqueta">Alertas Margen &lt; 30%</div>
+                    </div>
+                    <div class="metrica-item">
+                        <div id="metrica-alertas-stock" class="metrica-valor">0</div>
+                        <div class="metrica-etiqueta">Alertas Stock Bajo</div>
+                    </div>
+                </div>
+
+                <ul id="lista-eventos-vivo" class="lista-eventos">
+                    <li class="evento-item">
+                        <div class="evento-titulo">
+                            <span>Esperando eventos en tiempo real...</span>
+                        </div>
+                        <div class="evento-detalle">
+                            Eventos suscriptos: venta.registrada, costo.actualizado, stock.bajo, importacion.lista
+                        </div>
+                    </li>
+                </ul>
+            </section>
+
+            <!-- Módulo 2: Importación de Listas de Precios con IA + Revisión Humana -->
+            <section class="tarjeta" aria-labelledby="titulo-importacion">
+                <div class="tarjeta-cabecera">
+                    <h2 id="titulo-importacion">2. Importación de Precios con IA (HU7)</h2>
+                </div>
+
+                <form id="form-importacion-ia" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div class="grupo-campo">
+                        <label for="input-proveedor-ia">Proveedor</label>
+                        <input id="input-proveedor-ia" type="text" value="Mayorista Café del Litoral" required />
+                    </div>
+                    <div class="grupo-campo">
+                        <label for="textarea-lista-ia">Texto de lista de precios (WhatsApp / PDF / Texto)</label>
+                        <textarea id="textarea-lista-ia" rows="4" required>Café tostado en grano 1 kg: $24500
+Leche entera 12 l: $15600
+Envío: $2000</textarea>
+                    </div>
+                    <button type="submit" class="btn-primario">Extraer Precios con IA (POST 202)</button>
+                </form>
+
+                <div id="estado-importacion-ia" class="mensaje-estado">
+                    La IA propone y el humano aprueba antes de impactar compras o costos (CA7.3).
+                </div>
+
+                <div id="panel-revision-ia" class="propuesta-ia" style="display: none;">
+                    <strong>Propuesta extraída para revisión humana:</strong>
+                    <table class="tabla-datos">
+                        <thead>
+                            <tr>
+                                <th>Insumo</th>
+                                <th>Cantidad</th>
+                                <th>Total</th>
+                                <th>Confianza</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-items-ia-body"></tbody>
+                    </table>
+                    <div class="acciones-fila">
+                        <button id="btn-aprobar-ia" type="button" class="btn-exito">
+                            Aprobar y Recalcular Recetas
+                        </button>
+                        <button id="btn-rechazar-ia" type="button" class="btn-peligro">
+                            Rechazar Propuesta
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Módulo 3: Caja Rápida con Lector de Código de Barras y Sala de Turno -->
+            <section class="tarjeta" aria-labelledby="titulo-caja">
+                <div class="tarjeta-cabecera">
+                    <h2 id="titulo-caja">3. Caja Rápida y Turno (HU4 · Lector HID)</h2>
+                </div>
+
+                <div class="acciones-fila">
+                    <div class="grupo-campo">
+                        <label for="input-turno-id">ID Turno de Caja</label>
+                        <input id="input-turno-id" type="number" value="1" min="1" />
+                    </div>
+                    <div class="grupo-campo">
+                        <label for="input-titular-id">ID Titular Turno</label>
+                        <input id="input-titular-id" type="number" value="1" min="1" />
+                    </div>
+                    <button id="btn-unirse-turno" type="button" class="btn-secundario">
+                        Unirse a Sala turno:{id}
+                    </button>
+                </div>
+
+                <div class="grupo-campo">
+                    <label for="input-codigo-barras">Lector de Código de Barras (HID) o búsqueda rápida (Enter)</label>
+                    <input
+                        id="input-codigo-barras"
+                        type="text"
+                        placeholder="Escanee ej. 7790001000011 y presione Enter..."
+                    />
+                </div>
+
+                <div id="grilla-productos" class="grilla-productos-rapidos"></div>
+
+                <table class="tabla-datos">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Cant.</th>
+                            <th>Unitario</th>
+                            <th>Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-carrito-body"></tbody>
+                </table>
+
+                <div class="resumen-caja">
+                    <span>Total Ticket:</span>
+                    <span id="caja-total-monto">$0.00</span>
+                </div>
+
+                <div class="acciones-fila">
+                    <select id="select-metodo-pago" aria-label="Método de pago">
+                        <option value="EFECTIVO">Efectivo</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                        <option value="TARJETA">Tarjeta</option>
+                    </select>
+                    <button id="btn-cobrar-ticket" type="button" class="btn-primario">
+                        Cobrar Ticket (POST /api/ventas/)
+                    </button>
+                    <button id="btn-limpiar-carrito" type="button" class="btn-secundario">
+                        Vaciar
+                    </button>
+                </div>
+
+                <div id="estado-caja" class="mensaje-estado">
+                    Listo para escanear código de barras o seleccionar productos.
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="/app/js/app.js"></script>
+</body>
+</html>

@@ -1,3 +1,5 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -12,6 +14,10 @@ import { sanitizarNoSql } from './src/middlewares/nosqlSanitize.middleware.js';
 import { limitadorGeneral } from './src/middlewares/rateLimit.middleware.js';
 import { errorHandler } from './src/middlewares/error.middleware.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rutaClienteWeb = path.resolve(__dirname, '../web');
+
 const app = express();
 
 // Endurecimiento de cabeceras HTTP con Helmet (T2.5)
@@ -23,6 +29,15 @@ app.use(
                 scriptSrc: ["'self'"],
                 styleSrc: ["'self'", "'unsafe-inline'"],
                 imgSrc: ["'self'", 'data:'],
+                connectSrc: [
+                    "'self'",
+                    'http://localhost:8000',
+                    'http://localhost:3000',
+                    'ws://localhost:3000',
+                    'http://127.0.0.1:8000',
+                    'http://127.0.0.1:3000',
+                    'ws://127.0.0.1:3000',
+                ],
             },
         },
         crossOriginEmbedderPolicy: false,
@@ -45,6 +60,9 @@ app.use(express.json());
 
 // Sanitización y prevención activa de inyecciones NoSQL ($ o .) (T2.5)
 app.use(sanitizarNoSql);
+
+// Cliente mínimo PWA instalable servido localmente en /app (T3.6)
+app.use('/app', express.static(rutaClienteWeb));
 
 app.use('/health', healthRoutes);
 app.use('/api/historial-precios', historialPreciosRoutes);
