@@ -1,13 +1,38 @@
-"""ViewSets para ventas."""
+"""ViewSets para ventas y reportes operativos."""
 
-from rest_framework import viewsets, filters, status
+from django.utils.dateparse import parse_date, parse_datetime
+from datetime import datetime, time
+from django.utils import timezone
+from rest_framework import viewsets, filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from apps.ventas.models import Venta
 from apps.ventas.serializers import VentaSerializer
+from apps.ventas.services import obtener_reporte_ventas_por_producto
 from apps.usuarios.permissions import TienePermiso, PermisoObjetoVenta
+
+
+def _parsear_parametro_fecha(valor: str | None, es_fin: bool = False):
+    """Convierte una cadena ISO de fecha o fecha-hora en datetime con zona horaria."""
+    if not valor:
+        return None
+    texto = str(valor).strip()
+    dt = parse_datetime(texto)
+    if dt is not None:
+        if timezone.is_naive(dt):
+            return timezone.make_aware(dt)
+        return dt
+
+    fecha = parse_date(texto)
+    if fecha is not None:
+        hora = time(23, 59, 59, 999999) if es_fin else time(0, 0, 0)
+        return timezone.make_aware(datetime.combine(fecha, hora))
+
+    raise serializers.ValidationError(
+        f"Formato de fecha inválido: '{valor}'. Use YYYY-MM-DD o ISO-8601."
+    )
 
 
 class VentaViewSet(viewsets.ModelViewSet):
@@ -24,7 +49,12 @@ class VentaViewSet(viewsets.ModelViewSet):
         elif self.action == "list":
             return [TienePermiso("ventas.ver_historial_propio")()]
         elif self.action == "retrieve":
-            return [TienePermiso("ventas.ver_historial_propio")(), PermisoObjetoVenta()]
+            return [
+                TienePermiso("ventas.ver_historial_propio")(),
+                PermisoObjetoVenta(),
+            ]
+        elif self.action == "reporte_por_producto":
+            return [TienePermiso("reportes.ver_operativos")()]
         elif self.action == "anular":
             return [TienePermiso("ventas.anular_ticket")()]
         elif self.action in ("update", "partial_update", "destroy"):
@@ -62,6 +92,34 @@ class VentaViewSet(viewsets.ModelViewSet):
             {
                 "mensaje": f"Venta #{venta.id} anulada exitosamente.",
                 "venta_id": venta.id,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get"], url_path="reporte-por-producto")
+    def reporte_por_producto(self, request):
+        """
+        Reporte agregado de ventas por producto filtrado por rango de fechas (T3.4).
+        Query params opcionales: fecha_inicio (YYYY-MM-DD), fecha_fin (YYYY-MM-DD).
+        """
+        fecha_inicio = _parsear_parametro_fecha(
+            request.query_params.get("fecha_inicio"), es_fin=False
+        )
+        fecha_fin = _parsear_parametro_fecha(
+            request.query_params.get("fecha_fin"), es_fin=True
+        )
+        if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
+            raise serializers.ValidationError(
+                "fecha_inicio no puede ser posterior a fecha_fin."
+            )
+
+        datos = obtener_reporte_ventas_por_producto(
+            fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
+        )
+        return Response(
+            {
+                "datos": datos,
+                "total": len(datos),
             },
             status=status.HTTP_200_OK,
         )

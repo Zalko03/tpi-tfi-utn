@@ -1,17 +1,43 @@
 """Servicios de costeo de recetas, márgenes y propagación de costos."""
 from decimal import Decimal, ROUND_HALF_UP
+from django.db.models import Prefetch
+from django.utils import timezone
 from apps.insumos.services import convertir_a_unidad_base
+
+
+def listar_productos_con_costos_optimizado(solo_activos: bool = False):
+    """
+    Construye el QuerySet de productos precargando receta_items e insumos asociados
+    en una única consulta adicional (Prefetch + select_related), eliminando el problema N+1 (T3.4).
+    """
+    from apps.recetas.models import Producto, RecetaItem
+
+    qs = Producto.objects.prefetch_related(
+        Prefetch(
+            "receta_items",
+            queryset=RecetaItem.objects.select_related("insumo").order_by("id"),
+        )
+    )
+    if solo_activos:
+        qs = qs.filter(estado_activo=True)
+    return qs
 
 
 def obtener_desglose_costeo_producto(producto) -> dict:
     """
     Construye el desglose detallado de costos de un producto (insumos, mano de obra
     y descartables) para snapshots documentales y auditoría de recetas.
+    Reutiliza la caché de prefetch_related si está disponible para evitar consultas N+1.
     """
     desglose_insumos = []
     costo_insumos = Decimal("0.0000")
 
-    items = producto.receta_items.select_related("insumo").all()
+    cache_prefetch = getattr(producto, "_prefetched_objects_cache", {})
+    if "receta_items" in cache_prefetch:
+        items = producto.receta_items.all()
+    else:
+        items = producto.receta_items.select_related("insumo").all()
+
     for item in items:
         insumo = item.insumo
         cant_base = convertir_a_unidad_base(
@@ -108,21 +134,33 @@ def actualizar_costo_y_margen_producto(producto):
 
 def recalcular_recetas_por_insumo(insumo_id: int) -> list[dict]:
     """
-    Recalcula el costo y margen de todos los productos que usan el insumo.
-    Retorna un resumen de productos recalculados (útil para historial, snapshots y sockets).
+    Recalcula el costo y margen de todos los productos activos que usan el insumo (T3.4):
+    - Aprovecha idx_recetaitem_insumo_prod para localizar los productos afectados.
+    - Precarga receta_items + insumo en memoria con Prefetch + select_related (sin N+1).
+    - Persiste todos los productos afectados en una única sentencia SQL mediante bulk_update.
     """
-    from apps.recetas.models import Producto
+    from apps.recetas.models import Producto, RecetaItem
 
-    productos_afectados = (
+    productos_afectados = list(
         Producto.objects.filter(
             receta_items__insumo_id=insumo_id,
             estado_activo=True,
         )
-        .prefetch_related("receta_items__insumo")
+        .prefetch_related(
+            Prefetch(
+                "receta_items",
+                queryset=RecetaItem.objects.select_related("insumo").order_by("id"),
+            )
+        )
         .distinct()
     )
 
+    if not productos_afectados:
+        return []
+
+    ahora = timezone.now()
     resumen = []
+
     for prod in productos_afectados:
         costo_anterior = prod.costo_total_calculado
         desglose = obtener_desglose_costeo_producto(prod)
@@ -132,14 +170,8 @@ def recalcular_recetas_por_insumo(insumo_id: int) -> list[dict]:
         prod.costo_total_calculado = desglose["costo_total"]
         prod.ganancia_bruta = ganancia
         prod.margen_bruto = margen
-        prod.save(
-            update_fields=[
-                "costo_total_calculado",
-                "ganancia_bruta",
-                "margen_bruto",
-                "actualizado_en",
-            ]
-        )
+        prod.actualizado_en = ahora
+
         resumen.append(
             {
                 "producto_id": prod.id,
@@ -153,5 +185,15 @@ def recalcular_recetas_por_insumo(insumo_id: int) -> list[dict]:
                 "desglose_insumos": desglose["desglose_insumos"],
             }
         )
+
+    Producto.objects.bulk_update(
+        productos_afectados,
+        [
+            "costo_total_calculado",
+            "ganancia_bruta",
+            "margen_bruto",
+            "actualizado_en",
+        ],
+    )
 
     return resumen
