@@ -1,0 +1,156 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cafe-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cafe_gestion}
+      POSTGRES_USER: ${POSTGRES_USER:-cafe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambia-esto}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - red-interna
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-cafe_user} -d $${POSTGRES_DB:-cafe_gestion}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  mongodb:
+    image: mongo:7.0
+    container_name: cafe-mongodb
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - red-interna
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  backend-django:
+    build:
+      context: ./backend-django
+      dockerfile: Dockerfile
+    container_name: cafe-django
+    restart: unless-stopped
+    command: sh -c "python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60"
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-cambia-esto-por-una-clave-segura-de-50-caracteres}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend-django,web}
+      POSTGRES_DB: ${POSTGRES_DB:-cafe_gestion}
+      POSTGRES_USER: ${POSTGRES_USER:-cafe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambia-esto}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      USE_SQLITE: "False"
+      DJANGO_ACCESS_TOKEN_MINUTES: ${DJANGO_ACCESS_TOKEN_MINUTES:-15}
+      DJANGO_REFRESH_TOKEN_DAYS: ${DJANGO_REFRESH_TOKEN_DAYS:-1}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1,http://localhost:5173,http://localhost:3000}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - red-interna
+      - red-publica
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: cafe-ai-service
+    restart: unless-stopped
+    environment:
+      AI_SERVICE_PORT: 8001
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      AI_PROMPT_VERSION: ${AI_PROMPT_VERSION:-v1}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-10.0}
+      AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
+    networks:
+      - red-interna
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  backend-node:
+    build:
+      context: ./backend-node
+      dockerfile: Dockerfile
+    container_name: cafe-node
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NODE_PORT: 3000
+      MONGO_URI: mongodb://mongodb:27017/${POSTGRES_DB:-cafe_gestion}
+      DJANGO_BASE_URL: http://backend-django:8000/api
+      AI_SERVICE_URL: http://ai-service:8001
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1,http://localhost:5173,http://localhost:3000}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      backend-django:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    networks:
+      - red-interna
+      - red-publica
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: cafe-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend-django:
+        condition: service_healthy
+      backend-node:
+        condition: service_healthy
+    networks:
+      - red-publica
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+networks:
+  red-interna:
+    driver: bridge
+  red-publica:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongo_data:
