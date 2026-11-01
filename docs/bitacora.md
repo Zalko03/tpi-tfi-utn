@@ -838,4 +838,64 @@ Archivos tocados:
 Cómo probarlo:
 - Ejecutar `git diff docs/PROPUESTA.md docs/PLAN_IMPLEMENTACION.md docs/bitacora.md` para verificar los cambios documentales y comprobar en un visor Markdown que el diagrama `erDiagram` de `docs/PROPUESTA.md` (con `codigo_barras` en `PRODUCTO`) renderiza correctamente.
 ---
+Fecha: 2026-10-31
+Tarea: TP 4 - Despliegue con Docker Compose, CI/CD con GitHub Actions, Observabilidad, Trazabilidad y Healthchecks Avanzados (T4.1 a T4.7)
+Rama: feature/tp4-despliegue-cicd-observabilidad
+Cambios realizados:
+- **T4.1 Contenedorización Multi-Stage:** Se construyeron los `Dockerfile` optimizados en múltiples etapas y sus correspondientes `.dockerignore` para `backend-django` (Python 3.13-slim + Gunicorn), `backend-node` (Node 20-alpine), `ai-service` (Python 3.13-slim + FastAPI) y `web` (Nginx 1.27-alpine), garantizando ejecución con usuario no-root (`appuser`, `node`, `nginx`) y directivas `HEALTHCHECK` integradas.
+- **T4.2 Orquestación con Docker Compose:** Se definieron `docker-compose.yml` y `docker-compose.prod.yml` orquestando la solución completa en un único comando. Se configuró la segmentación de redes (`red-interna` y `red-publica`), volúmenes nombrados persistentes (`postgres_data`, `mongo_data`), arranque condicional ordenado (`depends_on: { condition: service_healthy }`) y límites estrictos de memoria RAM cgroups y motor WiredTiger para convivir holgadamente en el equipo de 8 GB de RAM del local.
+- **T4.3 Pipeline Automatizado de CI/CD:** Se implementó el flujo en `.github/workflows/ci.yml` con escaneo de secretos, linter de Python (`ruff`), linter de Node.js (`eslint`), ejecución paralela de las 3 suites de tests (370 en Django, 130 en Node, 63 en ai-service; 563 tests en total) y validación/build de imágenes Docker Compose.
+- **T4.4 Modalidad de Despliegue (ADR 0003):** Se redactó el documento formal `docs/adr/0003-modalidad-despliegue-produccion.md` justificando la arquitectura de PC local con Docker Compose y PWA para operación ininterrumpida ante cortes de internet.
+- **Observabilidad y Trazabilidad Distribuida:** Se implementaron middlewares de propagación y generación de `X-Request-ID` (UUID v4) en Django (`CorrelationIdMiddleware`), Node (`correlationIdMiddleware`) y FastAPI (`CorrelationIdMiddleware`). Se incorporó logging estructurado en formato JSON con sanitización automática de credenciales y tokens, y endpoints de salud profunda (`/health/profundo` y `/api/health/profundo/`) que comprueban conectividad y latencia con bases de datos y microservicios satélites.
+- **Scripts de Operación:** Se desarrollaron los scripts con permisos de ejecución `scripts/backup.sh` (volcado automatizado comprimido de PostgreSQL y MongoDB sin sudo), `scripts/restore.sh` (recuperación de desastre) y `scripts/desplegar.sh` (puesta en marcha automatizada con verificación de healthchecks).
+- **Pruebas Automatizadas Unitarias y de Integración:** Se añadieron 30 nuevos tests (unitarios puros en `unit/` y de integración en `api/` / `integration/`) elevando el total del sistema a 563 tests pasando al 100 % en verde.
+- **Documentación:** Se redactó el manual operativo integral en `docs/despliegue.md`, y se actualizaron `README.md`, `docs/ARCHITECTURE.md` y `docs/CONNECTIONS.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web-proxy` (Nginx Alpine en puerto 80) -> `backend-django` (8000) en `/api/` y `backend-node` (3000) en `/socket.io/` y rutas documentales.
+- Trazabilidad de peticiones mediante propagación de la cabecera `X-Request-ID` entre clientes, Nginx, Node, Django y `ai-service`.
+- Scripts de backup y restore interactuando con las bases de datos PostgreSQL y MongoDB vía Docker Exec o CLI local.
+Problemas y decisiones técnicas:
+- **Gestión de memoria en 8 GB de RAM:** Para evitar el riesgo de bloqueo por falta de memoria (*OOM*) en la PC del comercio, se limitó la memoria de MongoDB WiredTiger a 256 MB (`--wiredTigerCacheSizeGB 0.25`), se fijaron límites de memoria cgroups en compose y se descartó la inferencia local con Ollama en la PC de caja, utilizando el adapter externo a Gemini API con contingencia automática a carga manual ante caídas de internet.
+- **Trazabilidad sin acoplamiento:** El middleware de correlación genera un UUID v4 si la cabecera `X-Request-ID` no está presente o la preserva si proviene de un cliente o servicio upstream, permitiendo correlacionar logs estructurados en JSON entre Django, Node y FastAPI sin acoplamiento funcional.
+- **Salud básica vs. Salud profunda:** Se mantuvo la separación estricta entre liveness probe (`/health`, rápido y sin tocar bases de datos) y readiness probe (`/health/profundo`, consulta `SELECT 1` o `readyState` y mide latencia) para evitar falsos reinicios de contenedores durante arranques en frío o picos de carga.
+Archivos tocados:
+- `docs/adr/0003-modalidad-despliegue-produccion.md`
+- `docs/despliegue.md`
+- `docs/ARCHITECTURE.md`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+- `README.md`
+- `docker-compose.yml`
+- `docker-compose.prod.yml`
+- `pyproject.toml`
+- `.github/workflows/ci.yml`
+- `.gitignore`
+- `scripts/backup.sh`
+- `scripts/restore.sh`
+- `scripts/desplegar.sh`
+- `backend-django/Dockerfile`, `backend-django/.dockerignore`, `backend-django/requirements.txt`
+- `backend-django/apps/comun/middleware.py`, `backend-django/apps/comun/logging.py`
+- `backend-django/apps/comun/tests/unit/test_unit_correlation_id.py`, `backend-django/apps/comun/tests/unit/test_unit_json_logging.py`
+- `backend-django/apps/salud/services.py`, `backend-django/apps/salud/views.py`, `backend-django/apps/salud/urls.py`
+- `backend-django/apps/salud/tests/unit/test_unit_health_services.py`, `backend-django/apps/salud/tests/api/test_api_health_profundo.py`
+- `backend-django/config/settings/base.py`, `backend-django/config/urls.py`
+- `backend-node/Dockerfile`, `backend-node/.dockerignore`, `backend-node/package.json`, `backend-node/package-lock.json`, `backend-node/eslint.config.js`
+- `backend-node/app.js`
+- `backend-node/src/middlewares/correlationId.middleware.js`, `backend-node/src/utils/logger.js`
+- `backend-node/src/controllers/health.controller.js`, `backend-node/src/routes/health.routes.js`, `backend-node/src/tests/health.test.js`
+- `backend-node/src/clients/django.client.js`, `backend-node/src/clients/ai.client.js`
+- `backend-node/tests/unit/correlationId.unit.test.js`, `backend-node/tests/unit/jsonLogging.unit.test.js`, `backend-node/tests/unit/healthProfundo.unit.test.js`
+- `ai-service/Dockerfile`, `ai-service/.dockerignore`
+- `ai-service/app/main.py`, `ai-service/app/middlewares/correlation.py`, `ai-service/app/utils/logger.py`, `ai-service/app/routers/salud.py`
+- `ai-service/app/tests/unit/test_unit_correlation_id.py`, `ai-service/app/tests/unit/test_unit_json_logging.py`, `ai-service/app/tests/api/test_api_observabilidad.py`
+- `web/Dockerfile`, `web/.dockerignore`, `web/nginx.conf`
+Cómo probarlo:
+- Ejecutar `backend-django/.venv/bin/pytest backend-django/` (370 tests pasando).
+- Ejecutar `cd backend-node && npm test` (130 tests pasando).
+- Ejecutar `ai-service/.venv/bin/pytest ai-service/` (63 tests pasando).
+- Ejecutar `.venv/bin/ruff check backend-django/ ai-service/` y `cd backend-node && npm run lint` (0 errores).
+- Validar sintaxis y configuración de Docker Compose con `docker compose config`.
+- Verificar sintaxis de scripts con `bash -n scripts/*.sh`.
+---
+
 
