@@ -13,12 +13,16 @@ import { corsRestringido } from './src/middlewares/cors.middleware.js';
 import { sanitizarNoSql } from './src/middlewares/nosqlSanitize.middleware.js';
 import { limitadorGeneral } from './src/middlewares/rateLimit.middleware.js';
 import { errorHandler } from './src/middlewares/error.middleware.js';
+import { correlationIdMiddleware } from './src/middlewares/correlationId.middleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rutaClienteWeb = path.resolve(__dirname, '../web');
 
 const app = express();
+
+// Trazabilidad y correlación distribuida de peticiones (TP 4)
+app.use(correlationIdMiddleware);
 
 // Endurecimiento de cabeceras HTTP con Helmet (T2.5)
 app.use(

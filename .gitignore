@@ -2,6 +2,8 @@
 # Ignorar cualquier .env real; la excepción permite versionar solo el ejemplo.
 .env
 *.env
+backups/
+*.tar.gz
 !.env.example
 
 # ── Claves privadas ───────────────────────────────────────────────────────────

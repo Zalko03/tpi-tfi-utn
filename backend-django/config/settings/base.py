@@ -121,6 +121,7 @@ TEMPLATES = [
 STATIC_URL = "/static/"
 
 MIDDLEWARE = [
+    "apps.comun.middleware.CorrelationIdMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -151,6 +152,9 @@ LOGGING = {
     "formatters": {
         "estandar": {
             "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+        },
+        "json": {
+            "()": "apps.comun.logging.FormateadorJson",
         },
     },
     "handlers": {

@@ -1,9 +1,17 @@
 import { djangoBaseUrl } from '../config/env.js';
 
-export const obtenerProductoDjango = async (productoId, timeoutMs = 3000) => {
+export const obtenerProductoDjango = async (
+    productoId,
+    timeoutMs = 3000,
+    correlationId = null
+) => {
     try {
+        const headers = { Accept: 'application/json' };
+        if (correlationId) {
+            headers['X-Request-ID'] = correlationId;
+        }
         const respuesta = await fetch(`${djangoBaseUrl}/productos/${productoId}/`, {
-            headers: { Accept: 'application/json' },
+            headers,
             signal: AbortSignal.timeout(timeoutMs),
         });
 
@@ -90,7 +98,8 @@ export const normalizarRespuestaConfirmacionDjango = (datos) => {
 export const confirmarImportacionComprasDjango = async (
     { proveedorId = null, proveedorNombre = null, envio = '0.00', items = [] },
     tokenJwt = null,
-    timeoutMs = 5000
+    timeoutMs = 5000,
+    correlationId = null
 ) => {
     const cabeceras = {
         'Content-Type': 'application/json',
@@ -100,6 +109,9 @@ export const confirmarImportacionComprasDjango = async (
         cabeceras.Authorization = tokenJwt.startsWith('Bearer ')
             ? tokenJwt
             : `Bearer ${tokenJwt}`;
+    }
+    if (correlationId) {
+        cabeceras['X-Request-ID'] = correlationId;
     }
 
     const cuerpoDjango = {
