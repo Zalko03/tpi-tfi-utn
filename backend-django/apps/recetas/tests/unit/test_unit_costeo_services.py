@@ -1,13 +1,15 @@
 """Tests unitarios para cálculo de recetas, costeo, márgenes y recálculo."""
 
 from decimal import Decimal
+
 import pytest
+
 from apps.insumos.models import Insumo
 from apps.recetas.models import Producto, RecetaItem
 from apps.recetas.services import (
+    actualizar_costo_y_margen_producto,
     calcular_costo_producto,
     calcular_margen_y_ganancia,
-    actualizar_costo_y_margen_producto,
     recalcular_recetas_por_insumo,
 )
 

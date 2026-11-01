@@ -5,9 +5,10 @@ y 25 insumos) utilizando inserción por lotes (bulk_create) para evaluar planes 
 ejecución EXPLAIN ANALYZE y tiempos de respuesta de las 3 consultas críticas.
 """
 
+import time
 from datetime import timedelta
 from decimal import Decimal
-import time
+
 from django.core.management.base import BaseCommand
 from django.db import connection
 from django.utils import timezone
@@ -112,9 +113,7 @@ class Command(BaseCommand):
             lote_ventas = []
             for i in range(actual):
                 num = ventas_creadas + i
-                fecha_venta = ahora - timedelta(
-                    days=num % 180, minutes=(num * 7) % 1440
-                )
+                fecha_venta = ahora - timedelta(days=num % 180, minutes=(num * 7) % 1440)
                 lote_ventas.append(
                     Venta(
                         fecha=fecha_venta,
@@ -124,9 +123,7 @@ class Command(BaseCommand):
                         costo_total_snapshot=Decimal("1900.0000"),
                     )
                 )
-            ventas_insertadas = Venta.objects.bulk_create(
-                lote_ventas, batch_size=tam_lote
-            )
+            ventas_insertadas = Venta.objects.bulk_create(lote_ventas, batch_size=tam_lote)
 
             lote_items = []
             for idx_v, venta_obj in enumerate(ventas_insertadas):
@@ -158,9 +155,7 @@ class Command(BaseCommand):
         t0 = time.perf_counter()
         qs_c1 = listar_productos_con_costos_optimizado(solo_activos=True)
         lista_c1 = list(qs_c1)
-        _ = [
-            [it.insumo.nombre for it in p.receta_items.all()] for p in lista_c1
-        ]
+        _ = [[it.insumo.nombre for it in p.receta_items.all()] for p in lista_c1]
         ms_c1 = (time.perf_counter() - t0) * 1000
         plan_c1 = qs_c1.explain(**opciones_explain)
 
@@ -182,9 +177,7 @@ class Command(BaseCommand):
         self.stdout.write(
             f"\n[Consulta 1 - Listado productos sin N+1] {len(lista_c1)} productos en {ms_c1:.2f} ms\n{plan_c1}"
         )
-        self.stdout.write(
-            f"\n[Consulta 2 - Reporte ventas por fecha] en {ms_c2:.2f} ms\n{plan_c2}"
-        )
+        self.stdout.write(f"\n[Consulta 2 - Reporte ventas por fecha] en {ms_c2:.2f} ms\n{plan_c2}")
         self.stdout.write(
             f"\n[Consulta 3 - Recálculo productos afectados] {len(resumen_c3)} productos recalculados en {ms_c3:.2f} ms"
         )

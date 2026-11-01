@@ -64,9 +64,7 @@ class TestUnitSupervivenciaDuenio:
         duenio_unico.refresh_from_db()
         assert duenio_unico.perfil.rol == ROL_DUENIO
 
-    def test_degradar_unico_duenio_a_encargado_lanza_excepcion_dominio(
-        self, duenio_unico
-    ):
+    def test_degradar_unico_duenio_a_encargado_lanza_excepcion_dominio(self, duenio_unico):
         """Intentar cambiar el rol del único Dueño a Encargado debe ser rechazado."""
         with pytest.raises(ErrorSupervivenciaDuenio) as exc_info:
             actualizar_personal(duenio_unico.id, rol=ROL_ENCARGADO)
@@ -121,9 +119,7 @@ class TestUnitSupervivenciaDuenio:
         assert usuario_act.perfil.tiene_permiso("ia.importar_listas") is False
         assert usuario_act.perfil.tiene_permiso("personal.crear") is True
 
-    def test_supervivencia_permite_desactivar_cuando_existe_otro_duenio_activo(
-        self, duenio_unico
-    ):
+    def test_supervivencia_permite_desactivar_cuando_existe_otro_duenio_activo(self, duenio_unico):
         """Si existen dos Dueños activos, se puede desactivar a uno, pero no al último restante."""
         duenio2 = crear_personal(
             datos_usuario={"username": "segundo_duenio", "password": "password123"},
@@ -143,9 +139,7 @@ class TestUnitSupervivenciaDuenio:
         duenio2.refresh_from_db()
         assert duenio2.is_active is True
 
-    def test_supervivencia_permite_cambiar_rol_cuando_hay_otro_duenio_activo(
-        self, duenio_unico
-    ):
+    def test_supervivencia_permite_cambiar_rol_cuando_hay_otro_duenio_activo(self, duenio_unico):
         """Si existe otro Dueño activo, se permite cambiar el rol de un Dueño."""
         crear_personal(
             datos_usuario={"username": "duenio_permanente", "password": "password123"},
@@ -174,9 +168,7 @@ class TestUnitSupervivenciaDuenio:
         with pytest.raises(ErrorSupervivenciaDuenio):
             desactivar_personal(duenio_unico.id)
 
-    def test_desactivacion_logica_sin_borrado_fisico_registra_auditoria(
-        self, duenio_unico
-    ):
+    def test_desactivacion_logica_sin_borrado_fisico_registra_auditoria(self, duenio_unico):
         """Desactivar un empleado cajero marca is_active = False, no borra la fila y crea auditoría."""
         cajero = crear_personal(
             datos_usuario={"username": "cajero_a_baja", "password": "password123"},
@@ -209,9 +201,7 @@ class TestUnitSupervivenciaDuenio:
         assert cajero_activo.is_active is True
         assert User.objects.get(id=cajero.id).is_active is True
 
-    def test_jerarquia_operador_sin_permiso_no_puede_otorgar_a_terceros(
-        self, duenio_unico
-    ):
+    def test_jerarquia_operador_sin_permiso_no_puede_otorgar_a_terceros(self, duenio_unico):
         """Un operador no puede otorgar permisos que él mismo no posee."""
         encargado = crear_personal(
             datos_usuario={"username": "encargado_jefe", "password": "password123"},

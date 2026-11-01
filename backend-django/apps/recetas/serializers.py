@@ -1,7 +1,9 @@
 """Serializadores para productos y recetas."""
 
 from decimal import Decimal
+
 from rest_framework import serializers
+
 from apps.recetas.models import Producto, RecetaItem
 from apps.recetas.services import actualizar_costo_y_margen_producto
 
@@ -63,9 +65,7 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     def validate_precio_venta(self, value):
         if Decimal(str(value)) <= Decimal("0"):
-            raise serializers.ValidationError(
-                "El precio de venta debe ser mayor a cero."
-            )
+            raise serializers.ValidationError("El precio de venta debe ser mayor a cero.")
         return value
 
     def validate_minutos_mano_obra(self, value):

@@ -1,5 +1,7 @@
 """Router de estado de salud (/health)."""
+
 from fastapi import APIRouter
+
 from app.schemas.comun import RespuestaSalud
 
 router = APIRouter(tags=["Salud"])

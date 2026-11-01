@@ -7,6 +7,7 @@ Verifica autorizaciones por rol (Dueño 200, Encargado 200/403, Cajero 403) y va
 """
 
 from decimal import Decimal
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -107,9 +108,7 @@ class TestApiReportes:
     # 2. GET /api/ventas/ranking-productos/ (reportes.ver_operativos)
     # =========================================================================
 
-    def test_api_ranking_productos_encargado_200(
-        self, client, encargado, catalogo_con_ventas
-    ):
+    def test_api_ranking_productos_encargado_200(self, client, encargado, catalogo_con_ventas):
         """Encargado posee 'reportes.ver_operativos' y puede consultar el ranking."""
         client.force_authenticate(user=encargado)
         resp = client.get("/api/ventas/ranking-productos/?limite=2")
@@ -118,9 +117,7 @@ class TestApiReportes:
         assert "menos_vendidos" in resp.data
         assert len(resp.data["mas_vendidos"]) <= 2
 
-    def test_api_ranking_productos_duenio_200(
-        self, client, duenio, catalogo_con_ventas
-    ):
+    def test_api_ranking_productos_duenio_200(self, client, duenio, catalogo_con_ventas):
         """Dueño puede consultar el ranking con HTTP 200."""
         client.force_authenticate(user=duenio)
         resp = client.get("/api/ventas/ranking-productos/")
@@ -162,9 +159,7 @@ class TestApiReportes:
         assert resp.data["meta_diaria"] == "80000.00"
         assert resp.data["meta_semanal"] == "480000.00"
 
-    def test_api_punto_equilibrio_get_duenio_200(
-        self, client, duenio, catalogo_con_ventas
-    ):
+    def test_api_punto_equilibrio_get_duenio_200(self, client, duenio, catalogo_con_ventas):
         """Dueño calcula PE por GET usando ventas de la base y query params."""
         client.force_authenticate(user=duenio)
         resp = client.get("/api/ventas/punto-equilibrio/?costos_fijos=700000.00")
@@ -197,9 +192,7 @@ class TestApiReportes:
         resp = client.post("/api/ventas/punto-equilibrio/", {}, format="json")
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_api_punto_equilibrio_costos_variables_superan_ventas_400(
-        self, client, duenio
-    ):
+    def test_api_punto_equilibrio_costos_variables_superan_ventas_400(self, client, duenio):
         """Cuando costos variables >= ventas responde 400 con mensaje explicativo."""
         client.force_authenticate(user=duenio)
         resp = client.post(

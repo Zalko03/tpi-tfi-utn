@@ -48,11 +48,7 @@ class EsDuenio(permissions.BasePermission):
     message = "No tiene permisos para realizar esta acción"
 
     def has_permission(self, request, view):
-        if (
-            not request.user
-            or not request.user.is_authenticated
-            or not request.user.is_active
-        ):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
             return False
         if request.user.is_superuser:
             return True
@@ -66,11 +62,7 @@ class EsEncargadoODuenio(permissions.BasePermission):
     message = "No tiene permisos para realizar esta acción"
 
     def has_permission(self, request, view):
-        if (
-            not request.user
-            or not request.user.is_authenticated
-            or not request.user.is_active
-        ):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
             return False
         if request.user.is_superuser:
             return True
@@ -88,20 +80,12 @@ class PermisoObjetoTurnoCaja(permissions.BasePermission):
     message = "No tiene permisos para acceder al turno de otro usuario"
 
     def has_permission(self, request, view):
-        if (
-            not request.user
-            or not request.user.is_authenticated
-            or not request.user.is_active
-        ):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
             return False
         return True
 
     def has_object_permission(self, request, view, obj):
-        if (
-            not request.user
-            or not request.user.is_authenticated
-            or not request.user.is_active
-        ):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
             return False
         if request.user.is_superuser:
             return True
@@ -131,20 +115,12 @@ class PermisoObjetoVenta(permissions.BasePermission):
     message = "No tiene permisos para consultar ventas de otros operadores"
 
     def has_permission(self, request, view):
-        if (
-            not request.user
-            or not request.user.is_authenticated
-            or not request.user.is_active
-        ):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
             return False
         return True
 
     def has_object_permission(self, request, view, obj):
-        if (
-            not request.user
-            or not request.user.is_authenticated
-            or not request.user.is_active
-        ):
+        if not request.user or not request.user.is_authenticated or not request.user.is_active:
             return False
         if request.user.is_superuser:
             return True

@@ -1,5 +1,7 @@
 """Modelos para proveedores, insumos y compras."""
+
 from decimal import Decimal
+
 from django.db import models
 from django.utils import timezone
 

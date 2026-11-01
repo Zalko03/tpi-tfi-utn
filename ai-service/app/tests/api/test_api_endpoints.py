@@ -1,6 +1,9 @@
 """Tests de API sobre los endpoints de ai-service (/health, /v1/extraer-precios, /v1/resumen-semanal)."""
+
 from unittest.mock import patch
+
 from fastapi.testclient import TestClient
+
 from app.main import app
 from app.services.proveedor_ia import ErrorProveedorIA
 from app.tests.unit.test_unit_adapters_y_servicios import AdaptadorMockExitoso

@@ -49,15 +49,11 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "creado_en",
-                    models.DateTimeField(
-                        auto_now_add=True, verbose_name="Fecha de creación"
-                    ),
+                    models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación"),
                 ),
                 (
                     "actualizado_en",
-                    models.DateTimeField(
-                        auto_now=True, verbose_name="Última actualización"
-                    ),
+                    models.DateTimeField(auto_now=True, verbose_name="Última actualización"),
                 ),
                 (
                     "usuario",

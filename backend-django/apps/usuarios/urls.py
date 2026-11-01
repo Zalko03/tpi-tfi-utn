@@ -14,9 +14,7 @@ from apps.usuarios.views import (
 )
 
 router = DefaultRouter()
-router.register(
-    r"usuarios/auditoria", RegistroAuditoriaViewSet, basename="usuario-auditoria"
-)
+router.register(r"usuarios/auditoria", RegistroAuditoriaViewSet, basename="usuario-auditoria")
 router.register(r"usuarios", UsuarioViewSet, basename="usuario")
 
 auth_patterns = [

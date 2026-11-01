@@ -1,7 +1,9 @@
 """Tests unitarios para ventas y congelamiento de snapshots de costo."""
 
 from decimal import Decimal
+
 import pytest
+
 from apps.caja.models import TurnoCaja
 from apps.recetas.models import Producto
 from apps.ventas.services import registrar_venta

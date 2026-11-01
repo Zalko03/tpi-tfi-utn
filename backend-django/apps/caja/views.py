@@ -1,14 +1,16 @@
 """ViewSets para turnos y movimientos de caja."""
 
 from decimal import Decimal
+
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from apps.caja.models import TurnoCaja, MovimientoCaja
-from apps.caja.serializers import TurnoCajaSerializer, MovimientoCajaSerializer
-from apps.usuarios.permissions import TienePermiso, PermisoObjetoTurnoCaja
+
+from apps.caja.models import MovimientoCaja, TurnoCaja
+from apps.caja.serializers import MovimientoCajaSerializer, TurnoCajaSerializer
+from apps.usuarios.permissions import PermisoObjetoTurnoCaja, TienePermiso
 
 
 class TurnoCajaViewSet(viewsets.ModelViewSet):
@@ -29,10 +31,7 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        if (
-            "usuario" not in serializer.validated_data
-            and self.request.user.is_authenticated
-        ):
+        if "usuario" not in serializer.validated_data and self.request.user.is_authenticated:
             serializer.save(usuario=self.request.user)
         else:
             serializer.save()
@@ -92,9 +91,7 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         if request.user.is_superuser:
             puede_ver_esperado = True
         elif hasattr(request.user, "perfil") and request.user.perfil:
-            puede_ver_esperado = request.user.perfil.tiene_permiso(
-                "caja.ver_efectivo_esperado"
-            )
+            puede_ver_esperado = request.user.perfil.tiene_permiso("caja.ver_efectivo_esperado")
         else:
             payload = getattr(request.auth, "payload", None)
             if payload is None and hasattr(request.auth, "get"):
@@ -107,9 +104,7 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
                 "mensaje": "Turno cerrado exitosamente.",
                 "turno_id": turno.id,
                 "efectivo_contado": str(turno.efectivo_contado),
-                "efectivo_esperado": str(turno.efectivo_esperado)
-                if puede_ver_esperado
-                else None,
+                "efectivo_esperado": str(turno.efectivo_esperado) if puede_ver_esperado else None,
                 "diferencia": str(turno.diferencia) if puede_ver_esperado else None,
                 "estado": turno.estado,
             },

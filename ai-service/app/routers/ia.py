@@ -1,5 +1,7 @@
 """Router de inteligencia artificial (/v1/extraer-precios y /v1/resumen-semanal)."""
+
 from fastapi import APIRouter, status
+
 from app.schemas.comun import RespuestaError
 from app.schemas.extraccion import RespuestaExtraccionPrecios, SolicitudExtraccionPrecios
 from app.schemas.resumen import RespuestaResumenSemanal, SolicitudResumenSemanal

@@ -1,7 +1,10 @@
 """Tests unitarios de validación de esquemas Pydantic v2 (app/schemas/)."""
+
 from decimal import Decimal
+
 import pytest
 from pydantic import ValidationError
+
 from app.schemas.extraccion import (
     ItemPrecioExtraido,
     SalidaIAExtraccionPrecios,

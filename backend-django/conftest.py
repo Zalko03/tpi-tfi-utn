@@ -1,4 +1,5 @@
 """Configuración global de pytest para ejecución aislada con SQLite por defecto."""
+
 import os
 import sys
 from pathlib import Path

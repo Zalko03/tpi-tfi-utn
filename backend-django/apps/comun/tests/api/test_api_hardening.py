@@ -25,9 +25,7 @@ class TestApiHardeningEndpoints(APITestCase):
         )
 
     def test_cors_no_emite_cabecera_para_origen_no_autorizado(self):
-        response = self.client.get(
-            "/health", HTTP_ORIGIN="http://sitio-no-autorizado.com"
-        )
+        response = self.client.get("/health", HTTP_ORIGIN="http://sitio-no-autorizado.com")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertNotIn("Access-Control-Allow-Origin", response.headers)
 

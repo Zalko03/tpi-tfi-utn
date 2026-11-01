@@ -64,9 +64,7 @@ class TestUnitRolesYPermisos:
             assert perfil.tiene_permiso(perm) is True
             assert completos[perm] is True
 
-    def test_plantilla_encargado_permisos_operativos_sin_administracion(
-        self, user_encargado
-    ):
+    def test_plantilla_encargado_permisos_operativos_sin_administracion(self, user_encargado):
         """
         El Encargado cuenta con facultades operativas (costos, insumos, compras, ventas)
         pero no posee permisos sobre personal, reportes financieros ni borrado de insumos.

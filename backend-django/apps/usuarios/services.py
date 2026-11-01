@@ -61,9 +61,7 @@ def invalidar_tokens_usuario(usuario: Any) -> int:
                 bloqueados += 1
         return bloqueados
     except Exception as e:
-        logger.warning(
-            "No se pudieron invalidar tokens para el usuario %s: %s", usuario.id, e
-        )
+        logger.warning("No se pudieron invalidar tokens para el usuario %s: %s", usuario.id, e)
         return 0
 
 
@@ -89,9 +87,7 @@ def crear_personal(
     if not password:
         raise ErrorReglaNegocio("La contraseña inicial es obligatoria.")
     if User.objects.filter(username=username).exists():
-        raise ErrorReglaNegocio(
-            f"El nombre de usuario '{username}' ya se encuentra registrado."
-        )
+        raise ErrorReglaNegocio(f"El nombre de usuario '{username}' ya se encuentra registrado.")
 
     roles_validos = dict(ROLES_CHOICES).keys()
     if rol not in roles_validos:
@@ -132,9 +128,7 @@ def crear_personal(
 
     RegistroAuditoria.objects.create(
         usuario_modificado=usuario,
-        modificado_por=creado_por
-        if (creado_por and creado_por.is_authenticated)
-        else None,
+        modificado_por=creado_por if (creado_por and creado_por.is_authenticated) else None,
         accion="ALTA_USUARIO",
         detalles={
             "username": usuario.username,
@@ -196,10 +190,7 @@ def actualizar_personal(
         validar_claves_permisos(permisos)
 
         # Regla de supervivencia: protección contra remoción de permisos críticos del último Dueño
-        if (
-            perfil.rol == ROL_DUENIO
-            and contar_duenios_activos(excluir_usuario_id=usuario.id) == 0
-        ):
+        if perfil.rol == ROL_DUENIO and contar_duenios_activos(excluir_usuario_id=usuario.id) == 0:
             permisos_criticos_revocados = [
                 perm
                 for perm, activo in permisos.items()
@@ -313,9 +304,7 @@ def activar_personal(
 
     RegistroAuditoria.objects.create(
         usuario_modificado=usuario,
-        modificado_por=activado_por
-        if (activado_por and activado_por.is_authenticated)
-        else None,
+        modificado_por=activado_por if (activado_por and activado_por.is_authenticated) else None,
         accion="ACTIVACION",
         detalles={"mensaje": "Reactivación de cuenta de usuario"},
     )

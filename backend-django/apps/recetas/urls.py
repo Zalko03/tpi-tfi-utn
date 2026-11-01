@@ -1,5 +1,7 @@
 """Rutas para apps.recetas."""
+
 from rest_framework.routers import DefaultRouter
+
 from apps.recetas.views import ProductoViewSet, RecetaItemViewSet
 
 router = DefaultRouter()

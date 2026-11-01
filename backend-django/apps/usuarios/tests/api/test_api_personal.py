@@ -43,9 +43,7 @@ class TestApiPersonalEndpoints:
             rol=ROL_CAJERO,
         )
 
-    def test_listado_usuarios_requiere_permiso_personal_ver(
-        self, client, duenio, cajero
-    ):
+    def test_listado_usuarios_requiere_permiso_personal_ver(self, client, duenio, cajero):
         """Un usuario sin permiso recibe HTTP 403 con el formato de error unificado."""
         # Cajero no tiene personal.ver
         client.force_authenticate(user=cajero)
@@ -91,9 +89,7 @@ class TestApiPersonalEndpoints:
         assert "mensaje" in data
         assert "único Dueño activo" in str(data)
 
-    def test_desactivar_cajero_responde_200_y_desactiva_logicamente(
-        self, client, duenio, cajero
-    ):
+    def test_desactivar_cajero_responde_200_y_desactiva_logicamente(self, client, duenio, cajero):
         """Desactivar a un cajero responde 200, marca is_active = False sin borrado físico."""
         client.force_authenticate(user=duenio)
         res = client.post(
@@ -143,22 +139,14 @@ class TestApiPersonalEndpoints:
 
         # Cajero 1 sobre su turno
         assert (
-            permiso_checker.has_object_permission(
-                MockRequest(cajero), None, turno_cajero1
-            )
-            is True
+            permiso_checker.has_object_permission(MockRequest(cajero), None, turno_cajero1) is True
         )
         # Cajero 2 sobre turno ajeno
         assert (
-            permiso_checker.has_object_permission(
-                MockRequest(cajero2), None, turno_cajero1
-            )
+            permiso_checker.has_object_permission(MockRequest(cajero2), None, turno_cajero1)
             is False
         )
         # Dueño sobre cualquier turno
         assert (
-            permiso_checker.has_object_permission(
-                MockRequest(duenio), None, turno_cajero1
-            )
-            is True
+            permiso_checker.has_object_permission(MockRequest(duenio), None, turno_cajero1) is True
         )

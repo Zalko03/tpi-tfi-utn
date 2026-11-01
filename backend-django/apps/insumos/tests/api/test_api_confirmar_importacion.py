@@ -4,6 +4,7 @@ Verifica permisos (Dueño 201, Cajero 403, Anónimo 401) y formato unificado de 
 """
 
 from decimal import Decimal
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -59,9 +60,7 @@ class TestApiConfirmarImportacion:
         actualizar_costo_y_margen_producto(latte)
         return {"proveedor": proveedor, "cafe": cafe, "latte": latte}
 
-    def test_api_confirmar_importacion_exito_duenio(
-        self, client, duenio, escenario_catalogo
-    ):
+    def test_api_confirmar_importacion_exito_duenio(self, client, duenio, escenario_catalogo):
         """POST /api/compras/confirmar-importacion/ con Dueño responde 201 y recalcula."""
         client.force_authenticate(user=duenio)
         payload = {
@@ -89,9 +88,7 @@ class TestApiConfirmarImportacion:
         assert len(data["productos_recalculados"]) == 1
         assert data["productos_recalculados"][0]["costo_nuevo"] == "740.0000"
 
-    def test_api_confirmar_importacion_rechaza_cajero_403(
-        self, client, cajero, escenario_catalogo
-    ):
+    def test_api_confirmar_importacion_rechaza_cajero_403(self, client, cajero, escenario_catalogo):
         """Test negativo: Cajero sin 'compras.registrar' recibe 403 con formato único."""
         client.force_authenticate(user=cajero)
         payload = {
@@ -123,9 +120,7 @@ class TestApiConfirmarImportacion:
         )
         assert res.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_api_confirmar_importacion_rechaza_datos_invalidos_400(
-        self, client, duenio
-    ):
+    def test_api_confirmar_importacion_rechaza_datos_invalidos_400(self, client, duenio):
         """Datos inválidos responden 400 con el contrato de error unificado."""
         client.force_authenticate(user=duenio)
         res = client.post(

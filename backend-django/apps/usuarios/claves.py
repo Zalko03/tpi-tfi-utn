@@ -71,12 +71,8 @@ def obtener_claves_jwt(base_dir: Path | None = None) -> Tuple[str, str]:
         return priv_env.strip(), pub_env.strip()
 
     # 2. Rutas a archivos PEM
-    priv_path_str = os.environ.get(
-        "DJANGO_JWT_PRIVATE_KEY_PATH", "config/keys/private.pem"
-    )
-    pub_path_str = os.environ.get(
-        "DJANGO_JWT_PUBLIC_KEY_PATH", "config/keys/public.pem"
-    )
+    priv_path_str = os.environ.get("DJANGO_JWT_PRIVATE_KEY_PATH", "config/keys/private.pem")
+    pub_path_str = os.environ.get("DJANGO_JWT_PUBLIC_KEY_PATH", "config/keys/public.pem")
 
     priv_path = Path(priv_path_str)
     if not priv_path.is_absolute() and base_dir:
@@ -95,9 +91,7 @@ def obtener_claves_jwt(base_dir: Path | None = None) -> Tuple[str, str]:
 
         # Si no hay archivo de clave pública, derivarla de la privada
         try:
-            loaded_key = serialization.load_pem_private_key(
-                priv_pem.encode("utf-8"), password=None
-            )
+            loaded_key = serialization.load_pem_private_key(priv_pem.encode("utf-8"), password=None)
             pub_pem = (
                 loaded_key.public_key()
                 .public_bytes(

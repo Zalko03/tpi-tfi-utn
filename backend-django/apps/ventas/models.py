@@ -1,5 +1,7 @@
 """Modelos para registro de ventas e ítems con snapshots de costo congelados."""
+
 from decimal import Decimal
+
 from django.db import models
 from django.utils import timezone
 
@@ -59,9 +61,7 @@ class Venta(models.Model):
         ordering = ["-fecha", "-id"]
         indexes = [
             models.Index(fields=["fecha"], name="idx_venta_fecha"),
-            models.Index(
-                fields=["-fecha", "-id"], name="idx_venta_fecha_id_desc"
-            ),
+            models.Index(fields=["-fecha", "-id"], name="idx_venta_fecha_id_desc"),
         ]
 
     def __str__(self):
@@ -102,12 +102,8 @@ class VentaItem(models.Model):
         verbose_name = "Ítem de Venta"
         verbose_name_plural = "Ítems de Venta"
         indexes = [
-            models.Index(
-                fields=["venta", "producto"], name="idx_ventaitem_venta_prod"
-            ),
-            models.Index(
-                fields=["producto", "venta"], name="idx_ventaitem_prod_venta"
-            ),
+            models.Index(fields=["venta", "producto"], name="idx_ventaitem_venta_prod"),
+            models.Index(fields=["producto", "venta"], name="idx_ventaitem_prod_venta"),
         ]
 
     def __str__(self):

@@ -6,6 +6,7 @@ unificado de error { "mensaje": "...", "detalles": null } (docs/api-errores.md y
 """
 
 from decimal import Decimal
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -108,9 +109,7 @@ class TestApiPermisosNegativosSistematicos:
         )
         self._verificar_403(res)
 
-    def test_insumos_put_rechaza_cajero_sin_insumos_editar(
-        self, client, cajero, insumo
-    ):
+    def test_insumos_put_rechaza_cajero_sin_insumos_editar(self, client, cajero, insumo):
         """Cajero sin 'insumos.editar' recibe 403 al editar insumo."""
         client.force_authenticate(user=cajero)
         res = client.patch(
@@ -120,9 +119,7 @@ class TestApiPermisosNegativosSistematicos:
         )
         self._verificar_403(res)
 
-    def test_insumos_delete_rechaza_encargado_sin_insumos_eliminar(
-        self, client, encargado, insumo
-    ):
+    def test_insumos_delete_rechaza_encargado_sin_insumos_eliminar(self, client, encargado, insumo):
         """Encargado (que por plantilla no puede eliminar insumos) recibe 403 al hacer DELETE."""
         client.force_authenticate(user=encargado)
         res = client.delete(f"/api/insumos/{insumo.id}/")
@@ -196,9 +193,7 @@ class TestApiPermisosNegativosSistematicos:
         )
         self._verificar_403(res)
 
-    def test_productos_put_rechaza_cajero_sin_recetas_editar(
-        self, client, cajero, producto
-    ):
+    def test_productos_put_rechaza_cajero_sin_recetas_editar(self, client, cajero, producto):
         """Cajero recibe 403 al editar productos."""
         client.force_authenticate(user=cajero)
         res = client.patch(
@@ -216,9 +211,7 @@ class TestApiPermisosNegativosSistematicos:
         res = client.delete(f"/api/productos/{producto.id}/")
         self._verificar_403(res)
 
-    def test_productos_costo_rechaza_cajero_sin_recetas_ver_costos(
-        self, client, cajero, producto
-    ):
+    def test_productos_costo_rechaza_cajero_sin_recetas_ver_costos(self, client, cajero, producto):
         """Cajero recibe 403 al intentar acceder a /api/productos/:id/costo/."""
         client.force_authenticate(user=cajero)
         res = client.get(f"/api/productos/{producto.id}/costo/")
@@ -256,9 +249,7 @@ class TestApiPermisosNegativosSistematicos:
     # MÓDULO VENTAS
     # ==========================================
 
-    def test_ventas_post_rechaza_usuario_sin_ventas_cobrar_ticket(
-        self, client, duenio, producto
-    ):
+    def test_ventas_post_rechaza_usuario_sin_ventas_cobrar_ticket(self, client, duenio, producto):
         """Usuario con ventas.cobrar_ticket apagado recibe 403 al intentar registrar una venta."""
         usuario_sin_cobro = crear_personal(
             datos_usuario={"username": "sin_cobro", "password": "password123"},
@@ -271,37 +262,27 @@ class TestApiPermisosNegativosSistematicos:
         res = client.post("/api/ventas/", payload, format="json")
         self._verificar_403(res)
 
-    def test_ventas_anular_rechaza_cajero_sin_ventas_anular_ticket(
-        self, client, cajero, producto
-    ):
+    def test_ventas_anular_rechaza_cajero_sin_ventas_anular_ticket(self, client, cajero, producto):
         """Cajero recibe 403 al intentar anular una venta sin el permiso ventas.anular_ticket."""
-        turno = TurnoCaja.objects.create(
-            usuario=cajero, efectivo_inicial=Decimal("1000.00")
-        )
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("1000.00"))
         venta = Venta.objects.create(turno_caja=turno, total=Decimal("2500.00"))
 
         client.force_authenticate(user=cajero)
         res = client.post(f"/api/ventas/{venta.id}/anular/")
         self._verificar_403(res)
 
-    def test_ventas_retrieve_objeto_rechaza_cajero_en_turno_ajeno(
-        self, client, cajero, cajero_dos
-    ):
+    def test_ventas_retrieve_objeto_rechaza_cajero_en_turno_ajeno(self, client, cajero, cajero_dos):
         """Cajero recibe 403 al intentar consultar una venta perteneciente a otro cajero."""
         turno_otro = TurnoCaja.objects.create(
             usuario=cajero_dos, efectivo_inicial=Decimal("1000.00")
         )
-        venta_otro = Venta.objects.create(
-            turno_caja=turno_otro, total=Decimal("3000.00")
-        )
+        venta_otro = Venta.objects.create(turno_caja=turno_otro, total=Decimal("3000.00"))
 
         client.force_authenticate(user=cajero)
         res = client.get(f"/api/ventas/{venta_otro.id}/")
         self._verificar_403(res)
 
-    def test_ventas_post_rechaza_turno_de_otro_cajero(
-        self, client, cajero, cajero_dos, producto
-    ):
+    def test_ventas_post_rechaza_turno_de_otro_cajero(self, client, cajero, cajero_dos, producto):
         """Cajero recibe 403 si intenta registrar una venta sobre el turno de otro cajero."""
         turno_otro = TurnoCaja.objects.create(
             usuario=cajero_dos, efectivo_inicial=Decimal("1000.00")
@@ -319,9 +300,7 @@ class TestApiPermisosNegativosSistematicos:
     # MÓDULO CAJA
     # ==========================================
 
-    def test_caja_turnos_post_rechaza_usuario_sin_caja_abrir_turno(
-        self, client, duenio
-    ):
+    def test_caja_turnos_post_rechaza_usuario_sin_caja_abrir_turno(self, client, duenio):
         """Usuario con caja.abrir_turno apagado recibe 403 al abrir turno."""
         usuario_sin_apertura = crear_personal(
             datos_usuario={"username": "sin_apertura", "password": "password123"},
@@ -337,9 +316,7 @@ class TestApiPermisosNegativosSistematicos:
         )
         self._verificar_403(res)
 
-    def test_caja_turnos_cerrar_rechaza_usuario_sin_caja_cerrar_turno(
-        self, client, duenio, cajero
-    ):
+    def test_caja_turnos_cerrar_rechaza_usuario_sin_caja_cerrar_turno(self, client, duenio, cajero):
         """Usuario con caja.cerrar_turno apagado recibe 403 al intentar cerrar."""
         usuario_sin_cierre = crear_personal(
             datos_usuario={"username": "sin_cierre", "password": "password123"},
@@ -389,9 +366,7 @@ class TestApiPermisosNegativosSistematicos:
 
     def test_caja_movimientos_post_rechaza_cajero_sin_permiso(self, client, cajero):
         """Cajero sin 'caja.registrar_movimiento' recibe 403 al registrar movimiento."""
-        turno = TurnoCaja.objects.create(
-            usuario=cajero, efectivo_inicial=Decimal("2000.00")
-        )
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("2000.00"))
         client.force_authenticate(user=cajero)
         payload = {
             "turno_caja": turno.id,
@@ -422,9 +397,7 @@ class TestApiPermisosNegativosSistematicos:
         res_caj = client.get("/api/usuarios/")
         self._verificar_403(res_caj)
 
-    def test_personal_post_rechaza_encargado_sin_personal_crear(
-        self, client, encargado
-    ):
+    def test_personal_post_rechaza_encargado_sin_personal_crear(self, client, encargado):
         """Encargado recibe 403 al intentar registrar nuevo personal."""
         client.force_authenticate(user=encargado)
         payload = {
@@ -436,9 +409,7 @@ class TestApiPermisosNegativosSistematicos:
         res = client.post("/api/usuarios/", payload, format="json")
         self._verificar_403(res)
 
-    def test_personal_put_rechaza_encargado_sin_personal_editar(
-        self, client, encargado, cajero
-    ):
+    def test_personal_put_rechaza_encargado_sin_personal_editar(self, client, encargado, cajero):
         """Encargado recibe 403 al intentar editar perfil de otro empleado."""
         client.force_authenticate(user=encargado)
         res = client.patch(
@@ -460,9 +431,7 @@ class TestApiPermisosNegativosSistematicos:
         )
         self._verificar_403(res)
 
-    def test_personal_ajustar_permisos_rechaza_encargado(
-        self, client, encargado, cajero
-    ):
+    def test_personal_ajustar_permisos_rechaza_encargado(self, client, encargado, cajero):
         """Encargado recibe 403 al intentar modificar permisos de un usuario."""
         client.force_authenticate(user=encargado)
         res = client.post(
@@ -516,13 +485,9 @@ class TestApiPermisosNegativosSistematicos:
     # REGLA DE ARQUEO CIEGO EN CIERRE DE TURNO
     # ==========================================
 
-    def test_arqueo_ciego_cajero_no_recibe_efectivo_esperado_ni_diferencia(
-        self, client, cajero
-    ):
+    def test_arqueo_ciego_cajero_no_recibe_efectivo_esperado_ni_diferencia(self, client, cajero):
         """Al cerrar turno, un cajero no recibe efectivo_esperado ni diferencia en la respuesta."""
-        turno = TurnoCaja.objects.create(
-            usuario=cajero, efectivo_inicial=Decimal("5000.00")
-        )
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("5000.00"))
         client.force_authenticate(user=cajero)
         res = client.post(
             f"/api/caja/turnos/{turno.id}/cerrar/",
@@ -538,9 +503,7 @@ class TestApiPermisosNegativosSistematicos:
 
     def test_arqueo_duenio_recibe_efectivo_esperado_y_diferencia(self, client, duenio):
         """Dueño con caja.ver_efectivo_esperado ve el saldo teórico y la diferencia calculada."""
-        turno = TurnoCaja.objects.create(
-            usuario=duenio, efectivo_inicial=Decimal("5000.00")
-        )
+        turno = TurnoCaja.objects.create(usuario=duenio, efectivo_inicial=Decimal("5000.00"))
         client.force_authenticate(user=duenio)
         res = client.post(
             f"/api/caja/turnos/{turno.id}/cerrar/",

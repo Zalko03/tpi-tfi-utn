@@ -1,5 +1,7 @@
 """Modelos para turnos y movimientos de caja."""
+
 from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone

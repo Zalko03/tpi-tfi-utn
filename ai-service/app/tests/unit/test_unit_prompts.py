@@ -1,5 +1,7 @@
 """Tests unitarios para el cargador seguro de prompts versionados (app/services/prompts.py)."""
+
 import pytest
+
 from app.services.prompts import cargar_prompt
 
 
