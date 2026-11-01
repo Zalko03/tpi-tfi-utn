@@ -1,9 +1,25 @@
 """Esquemas Pydantic v2 para la extracción de precios desde listas de proveedores (HU7)."""
+
 from decimal import Decimal
 from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-UNIDADES_PERMITIDAS = {"g", "kg", "mg", "ml", "cc", "l", "litro", "lt", "kilo", "un", "u", "unidad", "docena"}
+UNIDADES_PERMITIDAS = {
+    "g",
+    "kg",
+    "mg",
+    "ml",
+    "cc",
+    "l",
+    "litro",
+    "lt",
+    "kilo",
+    "un",
+    "u",
+    "unidad",
+    "docena",
+}
 MAPEO_NORMALIZACION_UNIDADES = {
     "kilo": "kg",
     "litro": "l",

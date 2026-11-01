@@ -1,13 +1,16 @@
 """ViewSets para ventas y reportes operativos."""
 
-from django.utils.dateparse import parse_date, parse_datetime
 from datetime import datetime, time
+
 from django.utils import timezone
-from rest_framework import viewsets, filters, serializers, status
+from django.utils.dateparse import parse_date, parse_datetime
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django_filters.rest_framework import DjangoFilterBackend
+
+from apps.usuarios.permissions import PermisoObjetoVenta, TienePermiso
 from apps.ventas.models import Venta
 from apps.ventas.serializers import VentaSerializer
 from apps.ventas.services import (
@@ -16,7 +19,6 @@ from apps.ventas.services import (
     obtener_ranking_productos,
     obtener_reporte_ventas_por_producto,
 )
-from apps.usuarios.permissions import TienePermiso, PermisoObjetoVenta
 
 
 def _parsear_parametro_fecha(valor: str | None, es_fin: bool = False):
@@ -112,17 +114,11 @@ class VentaViewSet(viewsets.ModelViewSet):
         fecha_inicio = _parsear_parametro_fecha(
             request.query_params.get("fecha_inicio"), es_fin=False
         )
-        fecha_fin = _parsear_parametro_fecha(
-            request.query_params.get("fecha_fin"), es_fin=True
-        )
+        fecha_fin = _parsear_parametro_fecha(request.query_params.get("fecha_fin"), es_fin=True)
         if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
-            raise serializers.ValidationError(
-                "fecha_inicio no puede ser posterior a fecha_fin."
-            )
+            raise serializers.ValidationError("fecha_inicio no puede ser posterior a fecha_fin.")
 
-        datos = obtener_reporte_ventas_por_producto(
-            fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
-        )
+        datos = obtener_reporte_ventas_por_producto(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
         return Response(
             {
                 "datos": datos,
@@ -146,18 +142,12 @@ class VentaViewSet(viewsets.ModelViewSet):
             fecha_inicio = _parsear_parametro_fecha(
                 request.query_params.get("fecha_inicio"), es_fin=False
             )
-            fecha_fin = _parsear_parametro_fecha(
-                request.query_params.get("fecha_fin"), es_fin=True
-            )
+            fecha_fin = _parsear_parametro_fecha(request.query_params.get("fecha_fin"), es_fin=True)
 
         if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
-            raise serializers.ValidationError(
-                "fecha_inicio no puede ser posterior a fecha_fin."
-            )
+            raise serializers.ValidationError("fecha_inicio no puede ser posterior a fecha_fin.")
 
-        resumen = obtener_ganancia_diaria(
-            fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
-        )
+        resumen = obtener_ganancia_diaria(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
         return Response(resumen, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="ranking-productos")
@@ -169,13 +159,9 @@ class VentaViewSet(viewsets.ModelViewSet):
         fecha_inicio = _parsear_parametro_fecha(
             request.query_params.get("fecha_inicio"), es_fin=False
         )
-        fecha_fin = _parsear_parametro_fecha(
-            request.query_params.get("fecha_fin"), es_fin=True
-        )
+        fecha_fin = _parsear_parametro_fecha(request.query_params.get("fecha_fin"), es_fin=True)
         if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
-            raise serializers.ValidationError(
-                "fecha_inicio no puede ser posterior a fecha_fin."
-            )
+            raise serializers.ValidationError("fecha_inicio no puede ser posterior a fecha_fin.")
 
         limite_param = request.query_params.get("limite", 10)
         try:
@@ -213,12 +199,8 @@ class VentaViewSet(viewsets.ModelViewSet):
         dias_operativos = fuente.get("dias_operativos", 26)
         dias_semana = fuente.get("dias_semana", 6)
 
-        fecha_inicio = _parsear_parametro_fecha(
-            fuente.get("fecha_inicio"), es_fin=False
-        )
-        fecha_fin = _parsear_parametro_fecha(
-            fuente.get("fecha_fin"), es_fin=True
-        )
+        fecha_inicio = _parsear_parametro_fecha(fuente.get("fecha_inicio"), es_fin=False)
+        fecha_fin = _parsear_parametro_fecha(fuente.get("fecha_fin"), es_fin=True)
 
         try:
             resultado = calcular_punto_equilibrio_y_metas(

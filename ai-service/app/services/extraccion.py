@@ -1,10 +1,13 @@
 """Servicio de negocio para extracción de precios de proveedores (HU7)."""
+
 import asyncio
-from decimal import Decimal
 import json
 import time
+from decimal import Decimal
 from typing import Optional
+
 from pydantic import ValidationError
+
 from app.config import config
 from app.schemas.extraccion import (
     RespuestaExtraccionPrecios,
@@ -119,7 +122,9 @@ async def extraer_precios_de_lista(
                 mensaje_contingencia=None,
             )
         except asyncio.TimeoutError:
-            ultimo_error = f"Tiempo de espera agotado ({timeout}s) al invocar a '{nombre_proveedor}'."
+            ultimo_error = (
+                f"Tiempo de espera agotado ({timeout}s) al invocar a '{nombre_proveedor}'."
+            )
         except ValidationError as exc:
             ultimo_error = (
                 f"La respuesta de '{nombre_proveedor}' no superó la validación de esquema Pydantic: "

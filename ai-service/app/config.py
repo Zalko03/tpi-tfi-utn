@@ -1,6 +1,8 @@
 """Configuración centralizada de variables de entorno para ai-service."""
+
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Carga el archivo .env de la raíz del monorepo si existe
@@ -25,10 +27,14 @@ class ConfiguracionIA:
 
     @property
     def gemini_base_url(self) -> str:
-        return os.getenv(
-            "GEMINI_BASE_URL",
-            "https://generativelanguage.googleapis.com/v1beta",
-        ).strip().rstrip("/")
+        return (
+            os.getenv(
+                "GEMINI_BASE_URL",
+                "https://generativelanguage.googleapis.com/v1beta",
+            )
+            .strip()
+            .rstrip("/")
+        )
 
     @property
     def ollama_base_url(self) -> str:

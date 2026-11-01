@@ -7,6 +7,7 @@ Pruebas unitarias para servicios de reportes (HU10 y HU11):
 """
 
 from decimal import Decimal
+
 import pytest
 
 from apps.recetas.models import Producto
@@ -175,9 +176,7 @@ class TestUnitReportesServicios:
         assert resultado["meta_semanal"] == "480000.00"
         assert resultado["porcentaje_cumplimiento_pe"] == "100.00"
 
-    def test_punto_equilibrio_con_tickets_reales_de_la_base_de_datos(
-        self, catalogo_productos
-    ):
+    def test_punto_equilibrio_con_tickets_reales_de_la_base_de_datos(self, catalogo_productos):
         """Calcula el PE tomando automáticamente ventas y costos de los tickets emitidos."""
         p1, _, _ = catalogo_productos
         # 10 Espressos a $2000 ($20.000 ingresos) con costo unitario $600 ($6.000 costo variable)
@@ -204,18 +203,14 @@ class TestUnitReportesServicios:
 
     def test_punto_equilibrio_costos_fijos_cero_o_negativos_lanza_error(self):
         """Caso borde: costos fijos <= 0 debe ser rechazado."""
-        with pytest.raises(
-            ValueError, match="Los costos_fijos deben ser mayores a cero"
-        ):
+        with pytest.raises(ValueError, match="Los costos_fijos deben ser mayores a cero"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("0.00"),
                 costos_variables=Decimal("100.00"),
                 ventas=Decimal("500.00"),
             )
 
-        with pytest.raises(
-            ValueError, match="Los costos_fijos deben ser mayores a cero"
-        ):
+        with pytest.raises(ValueError, match="Los costos_fijos deben ser mayores a cero"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("-500.00"),
                 costos_variables=Decimal("100.00"),
@@ -225,15 +220,11 @@ class TestUnitReportesServicios:
     def test_punto_equilibrio_sin_ventas_lanza_error(self):
         """Caso borde: si no hay ventas registradas ni proporcionadas, no se puede calcular."""
         # Sin ventas en la BD y sin parámetro ventas
-        with pytest.raises(
-            ValueError, match="El monto de ventas debe ser mayor a cero"
-        ):
+        with pytest.raises(ValueError, match="El monto de ventas debe ser mayor a cero"):
             calcular_punto_equilibrio_y_metas(costos_fijos=Decimal("500000.00"))
 
         # Ventas explícitas en cero
-        with pytest.raises(
-            ValueError, match="El monto de ventas debe ser mayor a cero"
-        ):
+        with pytest.raises(ValueError, match="El monto de ventas debe ser mayor a cero"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("500000.00"),
                 costos_variables=Decimal("0.00"),
@@ -245,9 +236,7 @@ class TestUnitReportesServicios:
     ):
         """Caso borde: cuando costos variables >= ventas, el negocio pierde dinero por unidad vendida."""
         # Costos variables superan a ventas
-        with pytest.raises(
-            ValueError, match="Los costos_variables igualan o superan a las ventas"
-        ):
+        with pytest.raises(ValueError, match="Los costos_variables igualan o superan a las ventas"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("500000.00"),
                 costos_variables=Decimal("120000.00"),
@@ -255,9 +244,7 @@ class TestUnitReportesServicios:
             )
 
         # Costos variables igualan a ventas
-        with pytest.raises(
-            ValueError, match="Los costos_variables igualan o superan a las ventas"
-        ):
+        with pytest.raises(ValueError, match="Los costos_variables igualan o superan a las ventas"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("500000.00"),
                 costos_variables=Decimal("100000.00"),

@@ -1,7 +1,10 @@
 """Serializadores para proveedores, insumos y compras."""
+
 from decimal import Decimal
+
 from rest_framework import serializers
-from apps.insumos.models import Proveedor, Insumo, Compra
+
+from apps.insumos.models import Compra, Insumo, Proveedor
 from apps.insumos.services import registrar_compra_y_actualizar_costo
 
 
@@ -28,9 +31,7 @@ class InsumoSerializer(serializers.ModelSerializer):
 
     def validate_unidad_base(self, value):
         if value not in ("g", "ml", "un"):
-            raise serializers.ValidationError(
-                "La unidad base debe ser 'g', 'ml' o 'un'."
-            )
+            raise serializers.ValidationError("La unidad base debe ser 'g', 'ml' o 'un'.")
         return value
 
 
@@ -60,23 +61,17 @@ class CompraSerializer(serializers.ModelSerializer):
 
     def validate_cantidad(self, value):
         if Decimal(str(value)) <= Decimal("0"):
-            raise serializers.ValidationError(
-                "La cantidad adquirida debe ser mayor a cero."
-            )
+            raise serializers.ValidationError("La cantidad adquirida debe ser mayor a cero.")
         return value
 
     def validate_precio_total(self, value):
         if Decimal(str(value)) < Decimal("0"):
-            raise serializers.ValidationError(
-                "El precio total no puede ser negativo."
-            )
+            raise serializers.ValidationError("El precio total no puede ser negativo.")
         return value
 
     def validate_envio(self, value):
         if Decimal(str(value or 0)) < Decimal("0"):
-            raise serializers.ValidationError(
-                "El costo de envío no puede ser negativo."
-            )
+            raise serializers.ValidationError("El costo de envío no puede ser negativo.")
         return value
 
     def create(self, validated_data):
@@ -97,9 +92,7 @@ class CompraSerializer(serializers.ModelSerializer):
 
 
 class ItemConfirmacionImportacionSerializer(serializers.Serializer):
-    insumo_id = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
+    insumo_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     nombre_insumo = serializers.CharField(
         required=False, allow_blank=True, allow_null=True, max_length=150
     )
@@ -119,16 +112,12 @@ class ItemConfirmacionImportacionSerializer(serializers.Serializer):
 
     def validate_cantidad(self, value):
         if Decimal(str(value)) <= Decimal("0"):
-            raise serializers.ValidationError(
-                "La cantidad adquirida debe ser mayor a cero."
-            )
+            raise serializers.ValidationError("La cantidad adquirida debe ser mayor a cero.")
         return value
 
     def validate_precio_total(self, value):
         if Decimal(str(value)) <= Decimal("0"):
-            raise serializers.ValidationError(
-                "El precio total debe ser mayor a cero."
-            )
+            raise serializers.ValidationError("El precio total debe ser mayor a cero.")
         return value
 
     def validate(self, attrs):
@@ -142,9 +131,7 @@ class ItemConfirmacionImportacionSerializer(serializers.Serializer):
 
 
 class ConfirmarImportacionComprasSerializer(serializers.Serializer):
-    proveedor_id = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
+    proveedor_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     proveedor_nombre = serializers.CharField(
         required=False, allow_blank=True, allow_null=True, max_length=150
     )
@@ -158,9 +145,7 @@ class ConfirmarImportacionComprasSerializer(serializers.Serializer):
 
     def validate_envio(self, value):
         if Decimal(str(value or 0)) < Decimal("0"):
-            raise serializers.ValidationError(
-                "El costo de envío no puede ser negativo."
-            )
+            raise serializers.ValidationError("El costo de envío no puede ser negativo.")
         return value
 
     def validate(self, attrs):

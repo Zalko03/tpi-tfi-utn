@@ -1,11 +1,13 @@
 """Tests unitarios aislados de adaptadores (Gemini/Ollama) y servicios con contingencia."""
+
 import asyncio
-from decimal import Decimal
 import json
+from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-import httpx
+
 import pytest
+
 from app.schemas.extraccion import SolicitudExtraccionPrecios
 from app.schemas.resumen import ProductoRendimientoEntrada, SolicitudResumenSemanal
 from app.services.extraccion import extraer_precios_de_lista
@@ -124,15 +126,7 @@ class TestUnitAdapters:
         respuesta_http_mock = MagicMock()
         respuesta_http_mock.raise_for_status = MagicMock()
         respuesta_http_mock.json.return_value = {
-            "candidates": [
-                {
-                    "content": {
-                        "parts": [
-                            {"text": '{"moneda": "ARS", "items": []}'}
-                        ]
-                    }
-                }
-            ]
+            "candidates": [{"content": {"parts": [{"text": '{"moneda": "ARS", "items": []}'}]}}]
         }
 
         cliente_mock = AsyncMock()
@@ -261,7 +255,9 @@ class TestUnitServiciosConContingencia:
         assert adaptador.intentos == 2
         assert len(respuesta.items) == 1
 
-    async def test_extraccion_devuelve_contingencia_si_salida_ia_no_valida_pydantic(self, monkeypatch):
+    async def test_extraccion_devuelve_contingencia_si_salida_ia_no_valida_pydantic(
+        self, monkeypatch
+    ):
         monkeypatch.setenv("AI_MAX_RETRIES", "0")
         # La IA devuelve un precio negativo inválido
         adaptador = AdaptadorMockExitoso(

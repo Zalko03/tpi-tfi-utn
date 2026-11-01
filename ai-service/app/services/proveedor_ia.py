@@ -1,9 +1,12 @@
 """Patrón Adapter para desacoplar el proveedor de IA (Gemini API y Ollama)."""
-from abc import ABC, abstractmethod
+
 import json
 import re
+from abc import ABC, abstractmethod
 from typing import Any, Optional
+
 import httpx
+
 from app.config import config
 
 

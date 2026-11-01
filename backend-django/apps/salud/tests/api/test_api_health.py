@@ -20,11 +20,7 @@ def test_health_rechaza_metodos_distintos_de_get(client):
 
 def _arrancar_con_entorno(**variables):
     """Importa los settings en un proceso aparte con un entorno controlado."""
-    entorno = {
-        k: v
-        for k, v in os.environ.items()
-        if not k.startswith(("DJANGO_", "POSTGRES_"))
-    }
+    entorno = {k: v for k, v in os.environ.items() if not k.startswith(("DJANGO_", "POSTGRES_"))}
     # Variables vacías (no ausentes): load_dotenv no pisa las ya definidas,
     # así el resultado no depende de que exista un .env local.
     entorno.update({"DJANGO_SECRET_KEY": "", "DJANGO_ALLOWED_HOSTS": ""})
@@ -40,9 +36,7 @@ def _arrancar_con_entorno(**variables):
 
 
 def test_sin_debug_y_sin_secret_key_el_arranque_falla():
-    resultado = _arrancar_con_entorno(
-        DJANGO_DEBUG="False", DJANGO_ALLOWED_HOSTS="localhost"
-    )
+    resultado = _arrancar_con_entorno(DJANGO_DEBUG="False", DJANGO_ALLOWED_HOSTS="localhost")
 
     assert resultado.returncode != 0
     assert "DJANGO_SECRET_KEY" in resultado.stderr

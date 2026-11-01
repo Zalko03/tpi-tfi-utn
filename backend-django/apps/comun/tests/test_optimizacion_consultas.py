@@ -8,6 +8,7 @@ Suite de pruebas para la optimización de las 3 consultas críticas en PostgreSQ
 from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
+
 import pytest
 from django.core.management import call_command
 from django.utils import timezone
@@ -64,9 +65,7 @@ class TestOptimizacionConsultasT34:
         assert "idx_recetaitem_insumo_prod" in indices_receta_item
         assert "idx_producto_activo_nombre" in indices_producto
 
-    def test_consulta_1_listado_productos_elimina_n_mas_1(
-        self, django_assert_num_queries
-    ):
+    def test_consulta_1_listado_productos_elimina_n_mas_1(self, django_assert_num_queries):
         """
         Consultar 15 productos con múltiples ítems de receta e insumos y calcular su
         desglose ejecuta exactamente 2 consultas SQL (1 para productos, 1 para receta_items + insumos),
@@ -105,9 +104,7 @@ class TestOptimizacionConsultasT34:
             )
 
         with django_assert_num_queries(2):
-            productos = list(
-                listar_productos_con_costos_optimizado(solo_activos=True)
-            )
+            productos = list(listar_productos_con_costos_optimizado(solo_activos=True))
             assert len(productos) == 15
             for prod in productos:
                 desglose = obtener_desglose_costeo_producto(prod)
@@ -244,9 +241,7 @@ class TestOptimizacionConsultasT34:
         assert resumen[0]["costo_anterior"] == "700.0000"
         assert resumen[0]["costo_nuevo"] == "840.0000"
 
-    def test_endpoint_reporte_por_producto_permisos_y_validaciones(
-        self, client, duenio, cajero
-    ):
+    def test_endpoint_reporte_por_producto_permisos_y_validaciones(self, client, duenio, cajero):
         """
         Verifica el endpoint GET /api/ventas/reporte-por-producto/:
         - 403 Forbidden para Cajero sin 'reportes.ver_operativos' (test negativo).

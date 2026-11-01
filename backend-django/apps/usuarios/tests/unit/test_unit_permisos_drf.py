@@ -5,6 +5,7 @@ Valida has_permission y has_object_permission sin dependencias de base de datos 
 
 from decimal import Decimal
 from unittest.mock import MagicMock
+
 import pytest
 
 from apps.caja.serializers import TurnoCajaSerializer
@@ -70,9 +71,7 @@ class TestTienePermisoUnitario:
     """Evaluación exhaustiva de has_permission para los 30 permisos del catálogo."""
 
     @pytest.mark.parametrize("clave_permiso", PERMISOS_CATALOGO)
-    def test_tiene_permiso_usuario_con_permiso_habilitado_retorna_true(
-        self, clave_permiso
-    ):
+    def test_tiene_permiso_usuario_con_permiso_habilitado_retorna_true(self, clave_permiso):
         user = MockUser(permisos_dict={clave_permiso: True})
         req = MockRequest(user=user)
         permiso_cls = TienePermiso(clave_permiso)()
@@ -110,15 +109,11 @@ class TestTienePermisoUnitario:
     def test_tiene_permiso_fallback_token_jwt_permite_o_rechaza(self, clave_permiso):
         # Usuario sin perfil pero con token JWT
         user = MockUser()  # sin perfil
-        req_con_permiso = MockRequest(
-            user=user, auth_payload={"permisos": [clave_permiso]}
-        )
+        req_con_permiso = MockRequest(user=user, auth_payload={"permisos": [clave_permiso]})
         permiso_cls = TienePermiso(clave_permiso)()
         assert permiso_cls.has_permission(req_con_permiso, None) is True
 
-        req_sin_permiso = MockRequest(
-            user=user, auth_payload={"permisos": ["otro.permiso"]}
-        )
+        req_sin_permiso = MockRequest(user=user, auth_payload={"permisos": ["otro.permiso"]})
         assert permiso_cls.has_permission(req_sin_permiso, None) is False
 
     def test_mensaje_estandar_tiene_permiso(self):
@@ -142,9 +137,7 @@ class TestEsDuenioYEncargadoUnitario:
         assert perm.has_permission(MockRequest(cajero), None) is False
         assert perm.has_permission(MockRequest(None), None) is False
         assert (
-            perm.has_permission(
-                MockRequest(MockUser(is_active=False, rol=ROL_DUENIO)), None
-            )
+            perm.has_permission(MockRequest(MockUser(is_active=False, rol=ROL_DUENIO)), None)
             is False
         )
 
@@ -160,9 +153,7 @@ class TestEsDuenioYEncargadoUnitario:
         assert perm.has_permission(MockRequest(admin), None) is True
         assert perm.has_permission(MockRequest(cajero), None) is False
         assert (
-            perm.has_permission(
-                MockRequest(MockUser(is_active=False, rol=ROL_ENCARGADO)), None
-            )
+            perm.has_permission(MockRequest(MockUser(is_active=False, rol=ROL_ENCARGADO)), None)
             is False
         )
 
@@ -175,9 +166,7 @@ class TestPermisoObjetoTurnoCajaUnitario:
         cajero = MockUser(id=10, rol=ROL_CAJERO)
         turno_propio = MagicMock(usuario_id=10)
 
-        assert (
-            perm.has_object_permission(MockRequest(cajero), None, turno_propio) is True
-        )
+        assert perm.has_object_permission(MockRequest(cajero), None, turno_propio) is True
 
     def test_cajero_rechazado_al_intentar_acceder_turno_ajeno(self):
         perm = PermisoObjetoTurnoCaja()
@@ -186,9 +175,7 @@ class TestPermisoObjetoTurnoCajaUnitario:
         )
         turno_ajeno = MagicMock(usuario_id=99)
 
-        assert (
-            perm.has_object_permission(MockRequest(cajero), None, turno_ajeno) is False
-        )
+        assert perm.has_object_permission(MockRequest(cajero), None, turno_ajeno) is False
 
     def test_encargado_con_gestionar_turnos_ajenos_accede_a_cualquier_turno(self):
         perm = PermisoObjetoTurnoCaja()
@@ -199,10 +186,7 @@ class TestPermisoObjetoTurnoCajaUnitario:
         )
         turno_cajero = MagicMock(usuario_id=10)
 
-        assert (
-            perm.has_object_permission(MockRequest(encargado), None, turno_cajero)
-            is True
-        )
+        assert perm.has_object_permission(MockRequest(encargado), None, turno_cajero) is True
 
     def test_usuario_con_claim_token_gestionar_turnos_ajenos_accede(self):
         perm = PermisoObjetoTurnoCaja()
@@ -242,9 +226,7 @@ class TestPermisoObjetoVentaUnitario:
         turno = MagicMock(usuario_id=10)
         venta_propia = MagicMock(turno_caja=turno)
 
-        assert (
-            perm.has_object_permission(MockRequest(cajero), None, venta_propia) is True
-        )
+        assert perm.has_object_permission(MockRequest(cajero), None, venta_propia) is True
 
     def test_cajero_rechazado_en_venta_de_turno_ajeno(self):
         perm = PermisoObjetoVenta()
@@ -254,9 +236,7 @@ class TestPermisoObjetoVentaUnitario:
         turno_ajeno = MagicMock(usuario_id=20)
         venta_ajena = MagicMock(turno_caja=turno_ajeno)
 
-        assert (
-            perm.has_object_permission(MockRequest(cajero), None, venta_ajena) is False
-        )
+        assert perm.has_object_permission(MockRequest(cajero), None, venta_ajena) is False
 
     def test_encargado_con_ver_historial_todos_accede_a_cualquier_venta(self):
         perm = PermisoObjetoVenta()
@@ -295,10 +275,7 @@ class TestPermisoObjetoVentaUnitario:
         )
         venta_sin_turno = MagicMock(turno_caja=None)
 
-        assert (
-            perm.has_object_permission(MockRequest(cajero), None, venta_sin_turno)
-            is False
-        )
+        assert perm.has_object_permission(MockRequest(cajero), None, venta_sin_turno) is False
 
 
 class TestReglasArqueoCiegoYCostosUnitario:

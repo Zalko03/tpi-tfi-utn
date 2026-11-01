@@ -3,6 +3,7 @@
 import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
+
 from apps.insumos.models import Insumo
 from apps.usuarios.constantes import ROL_DUENIO
 from apps.usuarios.models import PerfilUsuario
@@ -53,9 +54,7 @@ class TestApiContratos:
 
     def test_contrato_error_400_validacion(self, client):
         """Datos inválidos responden 400 con { mensaje, detalles }."""
-        res = client.post(
-            "/api/insumos/", {"nombre": "", "unidad_base": "invalida"}, format="json"
-        )
+        res = client.post("/api/insumos/", {"nombre": "", "unidad_base": "invalida"}, format="json")
         assert res.status_code == 400
         data = res.json()
 

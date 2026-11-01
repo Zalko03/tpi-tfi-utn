@@ -1,19 +1,17 @@
 """Serializadores para ventas e ítems de venta."""
 
 from decimal import Decimal
+
 from rest_framework import exceptions, serializers
+
 from apps.ventas.models import Venta, VentaItem
 from apps.ventas.services import registrar_venta
 
 
 class VentaItemInputSerializer(serializers.Serializer):
     producto_id = serializers.IntegerField()
-    cantidad = serializers.DecimalField(
-        max_digits=8, decimal_places=2, default=Decimal("1.00")
-    )
-    precio_unitario = serializers.DecimalField(
-        max_digits=12, decimal_places=2, required=False
-    )
+    cantidad = serializers.DecimalField(max_digits=8, decimal_places=2, default=Decimal("1.00"))
+    precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
 
 
 class VentaItemDetailSerializer(serializers.ModelSerializer):
@@ -59,9 +57,7 @@ class VentaSerializer(serializers.ModelSerializer):
             if not getattr(user, "is_superuser", False):
                 perfil = getattr(user, "perfil", None)
                 puede_ajenos = (
-                    perfil.tiene_permiso("caja.gestionar_turnos_ajenos")
-                    if perfil
-                    else False
+                    perfil.tiene_permiso("caja.gestionar_turnos_ajenos") if perfil else False
                 )
                 if not puede_ajenos:
                     payload = getattr(request.auth, "payload", None)
@@ -70,14 +66,8 @@ class VentaSerializer(serializers.ModelSerializer):
                     puede_ajenos = "caja.gestionar_turnos_ajenos" in (
                         payload.get("permisos", []) if payload else []
                     )
-                if (
-                    turno.usuario_id
-                    and turno.usuario_id != user.id
-                    and not puede_ajenos
-                ):
-                    raise exceptions.PermissionDenied(
-                        "Debe pertenecer al turno abierto del cajero"
-                    )
+                if turno.usuario_id and turno.usuario_id != user.id and not puede_ajenos:
+                    raise exceptions.PermissionDenied("Debe pertenecer al turno abierto del cajero")
         return attrs
 
     def create(self, validated_data):

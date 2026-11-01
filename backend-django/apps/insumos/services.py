@@ -1,5 +1,7 @@
 """Servicios de lógica de negocio para conversión de unidades, costeo de insumos y compras."""
-from decimal import Decimal, ROUND_HALF_UP
+
+from decimal import ROUND_HALF_UP, Decimal
+
 from django.db import transaction
 
 FACTORES_CONVERSION = {
@@ -21,9 +23,7 @@ FACTORES_CONVERSION = {
     ("docena", "un"): Decimal("12"),
 }
 
-MAPA_UNIDAD_A_BASE = {
-    origen: base for (origen, base) in FACTORES_CONVERSION.keys()
-}
+MAPA_UNIDAD_A_BASE = {origen: base for (origen, base) in FACTORES_CONVERSION.keys()}
 
 
 def normalizar_unidad(unidad: str) -> str:
@@ -43,9 +43,7 @@ def inferir_unidad_base(unidad_origen: str) -> str:
     return MAPA_UNIDAD_A_BASE[origen]
 
 
-def convertir_a_unidad_base(
-    cantidad: Decimal, unidad_origen: str, unidad_base: str
-) -> Decimal:
+def convertir_a_unidad_base(cantidad: Decimal, unidad_origen: str, unidad_base: str) -> Decimal:
     """
     Convierte una cantidad expresada en unidad_origen a la unidad_base del insumo.
     Lanza ValueError si la cantidad no es positiva o si las unidades son incompatibles.
@@ -64,9 +62,7 @@ def convertir_a_unidad_base(
         )
 
     factor = FACTORES_CONVERSION[clave]
-    return (Decimal(str(cantidad)) * factor).quantize(
-        Decimal("0.0001"), rounding=ROUND_HALF_UP
-    )
+    return (Decimal(str(cantidad)) * factor).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
 def calcular_costo_unitario(
@@ -114,17 +110,13 @@ def calcular_costo_unitario(
     # 3. Conversión a unidad base
     cantidad_base = convertir_a_unidad_base(cant, unidad, unidad_base)
     if cantidad_base <= Decimal("0"):
-        raise ValueError(
-            "La cantidad convertida a la unidad base debe ser mayor a cero."
-        )
+        raise ValueError("La cantidad convertida a la unidad base debe ser mayor a cero.")
 
     costo_unitario = costo_total_compra / cantidad_base
     return costo_unitario.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
-def prorratear_envio(
-    lineas: list[dict], costo_envio_total: Decimal
-) -> list[Decimal]:
+def prorratear_envio(lineas: list[dict], costo_envio_total: Decimal) -> list[Decimal]:
     """
     Prorratea el envío total entre múltiples líneas de compra en proporción
     al valor monetario de cada línea (§3 del plan).
@@ -134,9 +126,7 @@ def prorratear_envio(
     if envio_total <= Decimal("0") or not lineas:
         return [Decimal("0.00") for _ in lineas]
 
-    suma_valores = sum(
-        Decimal(str(item.get("precio_total", 0))) for item in lineas
-    )
+    suma_valores = sum(Decimal(str(item.get("precio_total", 0))) for item in lineas)
     if suma_valores <= Decimal("0"):
         # Reparto parejo si todos los precios son 0
         porcion = (envio_total / Decimal(len(lineas))).quantize(
@@ -153,9 +143,7 @@ def prorratear_envio(
         else:
             valor = Decimal(str(item.get("precio_total", 0)))
             proporcion = (envio_total * valor) / suma_valores
-            redondeado = proporcion.quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
+            redondeado = proporcion.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             prorrateos.append(redondeado)
             acumulado += redondeado
 
@@ -231,13 +219,9 @@ def _resolver_proveedor_importacion(
     from apps.insumos.models import Proveedor
 
     if proveedor_id is not None:
-        proveedor = Proveedor.objects.filter(
-            id=proveedor_id, estado_activo=True
-        ).first()
+        proveedor = Proveedor.objects.filter(id=proveedor_id, estado_activo=True).first()
         if not proveedor:
-            raise ValueError(
-                f"El proveedor con ID {proveedor_id} no existe o está inactivo."
-            )
+            raise ValueError(f"El proveedor con ID {proveedor_id} no existe o está inactivo.")
         return proveedor
 
     nombre_limpio = str(proveedor_nombre or "").strip()
@@ -249,9 +233,7 @@ def _resolver_proveedor_importacion(
     proveedor = Proveedor.objects.filter(nombre__iexact=nombre_limpio).first()
     if proveedor:
         if not proveedor.estado_activo:
-            raise ValueError(
-                f"El proveedor '{proveedor.nombre}' se encuentra inactivo."
-            )
+            raise ValueError(f"El proveedor '{proveedor.nombre}' se encuentra inactivo.")
         return proveedor
 
     return Proveedor.objects.create(nombre=nombre_limpio, estado_activo=True)
@@ -265,23 +247,17 @@ def _resolver_insumo_importacion(item: dict):
     if insumo_id is not None:
         insumo = Insumo.objects.filter(id=insumo_id, estado_activo=True).first()
         if not insumo:
-            raise ValueError(
-                f"El insumo con ID {insumo_id} no existe o está inactivo."
-            )
+            raise ValueError(f"El insumo con ID {insumo_id} no existe o está inactivo.")
         return insumo
 
     nombre_limpio = str(item.get("nombre_insumo") or "").strip()
     if not nombre_limpio:
-        raise ValueError(
-            "Cada ítem debe especificar 'insumo_id' o 'nombre_insumo'."
-        )
+        raise ValueError("Cada ítem debe especificar 'insumo_id' o 'nombre_insumo'.")
 
     insumo = Insumo.objects.filter(nombre__iexact=nombre_limpio).first()
     if insumo:
         if not insumo.estado_activo:
-            raise ValueError(
-                f"El insumo '{insumo.nombre}' se encuentra inactivo."
-            )
+            raise ValueError(f"El insumo '{insumo.nombre}' se encuentra inactivo.")
         return insumo
 
     unidad_compra = item.get("unidad")
@@ -311,9 +287,7 @@ def registrar_lote_compras_importacion(
        historial_precios y snapshots_costeo.
     """
     if not items or not isinstance(items, list):
-        raise ValueError(
-            "La lista de ítems a importar no puede estar vacía."
-        )
+        raise ValueError("La lista de ítems a importar no puede estar vacía.")
 
     envio_dec = Decimal(str(envio_total or "0.00"))
     if envio_dec < Decimal("0"):
@@ -349,9 +323,7 @@ def registrar_lote_compras_importacion(
             costear_con_iva=costear_con_iva,
         )
 
-        productos_recalculados.extend(
-            getattr(compra, "_productos_recalculados", [])
-        )
+        productos_recalculados.extend(getattr(compra, "_productos_recalculados", []))
 
         compras_creadas.append(
             {
@@ -373,9 +345,7 @@ def registrar_lote_compras_importacion(
     return {
         "proveedor_id": proveedor.id,
         "proveedor_nombre": proveedor.nombre,
-        "envio_total": str(
-            envio_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        ),
+        "envio_total": str(envio_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
         "compras_creadas": compras_creadas,
         "productos_recalculados": productos_recalculados,
     }

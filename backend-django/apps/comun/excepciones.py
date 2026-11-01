@@ -1,6 +1,7 @@
 """Manejador unificado de excepciones para DRF respetando docs/api-errores.md."""
 
 import logging
+
 from django.conf import settings
 from rest_framework import exceptions, status
 from rest_framework.response import Response
@@ -33,9 +34,7 @@ def manejador_excepciones_api(exc, context):
         elif isinstance(exc, exceptions.PermissionDenied):
             mensaje = "No tiene permisos para realizar esta acción"
             detalles = None
-        elif isinstance(
-            exc, (exceptions.NotAuthenticated, exceptions.AuthenticationFailed)
-        ):
+        elif isinstance(exc, (exceptions.NotAuthenticated, exceptions.AuthenticationFailed)):
             mensaje = "Credenciales de autenticación no provistas o inválidas"
             detalles = None
         elif isinstance(exc, exceptions.Throttled):

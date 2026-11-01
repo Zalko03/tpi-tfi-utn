@@ -1,5 +1,7 @@
 """Rutas para apps.ventas."""
+
 from rest_framework.routers import DefaultRouter
+
 from apps.ventas.views import VentaViewSet
 
 router = DefaultRouter()

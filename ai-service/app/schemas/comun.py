@@ -1,5 +1,7 @@
 """Esquemas comunes de salud y respuestas de error unificadas."""
+
 from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 

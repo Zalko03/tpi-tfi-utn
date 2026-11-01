@@ -1,4 +1,5 @@
 """Servicio de carga segura de prompts versionados desde disco."""
+
 import re
 from pathlib import Path
 
@@ -16,7 +17,9 @@ def cargar_prompt(nombre_prompt: str, version: str = "v1") -> str:
     nombre_limpio = (nombre_prompt or "").strip()
 
     if not PATRON_VERSION.match(version_limpia):
-        raise ValueError(f"Versión de prompt inválida: '{version}'. Formato esperado: 'v1', 'v2', etc.")
+        raise ValueError(
+            f"Versión de prompt inválida: '{version}'. Formato esperado: 'v1', 'v2', etc."
+        )
 
     if not PATRON_NOMBRE.match(nombre_limpio):
         raise ValueError(f"Nombre de prompt inválido: '{nombre_prompt}'.")

@@ -1,5 +1,7 @@
 """Modelos para productos y formulación de recetas."""
+
 from decimal import Decimal
+
 from django.db import models
 
 

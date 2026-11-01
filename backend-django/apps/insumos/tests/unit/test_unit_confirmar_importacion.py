@@ -4,6 +4,7 @@ prorrateo de envío y recálculo de recetas con desglose (T3.3).
 """
 
 from decimal import Decimal
+
 import pytest
 
 from apps.insumos.models import Compra, Insumo, Proveedor
@@ -124,9 +125,7 @@ class TestConfirmarImportacionService:
         assert recalculos[1]["costo_descartables"] == "80.0000"
         assert len(recalculos[1]["desglose_insumos"]) == 2
 
-    def test_servicio_lote_atomico_revierte_todo_si_un_item_falla(
-        self, escenario_catalogo
-    ):
+    def test_servicio_lote_atomico_revierte_todo_si_un_item_falla(self, escenario_catalogo):
         """
         Si el segundo ítem tiene una unidad incompatible con la unidad base del insumo,
         @transaction.atomic revierte toda la operación (0 compras creadas, costo intacto).
@@ -160,9 +159,7 @@ class TestConfirmarImportacionService:
         assert cafe.costo_unitario == costo_original_cafe
         assert Compra.objects.count() == 0
 
-    def test_servicio_lote_con_envio_cero_y_creacion_proveedor_nuevo(
-        self, escenario_catalogo
-    ):
+    def test_servicio_lote_con_envio_cero_y_creacion_proveedor_nuevo(self, escenario_catalogo):
         """Permite confirmar importación con envío cero creando un proveedor nuevo por nombre."""
         cafe = escenario_catalogo["cafe"]
         resultado = registrar_lote_compras_importacion(
@@ -181,17 +178,13 @@ class TestConfirmarImportacionService:
 
         assert Proveedor.objects.filter(nombre="Nuevo Proveedor Mayorista").exists()
         assert len(resultado["compras_creadas"]) == 1
-        assert Decimal(resultado["compras_creadas"][0]["envio_prorrateado"]) == Decimal(
-            "0.00"
-        )
+        assert Decimal(resultado["compras_creadas"][0]["envio_prorrateado"]) == Decimal("0.00")
         cafe.refresh_from_db()
         assert cafe.costo_unitario == Decimal("25.0000")
 
     def test_servicio_lote_rechaza_lista_vacia_o_envio_negativo(self):
         """Valida que no se permitan listas vacías ni montos de flete negativos."""
-        with pytest.raises(
-            ValueError, match="La lista de ítems a importar no puede estar vacía"
-        ):
+        with pytest.raises(ValueError, match="La lista de ítems a importar no puede estar vacía"):
             registrar_lote_compras_importacion(items=[])
 
         with pytest.raises(ValueError, match="El costo de envío no puede ser negativo"):

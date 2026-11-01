@@ -1,16 +1,26 @@
 """Esquemas Pydantic v2 para la generación del resumen semanal de rendimiento (HU13)."""
+
 from decimal import Decimal
 from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProductoRendimientoEntrada(BaseModel):
     """Datos agregados de ventas y margen de un producto durante el período consultado."""
 
-    nombre: str = Field(..., min_length=1, max_length=150, description="Nombre del producto de cafetería.")
-    unidades_vendidas: int = Field(..., ge=0, description="Cantidad de unidades vendidas en la semana.")
-    ingresos_totales: Decimal = Field(..., ge=Decimal("0"), description="Monto bruto vendido del producto.")
-    ganancia_bruta: Decimal = Field(..., description="Ganancia bruta acumulada (precio - costo congelado).")
+    nombre: str = Field(
+        ..., min_length=1, max_length=150, description="Nombre del producto de cafetería."
+    )
+    unidades_vendidas: int = Field(
+        ..., ge=0, description="Cantidad de unidades vendidas en la semana."
+    )
+    ingresos_totales: Decimal = Field(
+        ..., ge=Decimal("0"), description="Monto bruto vendido del producto."
+    )
+    ganancia_bruta: Decimal = Field(
+        ..., description="Ganancia bruta acumulada (precio - costo congelado)."
+    )
     margen_bruto_pct: Decimal = Field(
         ...,
         description="Porcentaje de margen bruto promedio del producto (ej. 58.50).",
@@ -28,11 +38,21 @@ class ProductoRendimientoEntrada(BaseModel):
 class SolicitudResumenSemanal(BaseModel):
     """Datos semanales consolidados enviados a ai-service para redactar el resumen y sugerencias."""
 
-    fecha_desde: str = Field(..., min_length=8, max_length=20, description="Fecha de inicio del período (YYYY-MM-DD).")
-    fecha_hasta: str = Field(..., min_length=8, max_length=20, description="Fecha de cierre del período (YYYY-MM-DD).")
-    total_ventas: Decimal = Field(..., ge=Decimal("0"), description="Facturación bruta total del período.")
-    ganancia_bruta_total: Decimal = Field(..., description="Ganancia bruta total acumulada del período.")
-    cantidad_tickets: int = Field(..., ge=0, description="Cantidad de tickets emitidos en la semana.")
+    fecha_desde: str = Field(
+        ..., min_length=8, max_length=20, description="Fecha de inicio del período (YYYY-MM-DD)."
+    )
+    fecha_hasta: str = Field(
+        ..., min_length=8, max_length=20, description="Fecha de cierre del período (YYYY-MM-DD)."
+    )
+    total_ventas: Decimal = Field(
+        ..., ge=Decimal("0"), description="Facturación bruta total del período."
+    )
+    ganancia_bruta_total: Decimal = Field(
+        ..., description="Ganancia bruta total acumulada del período."
+    )
+    cantidad_tickets: int = Field(
+        ..., ge=0, description="Cantidad de tickets emitidos en la semana."
+    )
     productos: list[ProductoRendimientoEntrada] = Field(
         ...,
         min_length=1,
@@ -82,8 +102,12 @@ class SolicitudResumenSemanal(BaseModel):
 class SugerenciaRotacionItem(BaseModel):
     """Sugerencia accionable sobre un producto del menú."""
 
-    producto: str = Field(..., min_length=1, description="Producto sobre el cual se sugiere accionar.")
-    accion_sugerida: str = Field(..., min_length=1, description="Acción recomendada (promocionar, ajustar precio, rotar).")
+    producto: str = Field(
+        ..., min_length=1, description="Producto sobre el cual se sugiere accionar."
+    )
+    accion_sugerida: str = Field(
+        ..., min_length=1, description="Acción recomendada (promocionar, ajustar precio, rotar)."
+    )
     motivo: str = Field(..., min_length=1, description="Justificación basada en volumen y margen.")
 
 
@@ -99,7 +123,9 @@ class SalidaIAResumenSemanal(BaseModel):
 class RespuestaResumenSemanal(BaseModel):
     """Respuesta completa del endpoint POST /v1/resumen-semanal."""
 
-    resumen_ejecutivo: str = Field(..., description="Síntesis en español del desempeño semanal del negocio.")
+    resumen_ejecutivo: str = Field(
+        ..., description="Síntesis en español del desempeño semanal del negocio."
+    )
     productos_destacados: list[str] = Field(
         default_factory=list,
         description="Productos con mejor desempeño en volumen o contribución.",

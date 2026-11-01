@@ -1,10 +1,13 @@
 """Servicio de ventas, congelamiento de snapshots de costo y reportes agregados."""
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
 from django.db import transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
 from django.db.models.functions import TruncDate
-from apps.ventas.models import Venta, VentaItem
+
 from apps.recetas.models import Producto
+from apps.ventas.models import Venta, VentaItem
 
 
 @transaction.atomic
@@ -42,12 +45,8 @@ def registrar_venta(
         if cantidad <= Decimal("0"):
             raise ValueError("La cantidad a vender debe ser mayor a cero.")
 
-        producto = Producto.objects.select_for_update().get(
-            id=producto_id, estado_activo=True
-        )
-        precio_unitario = Decimal(
-            str(item.get("precio_unitario", producto.precio_venta))
-        )
+        producto = Producto.objects.select_for_update().get(id=producto_id, estado_activo=True)
+        precio_unitario = Decimal(str(item.get("precio_unitario", producto.precio_venta)))
         costo_snapshot = producto.costo_total_calculado
 
         VentaItem.objects.create(
@@ -68,9 +67,7 @@ def registrar_venta(
     return venta
 
 
-def construir_queryset_reporte_ventas_por_producto(
-    fecha_inicio=None, fecha_fin=None
-):
+def construir_queryset_reporte_ventas_por_producto(fecha_inicio=None, fecha_fin=None):
     """
     Construye el QuerySet agregado en SQL (GROUP BY producto) filtrado por fecha de venta.
     Aprovecha idx_venta_fecha en Venta e idx_ventaitem_venta_prod en VentaItem (T3.4).
@@ -104,9 +101,7 @@ def construir_queryset_reporte_ventas_por_producto(
     )
 
 
-def obtener_reporte_ventas_por_producto(
-    fecha_inicio=None, fecha_fin=None
-) -> list[dict]:
+def obtener_reporte_ventas_por_producto(fecha_inicio=None, fecha_fin=None) -> list[dict]:
     """
     Retorna el reporte consolidado de ventas por producto en una única consulta SQL
     agregada, calculando ganancia bruta con el costo congelado al vender (§3 del plan).
@@ -123,12 +118,10 @@ def obtener_reporte_ventas_por_producto(
         ingresos = Decimal(str(fila["ingresos_totales"] or "0.00")).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        costo = Decimal(
-            str(fila["costo_total_congelado"] or "0.0000")
-        ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-        ganancia = (ingresos - costo).quantize(
+        costo = Decimal(str(fila["costo_total_congelado"] or "0.0000")).quantize(
             Decimal("0.0001"), rounding=ROUND_HALF_UP
         )
+        ganancia = (ingresos - costo).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
         resultado.append(
             {
@@ -185,9 +178,9 @@ def obtener_ganancia_diaria(fecha_inicio=None, fecha_fin=None) -> dict:
     ingresos = Decimal(str(agregado["ingresos_totales"] or "0.00")).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    costo_congelado = Decimal(
-        str(agregado["costo_total_congelado"] or "0.0000")
-    ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    costo_congelado = Decimal(str(agregado["costo_total_congelado"] or "0.0000")).quantize(
+        Decimal("0.0001"), rounding=ROUND_HALF_UP
+    )
     ganancia_bruta = (ingresos - costo_congelado).quantize(
         Decimal("0.0001"), rounding=ROUND_HALF_UP
     )
@@ -218,9 +211,7 @@ def obtener_ganancia_diaria(fecha_inicio=None, fecha_fin=None) -> dict:
         cos_d = Decimal(str(fila["costo_dia"] or "0.0000")).quantize(
             Decimal("0.0001"), rounding=ROUND_HALF_UP
         )
-        gan_d = (ing_d - cos_d).quantize(
-            Decimal("0.0001"), rounding=ROUND_HALF_UP
-        )
+        gan_d = (ing_d - cos_d).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
         desglose_por_dia.append(
             {
                 "fecha": fila["dia"].isoformat() if fila["dia"] else None,
@@ -242,23 +233,17 @@ def obtener_ganancia_diaria(fecha_inicio=None, fecha_fin=None) -> dict:
     }
 
 
-def obtener_ranking_productos(
-    fecha_inicio=None, fecha_fin=None, limite: int = 10
-) -> dict:
+def obtener_ranking_productos(fecha_inicio=None, fecha_fin=None, limite: int = 10) -> dict:
     """
     Calcula el ranking de productos más y menos vendidos en un rango de fechas (HU10 / CA10.2).
     Incluye en 'menos_vendidos' también los productos activos que tuvieron 0 ventas en el período
     para visibilizar ítems sin rotación.
     """
     limite_limpio = max(1, int(limite or 10))
-    vendidos = obtener_reporte_ventas_por_producto(
-        fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
-    )
+    vendidos = obtener_reporte_ventas_por_producto(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
 
     mapa_vendidos = {item["producto_id"]: item for item in vendidos}
-    productos_activos = Producto.objects.filter(estado_activo=True).only(
-        "id", "nombre"
-    )
+    productos_activos = Producto.objects.filter(estado_activo=True).only("id", "nombre")
 
     todos_los_productos = list(vendidos)
     for prod in productos_activos:
@@ -319,15 +304,15 @@ def calcular_punto_equilibrio_y_metas(
         dias_op = int(dias_operativos)
         dias_sem = int(dias_semana)
     except (TypeError, ValueError) as exc:
-        raise ValueError("dias_operativos y dias_semana deben ser números enteros positivos.") from exc
+        raise ValueError(
+            "dias_operativos y dias_semana deben ser números enteros positivos."
+        ) from exc
 
     if dias_op <= 0 or dias_sem <= 0:
         raise ValueError("dias_operativos y dias_semana deben ser mayores a cero.")
 
     if costos_variables is None or ventas is None:
-        resumen_periodo = obtener_ganancia_diaria(
-            fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
-        )
+        resumen_periodo = obtener_ganancia_diaria(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
         ventas_dec = (
             Decimal(str(ventas))
             if ventas is not None
@@ -361,9 +346,7 @@ def calcular_punto_equilibrio_y_metas(
     razon_costo_variable = costos_var_dec / ventas_dec
     margen_contribucion = Decimal("1") - razon_costo_variable
 
-    pe_mensual = (cf / margen_contribucion).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
+    pe_mensual = (cf / margen_contribucion).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     meta_diaria = (pe_mensual / Decimal(str(dias_op))).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
@@ -376,12 +359,8 @@ def calcular_punto_equilibrio_y_metas(
 
     return {
         "costos_fijos": str(cf.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-        "costos_variables": str(
-            costos_var_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        ),
-        "ventas_referencia": str(
-            ventas_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        ),
+        "costos_variables": str(costos_var_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        "ventas_referencia": str(ventas_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
         "margen_contribucion": str(
             margen_contribucion.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
         ),

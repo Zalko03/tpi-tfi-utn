@@ -1,12 +1,15 @@
 """Comando seed_demo: puebla la base de datos con datos de muestra anonimizados de cafetería."""
+
 from decimal import Decimal
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from apps.insumos.models import Proveedor, Insumo
+
+from apps.caja.models import TurnoCaja
+from apps.insumos.models import Insumo, Proveedor
 from apps.insumos.services import registrar_compra_y_actualizar_costo
 from apps.recetas.models import Producto, RecetaItem
 from apps.recetas.services import actualizar_costo_y_margen_producto
-from apps.caja.models import TurnoCaja
 from apps.ventas.services import registrar_venta
 
 
@@ -20,7 +23,9 @@ class Command(BaseCommand):
         prov_cafe, _ = Proveedor.objects.get_or_create(nombre="Distribuidora Central de Café")
         prov_lacteos, _ = Proveedor.objects.get_or_create(nombre="Lácteos del Valle")
         prov_molino, _ = Proveedor.objects.get_or_create(nombre="Molino Harinero del Sur")
-        prov_descartables, _ = Proveedor.objects.get_or_create(nombre="Envases y Descartables San Jorge")
+        prov_descartables, _ = Proveedor.objects.get_or_create(
+            nombre="Envases y Descartables San Jorge"
+        )
 
         # 2. Insumos
         insumo_cafe, _ = Insumo.objects.get_or_create(

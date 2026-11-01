@@ -70,16 +70,22 @@ export const validarYNormalizarSalidaIA = (datos) => {
  */
 export const extraerPreciosIA = async (
     { textoLista, proveedorNombre = null, versionPrompt = 'v1' },
-    timeoutMs = 12000
+    timeoutMs = 12000,
+    correlationId = null
 ) => {
     const inicio = Date.now();
     try {
+        const headers = {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        };
+        if (correlationId) {
+            headers['X-Request-ID'] = correlationId;
+        }
+
         const respuesta = await fetch(`${aiServiceUrl}/v1/extraer-precios`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-            },
+            headers,
             body: JSON.stringify({
                 texto_lista: textoLista,
                 proveedor_nombre: proveedorNombre,

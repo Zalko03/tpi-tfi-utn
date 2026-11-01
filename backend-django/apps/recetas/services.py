@@ -1,7 +1,10 @@
 """Servicios de costeo de recetas, márgenes y propagación de costos."""
-from decimal import Decimal, ROUND_HALF_UP
+
+from decimal import ROUND_HALF_UP, Decimal
+
 from django.db.models import Prefetch
 from django.utils import timezone
+
 from apps.insumos.services import convertir_a_unidad_base
 
 
@@ -63,9 +66,7 @@ def obtener_desglose_costeo_producto(producto) -> dict:
     minutos = Decimal(str(producto.minutos_mano_obra or 0))
     costo_hora = Decimal(str(producto.costo_hora_mano_obra or 0))
     costo_mo = (
-        ((minutos * costo_hora) / Decimal("60")).quantize(
-            Decimal("0.0001"), rounding=ROUND_HALF_UP
-        )
+        ((minutos * costo_hora) / Decimal("60")).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
         if minutos > 0
         else Decimal("0.0000")
     )
@@ -164,9 +165,7 @@ def recalcular_recetas_por_insumo(insumo_id: int) -> list[dict]:
     for prod in productos_afectados:
         costo_anterior = prod.costo_total_calculado
         desglose = obtener_desglose_costeo_producto(prod)
-        ganancia, margen = calcular_margen_y_ganancia(
-            prod.precio_venta, desglose["costo_total"]
-        )
+        ganancia, margen = calcular_margen_y_ganancia(prod.precio_venta, desglose["costo_total"])
         prod.costo_total_calculado = desglose["costo_total"]
         prod.ganancia_bruta = ganancia
         prod.margen_bruto = margen

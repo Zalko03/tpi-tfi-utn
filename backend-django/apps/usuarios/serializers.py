@@ -56,12 +56,8 @@ class UsuarioCrearSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     password = serializers.CharField(write_only=True, min_length=4)
     email = serializers.EmailField(required=False, allow_blank=True, default="")
-    first_name = serializers.CharField(
-        max_length=150, required=False, allow_blank=True, default=""
-    )
-    last_name = serializers.CharField(
-        max_length=150, required=False, allow_blank=True, default=""
-    )
+    first_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    last_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
     rol = serializers.ChoiceField(choices=ROLES_CHOICES, default=ROL_CAJERO)
     permisos = serializers.DictField(
         child=serializers.BooleanField(),
@@ -121,9 +117,7 @@ class AjustarPermisosSerializer(serializers.Serializer):
 
 
 class DesactivarUsuarioSerializer(serializers.Serializer):
-    motivo = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, default=""
-    )
+    motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
 class RegistroAuditoriaSerializer(serializers.ModelSerializer):

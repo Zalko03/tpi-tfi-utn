@@ -1,12 +1,15 @@
 """Punto de entrada de la aplicación FastAPI para ai-service."""
+
 from fastapi import FastAPI
+
 from app.excepciones import registrar_manejadores_excepciones
+from app.middlewares.correlation import CorrelationIdMiddleware
 from app.routers.ia import router as router_ia
 from app.routers.salud import router as router_salud
 
 
 def crear_aplicacion() -> FastAPI:
-    """Crea y configura la instancia de FastAPI con manejadores de error y routers."""
+    """Crea y configura la instancia de FastAPI con manejadores de error, middlewares y routers."""
     app = FastAPI(
         title="Cafe Gestión — Servicio de Inteligencia Artificial (ai-service)",
         description=(
@@ -16,6 +19,9 @@ def crear_aplicacion() -> FastAPI:
         ),
         version="1.0.0",
     )
+
+    # Middleware de correlación y trazabilidad (TP 4)
+    app.add_middleware(CorrelationIdMiddleware)
 
     registrar_manejadores_excepciones(app)
     app.include_router(router_salud)

@@ -1,9 +1,12 @@
 """Servicio de negocio para generación de resumen semanal con IA (HU13)."""
+
 import asyncio
 import json
 import time
 from typing import Optional
+
 from pydantic import ValidationError
+
 from app.config import config
 from app.schemas.resumen import (
     RespuestaResumenSemanal,
@@ -121,7 +124,9 @@ async def generar_resumen_semanal(
                 mensaje_contingencia=None,
             )
         except asyncio.TimeoutError:
-            ultimo_error = f"Tiempo de espera agotado ({timeout}s) al invocar a '{nombre_proveedor}'."
+            ultimo_error = (
+                f"Tiempo de espera agotado ({timeout}s) al invocar a '{nombre_proveedor}'."
+            )
         except ValidationError as exc:
             ultimo_error = (
                 f"La respuesta de '{nombre_proveedor}' no superó la validación de esquema Pydantic: "

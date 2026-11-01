@@ -85,18 +85,14 @@ class CustomTokenRefreshSerializer(TokenRefreshSerializer):
 
         user_id = refresh.payload.get(api_settings.USER_ID_CLAIM, None)
         if not user_id:
-            raise InvalidToken(
-                "El token no contiene un identificador de usuario válido."
-            )
+            raise InvalidToken("El token no contiene un identificador de usuario válido.")
 
         try:
             user = User.objects.select_related("perfil").get(
                 **{api_settings.USER_ID_FIELD: user_id}
             )
         except User.DoesNotExist:
-            raise AuthenticationFailed(
-                "No existe un usuario activo asociado a este token."
-            )
+            raise AuthenticationFailed("No existe un usuario activo asociado a este token.")
 
         if not user.is_active:
             raise AuthenticationFailed("La cuenta del usuario ha sido desactivada.")

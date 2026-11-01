@@ -88,9 +88,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(
         minutes=int(os.environ.get("DJANGO_ACCESS_TOKEN_MINUTES", "15"))
     ),
-    "REFRESH_TOKEN_LIFETIME": timedelta(
-        days=int(os.environ.get("DJANGO_REFRESH_TOKEN_DAYS", "1"))
-    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.environ.get("DJANGO_REFRESH_TOKEN_DAYS", "1"))),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
@@ -123,6 +121,7 @@ TEMPLATES = [
 STATIC_URL = "/static/"
 
 MIDDLEWARE = [
+    "apps.comun.middleware.CorrelationIdMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -153,6 +152,9 @@ LOGGING = {
     "formatters": {
         "estandar": {
             "format": "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+        },
+        "json": {
+            "()": "apps.comun.logging.FormateadorJson",
         },
     },
     "handlers": {

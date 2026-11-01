@@ -37,12 +37,8 @@ class PerfilUsuario(models.Model):
         blank=True,
         verbose_name="Ajustes individuales de permisos (overrides)",
     )
-    creado_en = models.DateTimeField(
-        auto_now_add=True, verbose_name="Fecha de creación"
-    )
-    actualizado_en = models.DateTimeField(
-        auto_now=True, verbose_name="Última actualización"
-    )
+    creado_en = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
+    actualizado_en = models.DateTimeField(auto_now=True, verbose_name="Última actualización")
 
     class Meta:
         verbose_name = "Perfil de Personal"

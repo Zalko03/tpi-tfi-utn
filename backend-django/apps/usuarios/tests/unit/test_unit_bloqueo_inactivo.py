@@ -58,9 +58,7 @@ class TestUnitBloqueoInactivo:
 
     def test_login_serializer_rechaza_usuario_inactivo(self, user_cajero, user_duenio):
         """Un usuario con is_active = False no puede autenticarse ni emitir tokens."""
-        desactivar_personal(
-            user_cajero.id, motivo="Baja laboral", desactivado_por=user_duenio
-        )
+        desactivar_personal(user_cajero.id, motivo="Baja laboral", desactivado_por=user_duenio)
         user_cajero.refresh_from_db()
         assert user_cajero.is_active is False
 
@@ -86,9 +84,7 @@ class TestUnitBloqueoInactivo:
         refresh_str = str(token_refresh)
 
         # Desactivamos al cajero, lo que revoca sus OutstandingTokens en Blacklist
-        desactivar_personal(
-            user_cajero.id, motivo="Baja inmediata", desactivado_por=user_duenio
-        )
+        desactivar_personal(user_cajero.id, motivo="Baja inmediata", desactivado_por=user_duenio)
         user_cajero.refresh_from_db()
         assert user_cajero.is_active is False
 
@@ -97,9 +93,7 @@ class TestUnitBloqueoInactivo:
         with pytest.raises((InvalidToken, TokenError)):
             refresh_serializer.is_valid(raise_exception=True)
 
-    def test_refresh_serializer_bloquea_usuario_inactivo_sin_blacklist(
-        self, user_cajero
-    ):
+    def test_refresh_serializer_bloquea_usuario_inactivo_sin_blacklist(self, user_cajero):
         """Si un token válido no pasó por blacklist pero el usuario fue desactivado, el refresh lo rechaza."""
         token_refresh = CustomTokenObtainPairSerializer.get_token(user_cajero)
         refresh_str = str(token_refresh)
