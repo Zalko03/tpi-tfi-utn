@@ -21,6 +21,64 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-03
+Tarea: Alineación institucional definitiva, estandarización IEEE 830 y sincronización técnica con código real
+Rama: docs/informe-final-tfi
+Cambios realizados:
+- Carátula institucional y Prólogo: incorporación de los datos oficiales definitivos: autores Martin Elias Alcaraz e Ignacio Ramón Zoilo, Profesor de TFI Marcos Sosa, Profesores de Programación IV Juan Manuel Goya y Gerardo Ramírez, Universidad Tecnológica Nacional, Facultad Regional Resistencia (UTN FRRe), Tecnicatura Universitaria en Programación, año 2026.
+- Capítulo 2 (Metodología): estructuración rigurosa de la sección de Especificación de Requerimientos de Software conforme al estándar internacional IEEE Std 830-1998 (perspectiva del producto, clases de actores, restricciones generales de diseño, catálogo de requerimientos verificables RF-01 a RF-15 y RNF-01 a RNF-10, e interfaces externas de usuario, software y comunicación).
+- Corrección de las 4 discrepancias técnicas respecto al código fuente real:
+  1. Lógica real de ventas y stock: adecuación de RF-15, Tabla 8 (Tabla de Conversación 6) y Figura 5 (Diagrama de Secuencia de Cobro) reflejando que `Insumo` no modela existencias físicas ni `registrar_venta` descuenta stock físico, resaltando la validación del turno de caja del cajero, el congelamiento inmutable de `costo_unitario_snapshot` y el cálculo del efectivo esperado en caja, reservando la deducción automática de stock físico para el Capítulo 5 (Trabajos Futuros).
+  2. Atributos exactos en Figura 6 (Diagrama ER PostgreSQL): campos reales en `INSUMO` (`costo_unitario`, `actualizado_en`), `COMPRA` (`cantidad`, `unidad`, `precio_total`, `envio`, `alicuota`, `fecha`, `iva_incluido`, `costo_unitario_calculado`), `TURNO_CAJA` (`apertura`, `cierre`, `efectivo_inicial`, `efectivo_contado`, `efectivo_esperado`, `diferencia`, `estado`), y desvinculación de la FK directa `usuario_id` en `VENTA` y `MOVIMIENTO_CAJA`, asociándose exclusivamente a través de `turno_caja_id`.
+  3. Tipos y estructura en Figura 7 (Diagrama MongoDB): tipado de importes monetarios como `String` en `HistorialPrecio`, `SnapshotCosteo` e `ImportacionIA` para preservar precisión decimal contable, y modelado anidado de subdocumentos `entrada` y `salida` en `ImportacionIA`.
+  4. Repositorio real en Anexo III: sustitución del marcador genérico por `https://github.com/Zalko03/tpi-tfi-utn.git`.
+- Referencias Bibliográficas: incorporación de la norma IEEE Std 830-1998 como referencia `[18]`.
+- Regeneración completa de `docs/Informe_Final_TFI_Sapori_Stock.docx` mediante `python-docx` (408 párrafos y 29 tablas).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- No se modificaron contratos ni conexiones; se logró sincronía 1:1 entre la documentación académica y el código fuente.
+Problemas y decisiones técnicas:
+- **Trazabilidad 1:1 con el modelo relacional:** Ajustar las entidades de venta y movimientos de caja para que dependan de `turno_caja_id` y no de `usuario_id` directo garantiza que cualquier evaluador docente que coteje el informe con `apps/ventas/models.py` y `apps/caja/models.py` encuentre absoluta concordancia.
+Archivos tocados:
+- `docs/INFORME_FINAL_TFI.md`
+- `docs/Informe_Final_TFI_Sapori_Stock.docx`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Inspeccionar `docs/INFORME_FINAL_TFI.md` y verificar carátula, IEEE 830, diagramas y referencias.
+- Abrir `docs/Informe_Final_TFI_Sapori_Stock.docx` para comprobar la correcta maquetación institucional.
+
+---
+Fecha: 2026-11-02
+Tarea: Redacción y generación del Informe Final Académico de TFI (Sapori Stock)
+Rama: docs/informe-final-tfi
+Cambios realizados:
+- Redacción exhaustiva y rigurosa del Informe Final Académico en `docs/INFORME_FINAL_TFI.md` conforme a la estructura reglamentaria del Anexo II de la cátedra de Programación IV (UTN FRRe):
+  - Carátula institucional con título oficial: "Sapori Stock: Sistema Integral Políglota de Gestión Operativa, Costeo Dinámico y Asistencia por Inteligencia Artificial para Cafetería", alumno Martin Elias Alcaraz, Tecnicatura Universitaria en Programación, 2026.
+  - Prólogo, agradecimientos y Resumen (279 palabras) + Abstract en inglés (244 palabras), respetando el límite estricto de 300 palabras.
+  - Índices formales de contenidos, figuras (8 figuras) y tablas (17 tablas).
+  - Capítulo 1 (Introducción): estado del arte en persistencia políglota (PostgreSQL vs. MongoDB), criptografía asimétrica RS256 vs. simétrica HS256, modelo RBAC con 30 permisos booleanos granulares, mitigación OWASP, integración de LLMs con patrón Adapter y supervisión humana (*Human-in-the-Loop*), e ingeniería de costos gastronómicos (unidad base, prorrateo de flete/IVA, snapshot de costo congelado, arqueo ciego y punto de equilibrio). Objetivos general y específicos y justificación operativa en hardware acotado de 8 GB de RAM.
+  - Capítulo 2 (Metodología): ciclo de vida iterativo e incremental en cuatro etapas (TP 1 a TP 4), tabla completa de requerimientos funcionales (RF-01 a RF-15) y no funcionales (RNF-01 a RNF-10), diagrama general de casos de uso en Mermaid, ocho Tablas de Conversación detalladas para flujos críticos, tres diagramas de secuencia (RS256, importación IA con aprobación humana y cobro reactivo con Socket.IO), diagramas entidad-relación relacional y documental, y análisis formal de riesgos según metodología Magerit.
+  - Capítulo 3 (Herramientas y Lenguajes): análisis técnico detallado de Python 3.13, Django 5.2/DRF, PostgreSQL 16, Node.js 20 LTS, Express, MongoDB 7, FastAPI, Pydantic v2, Socket.IO, PWA con lector HID, Docker Compose, Nginx, Pytest, Jest y GitHub Actions.
+  - Capítulo 4 (Resultados): contratos de integración (`CONNECTIONS.md`), trazabilidad distribuida `X-Request-ID` y logging JSON, matriz de autorización granular, optimización de consultas SQL analizadas con `EXPLAIN ANALYZE` sobre lote sintético de 50.000 ventas (−92% en productos con N+1, −87% en reporte de ventas y −94% en recálculo masivo), estrategia y desglose de las 563 pruebas automatizadas (370 Django, 130 Node, 63 FastAPI) con separación en carpetas `unit/` y `api/`/`integration/` (incluyendo 37 pruebas negativas 403), ensayo sistemático de fallos en 5 escenarios, contenedores multi-stage no-root y pipeline CI/CD de siete tareas paralelas.
+  - Capítulo 5 (Conclusiones y Trabajos Futuros): balance analítico sobre resultados comprobados y cuatro líneas de investigación futura.
+  - Referencias bibliográficas: 17 referencias reales en estricto formato IEEE.
+  - Anexos: Anexo I (Síntesis de ADR-0001, ADR-0002 y ADR-0003), Anexo II (Catálogo de 36 endpoints y matriz de permisos) y Anexo III (Manual de despliegue y protocolos de backup/restore).
+- Cumplimiento de directivas de estilo académico: números del cero al nueve con palabras en el cuerpo del texto y cifras de 10 en adelante; referencias cruzadas exhaustivas `(Véase Tabla X)`, `(Véase Figura Y)` y `(Cft. Cap. X)`.
+- Conversión automatizada y generación del documento Word en `docs/Informe_Final_TFI_Sapori_Stock.docx` con estilos tipográficos profesionales, tablas coloreadas y bloques de código delimitados.
+- Eliminación de scripts temporales de conversión y de la carpeta temporal `docs/referencias_catedra/`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- No se modificaron conexiones de código; se documentó íntegramente la matriz de interconexión de la arquitectura.
+Problemas y decisiones técnicas:
+- **Entrega multiformato (Markdown + DOCX):** Garantiza accesibilidad móvil directa en GitHub para revisión rápida desde el celular y exportación formal en Word para la instancia institucional de evaluación de la cátedra.
+Archivos tocados:
+- `docs/INFORME_FINAL_TFI.md`
+- `docs/Informe_Final_TFI_Sapori_Stock.docx`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Inspeccionar `docs/INFORME_FINAL_TFI.md` en el repositorio o visor Markdown.
+- Abrir `docs/Informe_Final_TFI_Sapori_Stock.docx` para verificar el formato institucional.
+- Ejecutar la suite completa de pruebas: `pytest` en `backend-django/` (370 tests), `npm test` en `backend-node/` (130 tests) y `pytest` en `ai-service/` (63 tests), totalizando 563 tests pasando al 100%.
+
+---
 Fecha: 2026-10-30
 Tarea: Estandarización y ampliación de tests unitarios y de API en backend-django (Cierre TP 3)
 Rama: tp3-completo
