@@ -21,6 +21,32 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-03
+Tarea: Alineación institucional definitiva, estandarización IEEE 830 y sincronización técnica con código real
+Rama: docs/informe-final-tfi
+Cambios realizados:
+- Carátula institucional y Prólogo: incorporación de los datos oficiales definitivos: autores Martin Elias Alcaraz e Ignacio Ramón Zoilo, Profesor de TFI Marcos Sosa, Profesores de Programación IV Juan Manuel Goya y Gerardo Ramírez, Universidad Tecnológica Nacional, Facultad Regional Resistencia (UTN FRRe), Tecnicatura Universitaria en Programación, año 2026.
+- Capítulo 2 (Metodología): estructuración rigurosa de la sección de Especificación de Requerimientos de Software conforme al estándar internacional IEEE Std 830-1998 (perspectiva del producto, clases de actores, restricciones generales de diseño, catálogo de requerimientos verificables RF-01 a RF-15 y RNF-01 a RNF-10, e interfaces externas de usuario, software y comunicación).
+- Corrección de las 4 discrepancias técnicas respecto al código fuente real:
+  1. Lógica real de ventas y stock: adecuación de RF-15, Tabla 8 (Tabla de Conversación 6) y Figura 5 (Diagrama de Secuencia de Cobro) reflejando que `Insumo` no modela existencias físicas ni `registrar_venta` descuenta stock físico, resaltando la validación del turno de caja del cajero, el congelamiento inmutable de `costo_unitario_snapshot` y el cálculo del efectivo esperado en caja, reservando la deducción automática de stock físico para el Capítulo 5 (Trabajos Futuros).
+  2. Atributos exactos en Figura 6 (Diagrama ER PostgreSQL): campos reales en `INSUMO` (`costo_unitario`, `actualizado_en`), `COMPRA` (`cantidad`, `unidad`, `precio_total`, `envio`, `alicuota`, `fecha`, `iva_incluido`, `costo_unitario_calculado`), `TURNO_CAJA` (`apertura`, `cierre`, `efectivo_inicial`, `efectivo_contado`, `efectivo_esperado`, `diferencia`, `estado`), y desvinculación de la FK directa `usuario_id` en `VENTA` y `MOVIMIENTO_CAJA`, asociándose exclusivamente a través de `turno_caja_id`.
+  3. Tipos y estructura en Figura 7 (Diagrama MongoDB): tipado de importes monetarios como `String` en `HistorialPrecio`, `SnapshotCosteo` e `ImportacionIA` para preservar precisión decimal contable, y modelado anidado de subdocumentos `entrada` y `salida` en `ImportacionIA`.
+  4. Repositorio real en Anexo III: sustitución del marcador genérico por `https://github.com/Zalko03/tpi-tfi-utn.git`.
+- Referencias Bibliográficas: incorporación de la norma IEEE Std 830-1998 como referencia `[18]`.
+- Regeneración completa de `docs/Informe_Final_TFI_Sapori_Stock.docx` mediante `python-docx` (408 párrafos y 29 tablas).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- No se modificaron contratos ni conexiones; se logró sincronía 1:1 entre la documentación académica y el código fuente.
+Problemas y decisiones técnicas:
+- **Trazabilidad 1:1 con el modelo relacional:** Ajustar las entidades de venta y movimientos de caja para que dependan de `turno_caja_id` y no de `usuario_id` directo garantiza que cualquier evaluador docente que coteje el informe con `apps/ventas/models.py` y `apps/caja/models.py` encuentre absoluta concordancia.
+Archivos tocados:
+- `docs/INFORME_FINAL_TFI.md`
+- `docs/Informe_Final_TFI_Sapori_Stock.docx`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Inspeccionar `docs/INFORME_FINAL_TFI.md` y verificar carátula, IEEE 830, diagramas y referencias.
+- Abrir `docs/Informe_Final_TFI_Sapori_Stock.docx` para comprobar la correcta maquetación institucional.
+
+---
 Fecha: 2026-11-02
 Tarea: Redacción y generación del Informe Final Académico de TFI (Sapori Stock)
 Rama: docs/informe-final-tfi

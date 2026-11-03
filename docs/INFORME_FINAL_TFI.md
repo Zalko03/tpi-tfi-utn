@@ -10,13 +10,13 @@
 
 ---
 
-**Autor:** Martin Elias Alcaraz  
-**Coautor:** [Espacio reservado para integrante de equipo]  
-**Profesor Coordinador:** [Espacio reservado para Profesor Coordinador de Cátedra]  
-**Asignatura:** Programación IV — Trabajo Final Integrador  
+**Autores:** Martin Elias Alcaraz e Ignacio Ramón Zoilo  
+**Profesor de Trabajo Final Integrador (TFI):** Marcos Sosa  
+**Profesores de Programación IV:** Juan Manuel Goya y Gerardo Ramírez  
+**Asignaturas Evaluadoras:** Trabajo Final Integrador (TFI) y Programación IV  
 **Carrera:** Tecnicatura Universitaria en Programación  
 **Sede:** Resistencia, Chaco, República Argentina  
-**Instancia:** Presentación Definitiva  
+**Instancia:** Presentación Definitiva y Defensa  
 **Año Académico:** 2026  
 
 ---
@@ -25,19 +25,21 @@
 
 # Prólogo
 
-El presente Trabajo Final Integrador constituye la culminación del trayecto formativo en la Tecnicatura Universitaria en Programación de la Universidad Tecnológica Nacional, Facultad Regional Resistencia. Este proyecto sintetiza las competencias conceptuales, metodológicas y prácticas adquiridas a lo largo de la carrera, articulando saberes de diseño de software, persistencia políglota, seguridad de la información, algoritmos distribuidos y desarrollo orientado a la resolución de problemas reales.
+El presente Trabajo Final Integrador constituye la culminación académica del trayecto formativo en la Tecnicatura Universitaria en Programación de la Universidad Tecnológica Nacional, Facultad Regional Resistencia (UTN FRRe). Este proyecto articula de forma sinérgica las competencias conceptuales, metodológicas y prácticas desarrolladas a lo largo de las asignaturas curriculares de la carrera, con especial énfasis en Trabajo Final Integrador y Programación IV. El diseño arquitectónico aborda saberes avanzados de ingeniería de software: persistencia políglota relacional y documental, diseño de microservicios, seguridad perimetral, criptografía asimétrica, integración desacoplada de inteligencia artificial generativa y desarrollo orientado a la resolución de problemas productivos concretos.
 
-El desarrollo de Sapori Stock surge a partir de una problemática tangible del sector gastronómico regional: la precariedad informática con la que pequeños y medianos establecimientos administran sus estructuras de costos, ventas y stock. La transición desde esquemas manuales e inestables basados en hojas de cálculo hacia una arquitectura de microservicios contenerizada refleja no solo un desafío técnico, sino también una vocación por aportar soluciones tecnológicas robustas, accesibles y resilientes a la comunidad productiva.
+El origen de Sapori Stock responde a una problemática recurrente en la economía regional y en el sector gastronómico local: la vulnerabilidad operativa y financiera que enfrentan los pequeños y medianos comercios al gestionar sus estructuras de costos, ventas y cajas mediante herramientas ofimáticas manuales y desarticuladas. La transición técnica hacia una arquitectura distribuida, resiliente y contenerizada refleja no solo un reto de rigor informático, sino también un firme compromiso con la transferencia de soluciones tecnológicas de alto valor hacia la comunidad socio-productiva.
 
 ---
 
 # Agradecimientos
 
-A la Universidad Tecnológica Nacional y a la Facultad Regional Resistencia, por brindar una formación pública de excelencia académica y por fomentar un espíritu crítico orientado a la innovación tecnológica.
+A la Universidad Tecnológica Nacional (UTN) y a la Facultad Regional Resistencia (FRRe), por consolidar un espacio de educación pública, gratuita y de excelencia académica, propiciando el desarrollo científico, técnico y humano.
 
-Al cuerpo docente de la cátedra de Programación IV y a los profesores de la carrera, por su orientación metodológica constante, sus exigencias rigurosas en el diseño de arquitectura y su acompañamiento durante cada etapa de evaluación del proyecto.
+Al Profesor de Trabajo Final Integrador, Marcos Sosa, por su orientación metodológica constante, sus observaciones constructivas y su valiosa guía en la estructuración integral del proyecto.
 
-A nuestras familias y seres queridos, por el apoyo incondicional, la paciencia y el aliento brindado a lo largo de extensas jornadas de estudio y desarrollo.
+A los Profesores de Programación IV, Juan Manuel Goya y Gerardo Ramírez, por su rigurosidad conceptual en la cátedra, sus aportes indispensables en el diseño de arquitectura y su acompañamiento durante cada una de las instancias evaluativas de desarrollo.
+
+A nuestras familias y afectos cercanos, por el respaldo incondicional, la comprensión y el aliento permanente a lo largo de cada etapa de nuestra formación universitaria.
 
 ---
 
@@ -83,11 +85,14 @@ This Final Degree Project presents the design, development, and implementation o
     - 1.2.1 Objetivo General
     - 1.2.2 Objetivos Específicos
   - 1.3 Fundamentación y Justificación
-- **Capítulo 2. Metodología**
+- **Capítulo 2. Metodología y Especificación de Requerimientos**
   - 2.1 Ciclo de Vida y Proceso de Desarrollo
-  - 2.2 Requerimientos del Sistema
-    - 2.2.1 Requerimientos Funcionales
-    - 2.2.2 Requerimientos No Funcionales
+  - 2.2 Especificación de Requerimientos de Software (IEEE Std 830-1998)
+    - 2.2.1 Perspectiva del Producto y Funciones Principales
+    - 2.2.2 Características de los Usuarios y Clases de Actores
+    - 2.2.3 Restricciones Generales de Diseño y Supuestos del Sistema
+    - 2.2.4 Requerimientos del Sistema (Funcionales y No Funcionales)
+    - 2.2.5 Interfaces Externas del Sistema
   - 2.3 Casos de Uso y Modelado del Comportamiento
     - 2.3.1 Diagrama General de Casos de Uso
     - 2.3.2 Tablas de Conversación de los Flujos Principales
@@ -125,13 +130,13 @@ This Final Degree Project presents the design, development, and implementation o
 # Índice de Figuras
 
 - **Figura 1:** Arquitectura Políglota y Despliegue Perimetral en Red de Área Local (LAN). *(Cft. Cap. 1, pág. 12)*
-- **Figura 2:** Diagrama General de Casos de Uso del Sistema Sapori Stock. *(Cft. Cap. 2, pág. 18)*
-- **Figura 3:** Diagrama de Secuencia de Autenticación Asimétrica con JWT RS256. *(Cft. Cap. 2, pág. 26)*
-- **Figura 4:** Diagrama de Secuencia de Ingesta de Listas con Asistencia por Inteligencia Artificial y Circuito de Aprobación Humana. *(Cft. Cap. 2, pág. 27)*
-- **Figura 5:** Diagrama de Secuencia de Cobro de Venta y Notificación Reactiva por Socket.IO. *(Cft. Cap. 2, pág. 28)*
-- **Figura 6:** Diagrama Entidad-Relación de la Base de Datos Relacional PostgreSQL. *(Cft. Cap. 2, pág. 30)*
-- **Figura 7:** Estructura Documental de Colecciones en MongoDB. *(Cft. Cap. 2, pág. 32)*
-- **Figura 8:** Diagrama del Pipeline de Integración y Despliegue Continuo (CI/CD) en GitHub Actions. *(Cft. Cap. 4, pág. 48)*
+- **Figura 2:** Diagrama General de Casos de Uso del Sistema Sapori Stock. *(Cft. Cap. 2, pág. 19)*
+- **Figura 3:** Diagrama de Secuencia de Autenticación Asimétrica con JWT RS256. *(Cft. Cap. 2, pág. 27)*
+- **Figura 4:** Diagrama de Secuencia de Ingesta de Listas con Asistencia por Inteligencia Artificial y Circuito de Aprobación Humana. *(Cft. Cap. 2, pág. 28)*
+- **Figura 5:** Diagrama de Secuencia de Cobro de Venta, Snapshot de Costo Congelado e Impacto en Caja. *(Cft. Cap. 2, pág. 29)*
+- **Figura 6:** Diagrama Entidad-Relación de la Base de Datos Relacional PostgreSQL. *(Cft. Cap. 2, pág. 31)*
+- **Figura 7:** Estructura Documental de Colecciones en MongoDB. *(Cft. Cap. 2, pág. 33)*
+- **Figura 8:** Diagrama del Pipeline de Integración y Despliegue Continuo (CI/CD) en GitHub Actions. *(Cft. Cap. 4, pág. 49)*
 
 ---
 
@@ -139,21 +144,21 @@ This Final Degree Project presents the design, development, and implementation o
 
 - **Tabla 1:** Catálogo de Requerimientos Funcionales (RF-01 a RF-15). *(Cft. Cap. 2, pág. 16)*
 - **Tabla 2:** Catálogo de Requerimientos No Funcionales (RNF-01 a RNF-10). *(Cft. Cap. 2, pág. 17)*
-- **Tabla 3:** Tabla de Conversación 1 — Autenticación Asimétrica de Usuario (Login RS256). *(Cft. Cap. 2, pág. 19)*
-- **Tabla 4:** Tabla de Conversación 2 — Supervivencia del Último Administrador (Dueño Activo). *(Cft. Cap. 2, pág. 20)*
-- **Tabla 5:** Tabla de Conversación 3 — Adquisición de Insumos con Prorrateo de Costos Indirectos. *(Cft. Cap. 2, pág. 21)*
-- **Tabla 6:** Tabla de Conversación 4 — Recálculo Masivo de Costos de Recetas de Elaboración. *(Cft. Cap. 2, pág. 22)*
-- **Tabla 7:** Tabla de Conversación 5 — Arqueo Ciego y Cierre de Turno de Caja. *(Cft. Cap. 2, pág. 23)*
-- **Tabla 8:** Tabla de Conversación 6 — Registro y Cobro de Venta con Lector HID y Snapshot de Costo Congelado. *(Cft. Cap. 2, pág. 24)*
-- **Tabla 9:** Tabla de Conversación 7 — Ingesta de Listas con Inteligencia Artificial y Aprobación Humana. *(Cft. Cap. 2, pág. 25)*
-- **Tabla 10:** Tabla de Conversación 8 — Análisis de Rentabilidad Operativa y Punto de Equilibrio. *(Cft. Cap. 2, pág. 26)*
-- **Tabla 11:** Matriz de Identificación de Riesgos y Salvaguardas Tecnológicas (Metodología Magerit). *(Cft. Cap. 2, pág. 34)*
-- **Tabla 12:** Especificación del Stack Tecnológico y Entornos de Ejecución. *(Cft. Cap. 3, pág. 36)*
-- **Tabla 13:** Matriz de Permisos Granulares del Sistema por Rol de Plantilla. *(Cft. Cap. 4, pág. 41)*
-- **Tabla 14:** Diagnóstico y Rendimiento Comparativo de Consultas SQL Críticas (`EXPLAIN ANALYZE`). *(Cft. Cap. 4, pág. 43)*
-- **Tabla 15:** Distribución y Cobertura de las 563 Pruebas Automatizadas del Sistema. *(Cft. Cap. 4, pág. 45)*
-- **Tabla 16:** Matriz de Resultados del Ensayo Sistemático de Fallos y Tolerancia a Desconexión. *(Cft. Cap. 4, pág. 47)*
-- **Tabla 17:** Presupuesto y Asignación de Memoria RAM en Contenedores Docker. *(Cft. Cap. 4, pág. 49)*
+- **Tabla 3:** Tabla de Conversación 1 — Autenticación Asimétrica de Usuario (Login RS256). *(Cft. Cap. 2, pág. 20)*
+- **Tabla 4:** Tabla de Conversación 2 — Supervivencia del Último Administrador (Dueño Activo). *(Cft. Cap. 2, pág. 21)*
+- **Tabla 5:** Tabla de Conversación 3 — Adquisición de Insumos con Prorrateo de Costos Indirectos. *(Cft. Cap. 2, pág. 22)*
+- **Tabla 6:** Tabla de Conversación 4 — Recálculo Masivo de Costos de Recetas de Elaboración. *(Cft. Cap. 2, pág. 23)*
+- **Tabla 7:** Tabla de Conversación 5 — Arqueo Ciego y Cierre de Turno de Caja. *(Cft. Cap. 2, pág. 24)*
+- **Tabla 8:** Tabla de Conversación 6 — Registro y Cobro de Venta con Lector HID y Costo Congelado. *(Cft. Cap. 2, pág. 25)*
+- **Tabla 9:** Tabla de Conversación 7 — Ingesta de Listas con Inteligencia Artificial y Aprobación Humana. *(Cft. Cap. 2, pág. 26)*
+- **Tabla 10:** Tabla de Conversación 8 — Análisis de Rentabilidad Operativa y Punto de Equilibrio. *(Cft. Cap. 2, pág. 27)*
+- **Tabla 11:** Matriz de Identificación de Riesgos y Salvaguardas Tecnológicas (Metodología Magerit). *(Cft. Cap. 2, pág. 35)*
+- **Tabla 12:** Especificación del Stack Tecnológico y Entornos de Ejecución. *(Cft. Cap. 3, pág. 37)*
+- **Tabla 13:** Matriz de Permisos Granulares del Sistema por Rol de Plantilla. *(Cft. Cap. 4, pág. 42)*
+- **Tabla 14:** Diagnóstico y Rendimiento Comparativo de Consultas SQL Críticas (`EXPLAIN ANALYZE`). *(Cft. Cap. 4, pág. 44)*
+- **Tabla 15:** Distribución y Cobertura de las 563 Pruebas Automatizadas del Sistema. *(Cft. Cap. 4, pág. 46)*
+- **Tabla 16:** Matriz de Resultados del Ensayo Sistemático de Fallos y Tolerancia a Desconexión. *(Cft. Cap. 4, pág. 48)*
+- **Tabla 17:** Presupuesto y Asignación de Memoria RAM en Contenedores Docker. *(Cft. Cap. 4, pág. 50)*
 
 ---
 
@@ -167,7 +172,7 @@ El desarrollo de sistemas de información aplicados a la microeconomía y a la g
 
 ### 1.1.1 Persistencia Políglota y Sistemas Distribuidos
 El paradigma de persistencia políglota, formalizado por Sadalage y Fowler [8], postula que ninguna tecnología de almacenamiento individual satisface de forma óptima todos los perfiles de acceso a datos presentes en una arquitectura empresarial contemporánea. En un sistema de gestión integral convergen dos necesidades de persistencia con requerimientos ortogonales:
-1. **El núcleo transaccional contable:** Exige el cumplimiento irrestricto de las propiedades ACID (Atomicidad, Consistencia, Aislamiento y Durabilidad) [9]. Entidades como el stock de insumos, las fórmulas de recetas, los comprobantes de cobro y los turnos de caja requieren integridad referencial relacional, bloqueos transaccionales y consistencia inmediata para evitar la generación de inventarios negativos o duplicidad en la numeración de ventas. En este ámbito, PostgreSQL se destaca como el motor relacional de código abierto más avanzado, proporcionando aislamiento basado en instantáneas (*Multiversion Concurrency Control*, MVCC) y soporte estricto para operaciones financieras.
+1. **El núcleo transaccional contable:** Exige el cumplimiento irrestricto de las propiedades ACID (Atomicidad, Consistencia, Aislamiento y Durabilidad) [9]. Entidades como los insumos, las fórmulas de recetas, los comprobantes de cobro y los turnos de caja requieren integridad referencial relacional, bloqueos transaccionales y consistencia inmediata para evitar la generación de duplicidades contables o anomalías financieras. En este ámbito, PostgreSQL se destaca como el motor relacional de código abierto más avanzado, proporcionando aislamiento basado en instantáneas (*Multiversion Concurrency Control*, MVCC) y soporte estricto para operaciones financieras.
 2. **El registro documental inmutable y de eventos:** Operaciones como el seguimiento histórico de variaciones de precios, los desgloses jerárquicos de costeo en el tiempo (*snapshots*) y las trazas de extracción generadas por modelos de lenguaje presentan estructuras semiesquematizadas, de longitud variable y con un patrón de escritura predominantemente creciente (*append-only*). Modelar estas estructuras en esquemas SQL tradicionales provocaría una proliferación de tablas intermedias, sobrecarga en la ejecución de uniones relacionales (*JOINs*) y rigidez ante cambios de esquemas. La adopción de bases de datos documentales como MongoDB permite persistir documentos en formato BSON con esquemas flexibles, facilitando consultas de agregación analítica y una rápida recuperación sin penalizar el rendimiento del núcleo transaccional [8].
 
 ### 1.1.2 Criptografía Asimétrica y Seguridad en Identidad Digital
@@ -224,9 +229,9 @@ Diseñar, desarrollar e implementar un sistema de software integral, distribuido
 
 ## 1.3 Fundamentación y Justificación
 
-La justificación del presente proyecto radica en la convergencia entre una necesidad operativa concreta del sector comercial y la aplicación rigurosa de principios avanzados de ingeniería de software. En el plano productivo, los pequeños establecimientos gastronómicos operan en entornos de márgenes acotados y constante variabilidad inflacionaria en el precio de los insumos lácteos, café y descartables. La persistencia de esquemas manuales en hojas de cálculo introduce fallos severos: el ingreso erróneo de una presentación mayorista distorsiona el costo de una taza de café en porcentajes absurdos (casos documentados de márgenes negativos superiores al 2000%), mientras que la alteración accidental de una fórmula invalida toda la matriz de costos sin emitir avisos preventivos. Asimismo, el cobro desvinculado del stock impide la detección oportuna de mermas e imposibilita conocer la ganancia diaria real del negocio.
+La justificación del presente proyecto radica en la convergencia entre una necesidad operativa concreta del sector comercial y la aplicación rigurosa de principios avanzados de ingeniería de software. En el plano productivo, los pequeños establecimientos gastronómicos operan en entornos de márgenes acotados y constante variabilidad inflacionaria en el precio de los insumos lácteos, café y descartables. La persistencia de esquemas manuales en hojas de cálculo introduce fallos severos: el ingreso erróneo de una presentación mayorista distorsiona el costo de una taza de café en porcentajes absurdos (casos documentados de márgenes negativos superiores al 2000%), mientras que la alteración accidental de una fórmula invalida toda la matriz de costos sin emitir avisos preventivos. Asimismo, el cobro desvinculado de la caja impide el control estricto de tesorería e imposibilita conocer la ganancia diaria real del negocio.
 
-Desde la perspectiva tecnológica y académica, el proyecto resuelve un desafío arquitectónico sustantivo: garantizar la resiliencia operativa total de un punto de venta gastronómico dentro de un presupuesto de infraestructura sumamente restringido (un único equipo informático de 8 GB de memoria RAM ubicado en el salón comercial) y en un contexto de conectividad a internet intermitente. La arquitectura políglota propuesta desacopla la transaccionalidad bancaria y el arqueo de caja de las capacidades avanzadas de extracción por inteligencia artificial y tableros en tiempo real. Si la conexión a internet decae o los servicios externos de inferencia se vuelven inaccesibles, el local comercial continúa cobrando tickets, descontando stock y cerrando cajas en su red local sin experimentar degradación alguna.
+Desde la perspectiva tecnológica y académica, el proyecto resuelve un desafío arquitectónico sustantivo: garantizar la resiliencia operativa total de un punto de venta gastronómico dentro de un presupuesto de infraestructura sumamente restringido (un único equipo informático de 8 GB de memoria RAM ubicado en el salón comercial) y en un contexto de conectividad a internet intermitente. La arquitectura políglota propuesta desacopla la transaccionalidad bancaria y el arqueo de caja de las capacidades avanzadas de extracción por inteligencia artificial y tableros en tiempo real. Si la conexión a internet decae o los servicios externos de inferencia se vuelven inaccesibles, el local comercial continúa cobrando tickets, congelando costos históricos y cerrando cajas en su red local sin experimentar degradación alguna.
 
 La arquitectura de despliegue perimetral en red de área local (LAN) diseñada para satisfacer estos requerimientos operacionales y de infraestructura se ilustra a continuación (Véase Figura 1).
 
@@ -271,7 +276,7 @@ flowchart TB
 
 \newpage
 
-# Capítulo 2. Metodología
+# Capítulo 2. Metodología y Especificación de Requerimientos
 
 ## 2.1 Ciclo de Vida y Proceso de Desarrollo
 
@@ -286,48 +291,72 @@ La gestión del código fuente siguió una rigurosa disciplina de trabajo en Git
 
 ---
 
-## 2.2 Requerimientos del Sistema
+## 2.2 Especificación de Requerimientos de Software (IEEE Std 830-1998)
 
-### 2.2.1 Requerimientos Funcionales
-Los requerimientos funcionales fueron clasificados y priorizados bajo el método MoSCoW (Must, Should, Could, Won't) [16], derivando de las historias de usuario concertadas para el establecimiento comercial (Véase Tabla 1).
+La especificación formal de requerimientos de Sapori Stock se estructura siguiendo los lineamientos metodológicos internacionales del estándar **IEEE Std 830-1998** (*Recommended Practice for Software Requirements Specifications*) [18], garantizando que cada requerimiento satisfaga los atributos de no ambigüedad, verificabilidad, consistencia, completitud y trazabilidad bidireccional hacia los casos de uso y las pruebas automatizadas del sistema.
 
-| Código | Requerimiento Funcional | Prioridad | Descripción Operativa y Criterios de Aceptación |
+### 2.2.1 Perspectiva del Producto y Funciones Principales
+Sapori Stock es un sistema políglota distribuido autónomo orientado a la gestión de salón y punto de venta en gastronomía. El producto interactúa internamente a través de cuatro componentes acoplados mediante protocolos de comunicación estandarizados:
+- **Núcleo Transaccional (`backend-django`):** Gestiona la lógica de costeo de recetas, transacciones de compras con prorrateo de flete, ventas con snapshot congelado, arqueos de caja y gobierno de identidades con persistencia relacional estricta en PostgreSQL 16.
+- **Gestor Documental y Tiempo Real (`backend-node`):** Administra colecciones de solo lectura y agregado (*append-only*) en MongoDB 7 para historiales de precios, snapshots de recetas y trazabilidad de IA, emitiendo eventos de negocio bidireccionales mediante Socket.IO hacia los clientes conectados.
+- **Microservicio de Inferencia Asistida (`ai-service`):** Procesa listas de precios desestructuradas mediante modelos de lenguaje invocados a través del patrón Adapter, transformando cadenas de texto en esquemas JSON tipados y validados por Pydantic v2.
+- **Cliente Ligero Local (`web/`):** Entrega la interfaz de usuario como Progressive Web App (PWA) instalable en el navegador, permitiendo la captura de códigos de barras mediante lectores de teclado físico (HID) y operando en la red de área local ante la desconexión de internet.
+
+### 2.2.2 Características de los Usuarios y Clases de Actores
+El sistema modela tres clases jerárquicas de usuarios basadas en roles como plantillas de permisos:
+- **Dueño (`DUENIO`):** Personal directivo con acceso irrestricto. Responsable de la gestión de personal, asignación de permisos, visualización de márgenes brutos, determinación de puntos de equilibrio, ingesta asistida por IA y configuración general.
+- **Encargado (`ENCARGADO`):** Personal de supervisión de salón e inventario. Responsable del alta de insumos, compras con prorrateo, actualización de recetas, supervisión de arqueos de caja y visualización de reportes operativos, sin privilegios de administración de personal ni acceso a márgenes confidenciales globales.
+- **Cajero (`CAJERO`):** Personal operativo de línea de cajas. Responsable del cobro ágil de tickets con lectores de código de barras, cobro en medios de pago diversos y apertura y cierre ciego de su propio turno de caja, con ocultamiento estricto de saldos esperados y fórmulas de recetas.
+
+### 2.2.3 Restricciones Generales de Diseño y Supuestos del Sistema
+1. **Operación Autónoma en Red Local:** La totalidad del flujo de cobro, arqueo de caja y consulta de recetas debe operar al 100% en la red LAN sin requerir conexión a internet.
+2. **Presupuesto de Hardware Acotado (8 GB de RAM):** El sistema debe ejecutarse en el equipo informático del local comercial consumiendo menos de 2.5 GB de memoria RAM en contenedores Docker, dejando al menos 5.5 GB disponibles para el sistema operativo anfitrión y el navegador web.
+3. **Aritmética Decimal Exacta:** Todo cálculo monetario, de cantidades y de alícuotas debe resolverse empleando tipos de datos decimales de punto fijo exacto (`Decimal` en Python y representaciones numéricas en cadena en MongoDB), prohibiendo el uso de punto flotante binario IEEE 754.
+4. **Custodia Criptográfica Asimétrica:** Django es el único emisor y custodio de la clave privada RSA (RS256); los demás servicios operan como verificadores desacoplados utilizando exclusivamente la clave pública.
+
+### 2.2.4 Requerimientos del Sistema (Funcionales y No Funcionales)
+
+A continuación se presentan las especificaciones tabuladas de los requerimientos funcionales y no funcionales del sistema (Véase Tabla 1 y Tabla 2).
+
+| Código | Requerimiento Funcional | Prioridad (MoSCoW) | Descripción Específica y Verificabilidad (IEEE 830) |
 |---|---|:---:|---|
-| **RF-01** | Gestión de Insumos y Unidades | Must | Alta, edición y desactivación de insumos con conversión automática a unidades fundamentales ($g$, $ml$, $un$). |
-| **RF-02** | Registro de Compras y Prorrateo | Must | Ingesta de compras con desglose de presentación, precio de pack, IVA y prorrateo de flete proporcional al valor de línea. |
-| **RF-03** | Costeo Dinámico de Recetas | Must | Cálculo del costo unitario de productos sumando insumos de receta, mano de obra tarifada y descartables. |
-| **RF-04** | Recálculo Masivo en Cascada | Must | Actualización atómica en lote de todos los productos y recetas afectadas al modificarse el precio de un insumo base. |
-| **RF-05** | Registro de Venta y Lector HID | Must | Emisión de tickets con asociación al turno de caja activo, soporte de lectura por `codigo_barras` y medio de pago. |
-| **RF-06** | Snapshot de Costo Congelado | Must | Almacenamiento inmutable del costo vigente de elaboración al momento exacto de concretarse la venta. |
-| **RF-07** | Turnos de Caja y Arqueo Ciego | Must | Apertura y cierre de turnos con ingreso ciego de efectivo físico sin exhibición del saldo esperado al cajero. |
-| **RF-08** | Roles Plantilla y Permisos | Must | Asignación de roles como plantillas preconfiguradas con modificación granular booleana de 30 permisos específicos. |
-| **RF-09** | Supervivencia del Dueño Activo | Must | Bloqueo absoluto a la desactivación, degradación o revocación de privilegios del último usuario Dueño activo. |
-| **RF-10** | Ingesta de Listas con IA | Must | Procesamiento asíncrono de texto no estructurado con LLMs devolviendo esquemas tipados para revisión humana. |
-| **RF-11** | Circuito de Aprobación Humana | Must | Exigencia de validación explícita del operador para confirmar la creación de compras derivadas de inferencia IA. |
-| **RF-12** | Tablero Reactivo en Vivo | Must | Emisión de eventos bidireccionales vía Socket.IO ante ventas, cambios de costos y caídas de márgenes comerciales. |
-| **RF-13** | Rentabilidad y Ganancia Diaria | Should | Agregación diaria y por rango de fechas de ingresos y ganancia real basada en costos congelados históricos. |
-| **RF-14** | Punto de Equilibrio y Metas | Should | Determinación del volumen de equilibrio mensual y derivación matemática de metas diarias y semanales de venta. |
-| **RF-15** | Descuento Automático de Stock | Should | Reducción de existencias en unidades base por ingrediente de receta al confirmarse un ticket de venta en caja. |
+| **RF-01** | Gestión de Insumos y Unidades | Must | Alta, edición y desactivación de insumos con conversión automática y homogénea a unidades fundamentales ($g$, $ml$, $un$). Verificable por pruebas unitarias de conversión. |
+| **RF-02** | Registro de Compras y Prorrateo | Must | Ingesta de compras con desglose de presentación, precio total, alícuota de IVA y prorrateo de flete proporcional al valor de línea. Verificable por validación matemática de costos. |
+| **RF-03** | Costeo Dinámico de Recetas | Must | Cálculo dinámico del costo unitario de productos sumando insumos de receta, mano de obra tarifada y descartables. Verificable por inspección de fórmulas en base de datos. |
+| **RF-04** | Recálculo Masivo en Cascada | Must | Actualización atómica en lote de todos los productos y recetas afectadas al modificarse el precio de un insumo base. Verificable mediante suite de optimización SQL. |
+| **RF-05** | Registro de Venta y Lector HID | Must | Emisión de tickets con asociación obligatoria al turno de caja activo, soporte de lectura por `codigo_barras` y medio de pago. Verificable por emulación de escáner HID. |
+| **RF-06** | Snapshot de Costo Congelado | Must | Almacenamiento inmutable del costo vigente de elaboración en cada ítem al momento exacto de concretarse la venta. Verificable por invariabilidad histórica ante subas. |
+| **RF-07** | Turnos de Caja y Arqueo Ciego | Must | Apertura y cierre de turnos con ingreso ciego de efectivo físico contado sin exhibición del saldo esperado al cajero. Verificable por serializador de respuesta ciego. |
+| **RF-08** | Roles Plantilla y Permisos | Must | Asignación de roles como plantillas preconfiguradas con modificación granular booleana de 30 permisos específicos. Verificable por pruebas de matriz de permisos DRF. |
+| **RF-09** | Supervivencia del Dueño Activo | Must | Bloqueo absoluto a la desactivación, degradación de rol o revocación de privilegios del último usuario Dueño activo. Verificable por prueba de frontera HTTP 400. |
+| **RF-10** | Ingesta de Listas con IA | Must | Procesamiento asíncrono de texto no estructurado con LLMs devolviendo esquemas tipados para revisión humana. Verificable por esquemas Pydantic v2 en FastAPI. |
+| **RF-11** | Circuito de Aprobación Humana | Must | Exigencia de validación explícita del operador para confirmar la creación de compras derivadas de inferencia IA. Verificable por bloqueo de compra ante rechazo. |
+| **RF-12** | Tablero Reactivo en Vivo | Must | Emisión de eventos bidireccionales vía Socket.IO ante cambios de costos y presencia en turnos. Verificable por clientes de integración de sockets en Node.js. |
+| **RF-13** | Rentabilidad y Ganancia Diaria | Should | Agregación diaria y por rango de fechas de ingresos y ganancia real basada en costos congelados históricos. Verificable por cálculo de sumatorias sobre VentaItem. |
+| **RF-14** | Punto de Equilibrio y Metas | Should | Determinación del volumen de equilibrio mensual y derivación matemática de metas diarias y semanales de venta. Verificable por fórmulas financieras de contribución marginal. |
+| **RF-15** | Control de Turno de Ventas e Impacto en Caja | Should | Validación de turno abierto del cajero al registrar tickets, acumulación de cobros e impacto en el saldo esperado de caja, sin mutar existencias físicas de insumos. Verificable en `TurnoCaja.calcular_efectivo_esperado`. |
 
 **Tabla 1:** Catálogo de Requerimientos Funcionales (RF-01 a RF-15).
 
-### 2.2.2 Requerimientos No Funcionales
-Los requerimientos no funcionales definen los atributos de calidad, rendimiento, seguridad y restricciones de plataforma que rigen el sistema (Véase Tabla 2).
-
-| Código | Requerimiento No Funcional | Categoría | Criterio Cuantitativo y Restricción Tecnológica |
+| Código | Requerimiento No Funcional | Categoría (IEEE 830) | Métrica Cuantitativa y Criterio de Verificación |
 |---|---|:---:|---|
-| **RNF-01** | Operación Autónoma sin Internet | Disponibilidad | Continuidad operativa del 100% en caja, stock y costeo en red LAN ante caídas de la conexión externa. |
-| **RNF-02** | Presupuesto Máximo de Memoria | Eficiencia | Consumo global de los servicios contenerizados inferior a 2.5 GB de RAM para operar en hosts de 8 GB. |
-| **RNF-03** | Autenticación Asimétrica RS256 | Seguridad | Uso de criptografía asimétrica RSA con SHA-256 (RFC 7519); Django es el único custodio de la clave privada. |
-| **RNF-04** | Tiempo de Respuesta en Caja | Rendimiento | Registro y emisión de tickets de venta procesados en un tiempo de latencia inferior a 150 milisegundos. |
-| **RNF-05** | Consistencia Transaccional ACID | Integridad | Operaciones de compra, recálculo y ventas protegidas bajo `@transaction.atomic` en PostgreSQL 16. |
-| **RNF-06** | Inmutabilidad de Auditoría | Confiabilidad | Persistencia documental de solo agregación (*append-only*) para historiales de precios en MongoDB. |
-| **RNF-07** | Contenedores de Mínimo Privilegio | Seguridad | Ejecución de contenedores bajo usuarios no privilegiados (*non-root*) y sin exposición de puertos de bases de datos. |
-| **RNF-08** | Trazabilidad Distribuida | Observabilidad | Propagación obligatoria de cabecera `X-Request-ID` en todas las peticiones interservicios y logs JSON. |
-| **RNF-09** | Formato de Error Estandarizado | Mantenibilidad | Respuestas de error homogéneas según el contrato `{ "mensaje": "...", "detalles": null }` en todas las APIs. |
-| **RNF-10** | Cobertura Automatizada en CI/CD | Calidad | Ejecución exitosa de 563 pruebas continuas distribuidas en siete tareas paralelas en GitHub Actions. |
+| **RNF-01** | Operación Autónoma sin Internet | Disponibilidad | Continuidad operativa del 100% en caja, tickets y costeo en red LAN ante caídas de la conexión externa. Verificable por ensayo de aislamiento de red. |
+| **RNF-02** | Presupuesto Máximo de Memoria | Eficiencia | Consumo global de los servicios contenerizados inferior a 2.5 GB de RAM para operar en hosts de 8 GB. Verificable por `docker stats` y cgroups. |
+| **RNF-03** | Autenticación Asimétrica RS256 | Seguridad | Uso de criptografía asimétrica RSA con SHA-256 (RFC 7519); Django es el único custodio de la clave privada. Verificable por inspección de cabeceras JWT. |
+| **RNF-04** | Tiempo de Respuesta en Caja | Rendimiento | Registro y emisión de tickets de venta procesados en un tiempo de latencia inferior a 150 milisegundos. Verificable por benchmark de peticiones HTTP. |
+| **RNF-05** | Consistencia Transaccional ACID | Integridad | Operaciones de compra, recálculo y ventas protegidas bajo `@transaction.atomic` en PostgreSQL 16. Verificable por pruebas de rollback ante excepciones. |
+| **RNF-06** | Inmutabilidad de Auditoría | Confiabilidad | Persistencia documental de solo agregación (*append-only*) para historiales de precios en MongoDB. Verificable por ausencia de operaciones de actualización directa. |
+| **RNF-07** | Contenedores de Mínimo Privilegio | Seguridad | Ejecución de contenedores bajo usuarios no privilegiados (*non-root*) y sin exposición de puertos de bases de datos. Verificable por inspección de `Dockerfile`. |
+| **RNF-08** | Trazabilidad Distribuida | Observabilidad | Propagación obligatoria de cabecera `X-Request-ID` en todas las peticiones interservicios y logs JSON. Verificable por correlación de logs estructurados. |
+| **RNF-09** | Formato de Error Estandarizado | Mantenibilidad | Respuestas de error homogéneas según el contrato `{ "mensaje": "...", "detalles": null }` en todas las APIs. Verificable por tests de contrato de API. |
+| **RNF-10** | Cobertura Automatizada en CI/CD | Calidad | Ejecución exitosa de 563 pruebas continuas distribuidas en siete tareas paralelas en GitHub Actions. Verificable por reporte de ejecución del pipeline. |
 
 **Tabla 2:** Catálogo de Requerimientos No Funcionales (RNF-01 a RNF-10).
+
+### 2.2.5 Interfaces Externas del Sistema
+- **Interfaces de Usuario:** Cliente web responsivo estructurado como Progressive Web App (PWA). Admite captura continua de pulsaciones para lectores de código de barras mediante emulación de teclado de interfaz humana (HID) sobre el campo `codigo_barras`.
+- **Interfaces de Software:** Drivers de persistencia optimizados: `psycopg3` en modo binario hacia PostgreSQL 16; `Mongoose 8` con agrupamiento de conexiones hacia MongoDB 7; y cliente HTTP asíncrono `httpx` hacia Gemini API externa o servicios de inferencia local.
+- **Interfaces de Comunicación:** Peticiones síncronas bajo HTTP/1.1 y HTTP/2 codificadas en JSON (RFC 8259); transporte reactivo bidireccional mediante WebSockets orquestado por Socket.IO; cabeceras de autorización `Authorization: Bearer <token_jwt>` para transporte de identidad; y cabecera de observabilidad `X-Request-ID` para correlación de trazas en microservicios.
 
 ---
 
@@ -428,10 +457,11 @@ De acuerdo con la metodología rigurosa de análisis de la cátedra, a continuac
 |---|---|---|---|
 | **1** | El Cajero lee el código de barras de un producto físico utilizando el escáner HID en el mostrador. | El lector introduce los caracteres numéricos directamente en el campo de búsqueda de la PWA simulando un teclado. | Si el código no está registrado en ningún producto activo, la PWA emite un aviso sonoro de no encontrado. |
 | **2** | La PWA identifica el producto en el catálogo en memoria y lo agrega al ticket de venta. | Se calculan subtotales y total en centavos enteros; el operador selecciona el medio de pago y presiona "Cobrar". | Si el cajero carece de un turno de caja abierto a su nombre, el botón de cobro se bloquea. |
-| **3** | El frontend despacha `POST /api/ventas/` con el array de ítems hacia el microservicio Django. | Django inicia una transacción ACID, valida el turno y lee el costo unitario de elaboración vigente de cada producto. | Si el precio unitario del ítem es inconsistente, la transacción se aborta con HTTP 400 Bad Request. |
-| **4** | Django crea la cabecera `Venta` y los renglones `VentaItem`. | Almacena el `costo_unitario_snapshot` inmutable en cada renglón, descuenta el stock de insumos y responde HTTP 201 Created. | Django emite un evento interno hacia Node.js, quien distribuye `venta.registrada` a los tableros Socket.IO. |
+| **3** | El frontend despacha `POST /api/ventas/` con el array de ítems hacia el microservicio Django. | Django inicia una transacción ACID, valida que el turno de caja esté abierto y bloquea las filas de producto con `select_for_update()`. | Si el turno de caja se encuentra cerrado o inexistente, la transacción se aborta con HTTP 400 Bad Request. |
+| **4** | Django crea la cabecera `Venta` y los renglones `VentaItem`. | Lee el costo unitario vigente del producto y lo congela en `costo_unitario_snapshot` en cada renglón, acumulando el total cobrado en el turno de caja sin mutar existencias físicas de insumos. | Si el precio unitario del ítem es inconsistente, la transacción se cancela con *rollback*. |
+| **5** | Django confirma la transacción relacional y responde HTTP 201 Created. | La PWA exhibe el comprobante de venta exitosa y actualiza el subtotal del turno en pantalla. | La difusión de eventos de presencia de turnos y recálculos de recetas se orquesta desde Node.js vía WebSockets. |
 
-**Tabla 8:** Tabla de Conversación 6 — Registro y Cobro de Venta con Lector HID y Snapshot de Costo Congelado.
+**Tabla 8:** Tabla de Conversación 6 — Registro y Cobro de Venta con Lector HID y Costo Congelado.
 
 | Paso | Acción del Actor | Curso Normal (Respuesta del Sistema) | Curso Alternativo / Excepciones |
 |---|---|---|---|
@@ -456,7 +486,7 @@ De acuerdo con la metodología rigurosa de análisis de la cátedra, a continuac
 
 ### 2.3.3 Diagramas de Secuencia de Escenarios Críticos
 
-A continuación se presentan los diagramas de secuencia en notación Mermaid correspondientes a los tres flujos operacionales más complejos de la arquitectura: autenticación asimétrica (Véase Figura 3), importación con IA y supervisión humana (Véase Figura 4) y cobro transaccional reactivo (Véase Figura 5).
+A continuación se presentan los diagramas de secuencia en notación Mermaid correspondientes a los tres flujos operacionales más complejos de la arquitectura: autenticación asimétrica (Véase Figura 3), importación con IA y supervisión humana (Véase Figura 4) y cobro transaccional reactivo con congelamiento de costos e impacto en caja (Véase Figura 5).
 
 ```mermaid
 sequenceDiagram
@@ -552,46 +582,38 @@ sequenceDiagram
     participant PWA as Cliente Ligero PWA
     participant Django as backend-django (Núcleo)
     participant PG as PostgreSQL 16
-    participant Node as backend-node (Eventos)
-    actor Dueño as Dueño (Tablero Remoto)
+    participant Turno as TurnoCaja (Modelo)
 
     Cajero->>PWA: Escanea producto con lector HID y presiona "Cobrar Ticket"
-    PWA->>Django: POST /api/ventas/ { turnoId, medioPago, items } (Bearer JWT)
-    Django->>Django: Verifica permiso "ventas.cobrar_ticket" y turno activo
-    Django->>PG: Inicia @transaction.atomic
+    PWA->>Django: POST /api/ventas/ { turno_caja_id, medio_pago, items } (Bearer JWT)
+    Django->>Django: Valida permiso "ventas.cobrar_ticket" y turno_caja abierto
+    Django->>PG: Inicia transacción atómica @transaction.atomic
 
-    loop Por cada ítem vendido
-        Django->>PG: Lee costo unitario de elaboración vigente del Producto
-        Django->>PG: Inserta VentaItem (congelando costo_unitario_snapshot)
-        Django->>PG: Descuenta existencias en unidad base del Insumo
+    loop Por cada producto en items
+        Django->>PG: SELECT FOR UPDATE sobre recetas_producto (estado_activo=True)
+        Django->>Django: Lee costo_total_calculado vigente del Producto
+        Django->>PG: INSERT INTO ventas_ventaitem (congelando costo_unitario_snapshot)
     end
 
-    Django->>PG: Inserta cabecera Venta y confirma transacción
-    PG-->>Django: Éxito transaccional (ID Venta generado)
-    Django-->>PWA: HTTP 201 Created { ticketId, total, fecha }
-    PWA-->>Cajero: Imprime/Exhibe comprobante de cobro aprobado
-
-    Note over Django,Dueño: Difusión Reactiva en Tiempo Real
-    Django->>Node: POST /api/eventos/notificar-venta { ventaId, total, turnoId }
-    Node->>Node: Identifica conexiones en sala "local" y "turno:{id}"
-    Node-)Dueño: Emite Socket.IO "venta.registrada" { total, timestamp }
-    Node-)Dueño: Emite Socket.IO "costo.actualizado" (si hubo alerta de margen)
-    Dueño->>Dueño: El tablero actualiza métricas de caja en vivo sin recargar
+    Django->>PG: INSERT INTO ventas_venta (total, costo_total_snapshot, turno_caja_id)
+    Django->>Turno: Registra impacto para cálculo de efectivo_esperado al cierre
+    Django->>PG: Confirma transacción atómica en PostgreSQL
+    PG-->>Django: Éxito transaccional (Venta ID generada)
+    Django-->>PWA: HTTP 201 Created { id, total, fecha, items: [...] }
+    PWA-->>Cajero: Exhibe confirmación de cobro e imprime comprobante
 ```
-**Figura 5:** Diagrama de Secuencia de Cobro de Venta y Notificación Reactiva por Socket.IO.
+**Figura 5:** Diagrama de Secuencia de Cobro de Venta, Snapshot de Costo Congelado e Impacto en Caja.
 
 ---
 
 ## 2.4 Modelado Conceptual y Lógico de Datos
 
 ### 2.4.1 Modelo Relacional Transaccional (PostgreSQL)
-El núcleo transaccional en PostgreSQL estructura las diez entidades fundamentales del dominio comercial, gobernadas por relaciones de clave foránea, restricciones de unicidad e integridad referencial estricta (Véase Figura 6).
+El núcleo transaccional en PostgreSQL estructura las entidades fundamentales del dominio comercial, gobernadas por relaciones de clave foránea, restricciones de unicidad e integridad referencial estricta conforme al código real implementado en `backend-django` (Véase Figura 6).
 
 ```mermaid
 erDiagram
     USUARIO ||--o{ TURNO_CAJA : "abre_y_opera"
-    USUARIO ||--o{ VENTA : "registra_y_cobra"
-    USUARIO ||--o{ MOVIMIENTO_CAJA : "asienta"
     PROVEEDOR ||--o{ COMPRA : "suministra"
     INSUMO ||--o{ COMPRA : "es_adquirido_en"
     INSUMO ||--o{ RECETA_ITEM : "compone"
@@ -614,31 +636,32 @@ erDiagram
     PROVEEDOR {
         bigint id PK
         varchar nombre UK
-        varchar contacto
         boolean estado_activo
+        timestamp creado_en
+        timestamp actualizado_en
     }
 
     INSUMO {
         bigint id PK
         varchar nombre UK
         varchar unidad_base "g, ml, un"
-        decimal costo_unitario_base
-        decimal stock_actual
-        decimal stock_minimo
+        decimal costo_unitario
         boolean estado_activo
+        timestamp actualizado_en
     }
 
     COMPRA {
         bigint id PK
         bigint proveedor_id FK
         bigint insumo_id FK
-        decimal cantidad_presentacion
-        varchar unidad_presentacion
-        decimal precio_total_pack
-        decimal costo_flete_prorrateado
+        decimal cantidad
+        varchar unidad
+        decimal precio_total
+        decimal envio
+        decimal alicuota
+        timestamp fecha
         boolean iva_incluido
-        decimal alicuota_iva
-        timestamp fecha_compra
+        decimal costo_unitario_calculado
     }
 
     PRODUCTO {
@@ -658,14 +681,14 @@ erDiagram
         bigint producto_id FK
         bigint insumo_id FK
         decimal cantidad
-        varchar unidad_receta
+        varchar unidad
     }
 
     TURNO_CAJA {
         bigint id PK
         bigint usuario_id FK
-        timestamp fecha_apertura
-        timestamp fecha_cierre
+        timestamp apertura
+        timestamp cierre
         decimal efectivo_inicial
         decimal efectivo_contado
         decimal efectivo_esperado
@@ -676,7 +699,6 @@ erDiagram
     MOVIMIENTO_CAJA {
         bigint id PK
         bigint turno_caja_id FK
-        bigint usuario_id FK
         varchar tipo "ENTRADA, SALIDA"
         decimal monto
         varchar motivo
@@ -686,11 +708,11 @@ erDiagram
     VENTA {
         bigint id PK
         bigint turno_caja_id FK
-        bigint usuario_id FK
         timestamp fecha
         varchar medio_pago "EFECTIVO, TRANSFERENCIA, TARJETA"
+        varchar origen "propio, importado"
         decimal total
-        varchar origen "PROPIO, IMPORTADO"
+        decimal costo_total_snapshot
     }
 
     VENTA_ITEM {
@@ -705,52 +727,65 @@ erDiagram
 **Figura 6:** Diagrama Entidad-Relación de la Base de Datos Relacional PostgreSQL.
 
 ### 2.4.2 Modelo Documental Inmutable (MongoDB)
-El subdominio documental implementado en MongoDB administra colecciones semiesquematizadas orientadas al registro histórico inmutable (*append-only*), desgloses variables y trazabilidad de inferencias artificiales (Véase Figura 7).
+El subdominio documental implementado en MongoDB administra colecciones semiesquematizadas orientadas al registro histórico inmutable (*append-only*), desgloses variables y trazabilidad de inferencias artificiales. Para garantizar la máxima precisión decimal contable en las transferencias JSON, los importes monetarios se almacenan como cadenas de texto (`String`), preservando la exactitud de los decimales sin riesgos de redondeo binario (Véase Figura 7).
 
 ```mermaid
 classDiagram
     class HistorialPrecio {
         +ObjectId _id
+        +Number productoId
         +Number insumoId
-        +String nombreInsumo
-        +Decimal128 costoUnitarioAnterior
-        +Decimal128 costoUnitarioNuevo
-        +String origen "COMPRA, MANUAL, IA"
-        +Number usuarioId
+        +String costoAnterior
+        +String costoNuevo
+        +String motivo
+        +Boolean estadoActivo
         +Date createdAt
+        +Date updatedAt
     }
 
     class SnapshotCosteo {
         +ObjectId _id
         +Number productoId
-        +String nombreProducto
-        +Decimal128 precioVenta
-        +Decimal128 costoInsumos
-        +Decimal128 costoManoObra
-        +Decimal128 costoDescartables
-        +Decimal128 costoTotal
-        +Decimal128 margenBruto
-        +Array itemsReceta
-        +Date fechaSnapshot
+        +Array desgloseInsumos
+        +String costoManoObra
+        +String costoDescartables
+        +String costoTotal
+        +String margenBruto
+        +Boolean estadoActivo
+        +Date createdAt
+        +Date updatedAt
     }
 
     class ImportacionIA {
         +ObjectId _id
-        +String proveedorNombre
-        +String textoListaOriginal
+        +Number usuarioId
+        +Object entrada
+        +Object salida
+        +String estado
         +String versionPrompt
-        +String modeloInferencia
+        +String proveedorIa
         +Number latenciaMs
         +Boolean contingencia
-        +String estado "PENDIENTE, LISTA, APROBADA, RECHAZADA, CONTINGENCIA"
-        +Array itemsPropuestos
-        +Number aprobadoPorUsuarioId
-        +Date fechaCreacion
-        +Date fechaResolucion
+        +Date createdAt
+        +Date updatedAt
     }
 
+    class EntradaIA {
+        +String textoLista
+        +String proveedorNombre
+    }
+
+    class SalidaIA {
+        +String proveedorDetectado
+        +String envioDetectado
+        +String moneda
+        +Array items
+        +Array advertencias
+    }
+
+    ImportacionIA *-- EntradaIA : "subdocumento entrada"
+    ImportacionIA *-- SalidaIA : "subdocumento salida"
     HistorialPrecio ..> SnapshotCosteo : "Correlación de recálculo"
-    ImportacionIA ..> HistorialPrecio : "Genera tras aprobación humana"
 ```
 **Figura 7:** Estructura Documental de Colecciones en MongoDB.
 
@@ -994,6 +1029,7 @@ A partir de la arquitectura modular y desacoplada consolidada en el presente Tra
 2. **Sincronización Bidireccional de Menú Digital y Pedidos Móviles:** Evolucionar la carta digital pública de solo lectura hacia una plataforma interactiva de autogestión de pedidos en mesa mediante códigos QR dinámicos, incorporando protocolos de sincronización bidireccional tolerante a desconexión entre la nube pública y la base de datos local del salón.
 3. **Predicción Analítica de Demanda de Insumos:** Incorporar en el microservicio `ai-service` algoritmos de series temporales (como ARIMA o Prophet) para proyectar el consumo semanal de café y leche en función de variables climáticas, estacionalidad y patrones de venta históricos, optimizando los volúmenes de adquisición mayorista.
 4. **Módulo de Comandas y Despacho en Cocina (KDS):** Desarrollar una interfaz reactiva dedicada para el área de elaboración (*Kitchen Display System*), consumiendo los eventos de venta emitidos por Socket.IO para visualizar pedidos pendientes, controlar tiempos de despacho y actualizar el estado de preparación de los productos en tiempo real.
+5. **Descuento Automático de Stock Físico de Insumos por Receta:** Extender el modelo `Insumo` incorporando atributos de control físico (`stock_actual` y `stock_minimo`), e implementar en el servicio `registrar_venta` la deducción automática y atómica de las unidades base correspondientes a cada producto elaborado vendido, disparando alertas proactivas de reposición por umbral crítico a través de Socket.IO.
 
 ---
 
@@ -1034,6 +1070,8 @@ A partir de la arquitectura modular y desacoplada consolidada en el presente Tra
 [16] R. S. Pressman and B. R. Maxim, *Software Engineering: A Practitioner's Approach*, 8th ed. New York, NY, USA: McGraw-Hill, 2014.
 
 [17] R. Garrison, E. Noreen, and P. Brewer, *Managerial Accounting*, 17th ed. New York, NY, USA: McGraw-Hill Education, 2021.
+
+[18] IEEE, "IEEE Recommended Practice for Software Requirements Specifications," *IEEE Std 830-1998*, pp. 1–40, Oct. 1998, doi: 10.1109/IEEESTD.1998.88286.
 
 ---
 
@@ -1088,7 +1126,7 @@ A continuación se detalla la totalidad de las rutas de interfaz de programació
 | **backend-django** | `GET` | `/api/productos/:id/costo/` | `recetas.ver_costos` | Desglose confidencial de costos de elaboración y margen bruto comercial. |
 | **backend-django** | `POST` | `/api/ventas/` | `ventas.cobrar_ticket` | Emisión y cobro de venta con congelamiento de costo unitario snapshot. |
 | **backend-django** | `GET` | `/api/ventas/` | `ventas.ver_historial_propio` | Listado de ventas (filtrado por usuario o global según permisos). |
-| **backend-django** | `POST` | `/api/ventas/:id/anular/` | `ventas.anular_ticket` | Anulación formal de ticket y reversión de existencias en inventario. |
+| **backend-django** | `POST` | `/api/ventas/:id/anular/` | `ventas.anular_ticket` | Anulación formal de ticket y reversión de impacto en turno de caja. |
 | **backend-django** | `GET` | `/api/ventas/reporte-por-producto/` | `reportes.ver_operativos` | Reporte analítico de unidades vendidas e ingresos indexado por fechas. |
 | **backend-django** | `GET` | `/api/ventas/ranking-productos/` | `reportes.ver_operativos` | Ranking de productos más y menos vendidos en un rango temporal. |
 | **backend-django** | `GET` | `/api/ventas/ganancia-diaria/` | `reportes.ver_financieros` | Rentabilidad diaria calculada a partir de los snapshots congelados. |
@@ -1120,7 +1158,7 @@ El despliegue en el equipo informático del comercio se realiza siguiendo los li
 
 ```bash
 # 1. Clonar el repositorio institucional
-git clone https://github.com/tu-usuario/tpi-tfi-utn.git
+git clone https://github.com/Zalko03/tpi-tfi-utn.git
 cd tpi-tfi-utn
 
 # 2. Configurar el archivo de variables de entorno seguras
