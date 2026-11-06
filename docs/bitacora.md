@@ -21,6 +21,43 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-06
+Tarea: Rediseño comercial y arquitectura frontend de nivel producto para "Sapori Stock" (Specialty Coffee POS)
+Rama: main
+Cambios realizados:
+- Rediseño integral de la interfaz web en `web/` (`index.html`, `css/estilos.css`, `js/app.js`) transformándola en un software comercial gastronómico de alta gama (estilo Fudo / Toast POS / Square) para cafeterías de especialidad de alta demanda.
+- Identidad visual gastronómica profesional: Sidebar fijo y elegante en Espresso Oscuro (`#1E1410`) con tipografía crema suave (`#F5EBE6`), área de trabajo en Leche/Crema cálido (`#F8F5F0`), tarjetas blancas puras (`#FFFFFF`), bordes sutiles (`#E6DFD5`), acentos en Caramelo/Ámbar tostado (`#C86D1F`) y estados semafóricos (Verde Esmeralda `#10B981`, Ámbar `#F59E0B`, Rojo `#EF4444`).
+- Erradicación total de jerga técnica en la UI visible (eliminando menciones a POST, GET, 202, JWT, RS256, HU, CA, Socket.IO) y adopción del 100% de lenguaje de negocio gastronómico.
+- Pantalla de inicio de sesión comercial con selector de demostración rápida en 1 clic para Dueño (`duenio_demo`), Encargado (`encargado_demo`) y Cajero (`cajero_demo`).
+- Módulo 1 (Punto de Venta / POS): Buscador instantáneo, input activo con foco automático para lector láser de código de barras (F4), catálogo visual con emojis y avatares según el ítem, comanda con controles táctiles de cantidad, selector visual de medios de pago, cobro con F2 y modal de comprobante térmico de 80mm con opción de impresión (`window.print()`).
+- Módulo 2 (Caja y Arqueo Ciego): Tarjetas de estado de turno, apertura de caja, registro de movimientos de caja chica e interfaz adaptativa por rol (Cajero opera en Arqueo Ciego con saldo esperado oculto; Dueño/Encargado auditan turnos con tabla comparativa de efectivo esperado, contado y diferencias en semáforo verde/rojo).
+- Módulo 3 (Compras e Importador con IA): Extracción inteligente de listas de precios de distribuidores (WhatsApp/PDF) asistida por IA, botón para cargar ejemplo realista, panel de revisión y aprobación humana (`/api/importaciones/:id/aprobar` o rechazar), e inventario de insumos con costeo unitario base y compras manuales.
+- Módulo 4 (Ingeniería de Recetas y Rentabilidad): Carta comercial con costo exacto de receta, ganancia neta en $ por unidad, barras de rentabilidad semafóricas (Saludable >= 50%, Atención 30-49%, Crítico < 30%), protección de confidencialidad para cajeros (`🔒 Confidencial`) y botón de recálculo masivo de toda la carta.
+- Módulo 5 (Finanzas, Ganancia Real y Metas): KPIs ejecutivos en vivo (facturación bruta, costo de mercadería vendida congelado, ganancia neta real de bolsillo), ranking visual de productos estrella y alerta comercial de productos sin rotación (0 ventas), y simulador comercial de Punto de Equilibrio interactivo con metas diarias y semanales.
+- Módulo 6 (Personal, Permisos y Monitor en Vivo): Gestión de equipo de trabajo con visor de los 30 permisos granulares categorizados, activación/desactivación de empleados y demostración interactiva de la Regla de Supervivencia del Dueño. Panel lateral deslizable con feed de eventos en vivo y contadores en tiempo real por Socket.IO.
+- Compatibilidad total: Preservación de `logicaPwa.js`, enlaces `/app/manifest.webmanifest`, `/app/js/app.js` y selectores/IDs requeridos, manteniendo los 563 tests del monorepo pasando al 100% en verde.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Integración completa del cliente web en puerto 5173 hacia `http://localhost:8000` (Django REST Framework), `http://localhost:3000` (Node Express y Socket.IO) y `http://localhost:8001` (FastAPI AI Service).
+- Normalización en `VentaItemInputSerializer` para admitir indistintamente `producto` y `producto_id` y tolerancia en el origen `propio`/`local`.
+Problemas y decisiones técnicas:
+- **Doble soporte de rutas estáticas (/app/ y raíz):** La configuración de enlace simbólico `web/app -> .` permite servir la PWA tanto bajo el prefijo `/app/` de Express en el puerto 3000 como directamente en el servidor de desarrollo en el puerto 5173 sin alterar los tests unitarios y de integración de Jest.
+- **Aritmética en centavos y congelamiento de snapshots:** Se integró la lógica de centavos de `logicaPwa.js` en el cliente para no utilizar floats en montos monetarios en el frontend, delegando en el backend Django el cálculo de costos congelados en cada venta para garantizar inmutabilidad histórica.
+Archivos tocados:
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/app.js`
+- `web/app` (enlace simbólico para compatibilidad de rutas)
+- `backend-django/apps/ventas/serializers.py`
+- `backend-django/apps/insumos/management/commands/seed_demo.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ingresar a `http://localhost:5173` en el navegador.
+- Probar el ingreso rápido en 1 clic con los perfiles Dueño, Encargado y Cajero.
+- En POS, agregar productos, cambiar cantidades, seleccionar medio de pago y presionar "Cobrar y Emitir Ticket (F2)" para visualizar el ticket térmico de 80mm.
+- En Compras IA, presionar "Cargar Ejemplo Real de Proveedor" y "Analizar Lista con Inteligencia Artificial" para aprobar la propuesta.
+- Ejecutar `cd backend-node && npm test` (130 tests), `cd backend-django && pytest` (370 tests) y `cd ai-service && pytest` (63 tests) verificando 563 tests en verde.
+
+---
 Fecha: 2026-11-03
 Tarea: Alineación institucional definitiva, estandarización IEEE 830 y sincronización técnica con código real
 Rama: docs/informe-final-tfi

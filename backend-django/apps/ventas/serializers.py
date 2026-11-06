@@ -9,9 +9,17 @@ from apps.ventas.services import registrar_venta
 
 
 class VentaItemInputSerializer(serializers.Serializer):
-    producto_id = serializers.IntegerField()
+    producto_id = serializers.IntegerField(required=False)
+    producto = serializers.IntegerField(required=False)
     cantidad = serializers.DecimalField(max_digits=8, decimal_places=2, default=Decimal("1.00"))
     precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+
+    def validate(self, attrs):
+        if "producto_id" not in attrs and "producto" not in attrs:
+            raise serializers.ValidationError("Debe indicar 'producto_id' o 'producto'.")
+        if "producto_id" not in attrs:
+            attrs["producto_id"] = attrs["producto"]
+        return attrs
 
 
 class VentaItemDetailSerializer(serializers.ModelSerializer):
@@ -48,6 +56,11 @@ class VentaSerializer(serializers.ModelSerializer):
             "creado_en",
         ]
         read_only_fields = ["id", "fecha", "total", "costo_total_snapshot", "creado_en"]
+
+    def validate_origen(self, value):
+        if str(value).lower() in ("local", "caja", "propio"):
+            return "propio"
+        return value
 
     def validate(self, attrs):
         turno = attrs.get("turno_caja")

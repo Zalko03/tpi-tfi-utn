@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -10,14 +11,47 @@ from apps.insumos.models import Insumo, Proveedor
 from apps.insumos.services import registrar_compra_y_actualizar_costo
 from apps.recetas.models import Producto, RecetaItem
 from apps.recetas.services import actualizar_costo_y_margen_producto
+from apps.usuarios.constantes import ROL_CAJERO, ROL_DUENIO, ROL_ENCARGADO
+from apps.usuarios.models import PerfilUsuario
 from apps.ventas.services import registrar_venta
 
 
 class Command(BaseCommand):
-    help = "Puebla la base de datos con datos anonimizados de cafetería (T1.7)"
+    help = "Puebla la base de datos con datos anonimizados de cafetería y usuarios de demostración (T1.7)"
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.NOTICE("Iniciando seed_demo..."))
+
+        # 0. Usuarios de demostración (Dueño, Encargado y Cajero)
+        usuarios_demo = [
+            ("duenio_demo", "Dueño", "Demo", "duenio@cafedemo.local", ROL_DUENIO),
+            ("encargado_demo", "Encargado", "Demo", "encargado@cafedemo.local", ROL_ENCARGADO),
+            ("cajero_demo", "Cajero", "Demo", "cajero@cafedemo.local", ROL_CAJERO),
+        ]
+        usuarios_instancias = {}
+        for username, first_name, last_name, email, rol in usuarios_demo:
+            u, _ = User.objects.get_or_create(
+                username=username,
+                defaults={
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "email": email,
+                    "is_active": True,
+                },
+            )
+            u.set_password("Demo1234!")
+            u.is_active = True
+            u.save()
+            perfil, _ = PerfilUsuario.objects.get_or_create(usuario=u)
+            perfil.rol = rol
+            perfil.save()
+            usuarios_instancias[rol] = u
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Usuarios de prueba creados (duenio_demo, encargado_demo, cajero_demo)."
+            )
+        )
 
         # 1. Proveedores
         prov_cafe, _ = Proveedor.objects.get_or_create(nombre="Distribuidora Central de Café")
@@ -82,13 +116,16 @@ class Command(BaseCommand):
         espresso, _ = Producto.objects.get_or_create(
             nombre="Café Espresso",
             defaults={
-                "codigo_barras": "7790001001",
+                "codigo_barras": "7790001000011",
                 "precio_venta": Decimal("2200.00"),
                 "minutos_mano_obra": Decimal("1.00"),
                 "costo_hora_mano_obra": Decimal("2500.00"),
                 "descartables": Decimal("0.00"),
             },
         )
+        if espresso.codigo_barras != "7790001000011":
+            espresso.codigo_barras = "7790001000011"
+            espresso.save()
         RecetaItem.objects.get_or_create(
             producto=espresso,
             insumo=insumo_cafe,
@@ -99,13 +136,16 @@ class Command(BaseCommand):
         latte, _ = Producto.objects.get_or_create(
             nombre="Café Latte",
             defaults={
-                "codigo_barras": "7790001002",
+                "codigo_barras": "7790001000028",
                 "precio_venta": Decimal("3800.00"),
                 "minutos_mano_obra": Decimal("2.00"),
                 "costo_hora_mano_obra": Decimal("2500.00"),
                 "descartables": Decimal("80.00"),
             },
         )
+        if latte.codigo_barras != "7790001000028":
+            latte.codigo_barras = "7790001000028"
+            latte.save()
         RecetaItem.objects.get_or_create(
             producto=latte,
             insumo=insumo_cafe,
@@ -121,13 +161,16 @@ class Command(BaseCommand):
         chipa, _ = Producto.objects.get_or_create(
             nombre="Chipá Tradicional (Porción x4)",
             defaults={
-                "codigo_barras": "7790001003",
+                "codigo_barras": "7790001000042",
                 "precio_venta": Decimal("1800.00"),
                 "minutos_mano_obra": Decimal("1.50"),
                 "costo_hora_mano_obra": Decimal("2500.00"),
                 "descartables": Decimal("30.00"),
             },
         )
+        if chipa.codigo_barras != "7790001000042":
+            chipa.codigo_barras = "7790001000042"
+            chipa.save()
         RecetaItem.objects.get_or_create(
             producto=chipa,
             insumo=insumo_mandioca,
@@ -141,10 +184,20 @@ class Command(BaseCommand):
         actualizar_costo_y_margen_producto(chipa)
 
         # 5. Turno de Caja y Ventas con snapshot congelado
+        cajero_user = usuarios_instancias.get(ROL_CAJERO)
         turno, _ = TurnoCaja.objects.get_or_create(
             id=1,
-            defaults={"efectivo_inicial": Decimal("10000.00"), "apertura": timezone.now()},
+            defaults={
+                "usuario": cajero_user,
+                "efectivo_inicial": Decimal("10000.00"),
+                "apertura": timezone.now(),
+                "estado": "ABIERTO",
+            },
         )
+        if turno.usuario != cajero_user or turno.estado != "ABIERTO":
+            turno.usuario = cajero_user
+            turno.estado = "ABIERTO"
+            turno.save()
         registrar_venta(
             items_data=[
                 {"producto_id": espresso.id, "cantidad": Decimal("2")},
