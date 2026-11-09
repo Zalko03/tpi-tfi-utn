@@ -3,6 +3,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
@@ -23,7 +24,7 @@ DEBUG = _a_booleano(os.environ.get("DJANGO_DEBUG", "False"))
 # Los valores por defecto existen solo para desarrollo: con DEBUG apagado
 # y sin variable, el arranque falla en vez de usar una clave o hosts inseguros.
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
-_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS")
+_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS") or os.environ.get("ALLOWED_HOSTS")
 
 if DEBUG:
     SECRET_KEY = SECRET_KEY or "clave-solo-para-desarrollo-no-usar-en-produccion"
@@ -38,7 +39,10 @@ else:
             "Falta DJANGO_ALLOWED_HOSTS (obligatoria con DJANGO_DEBUG apagado)."
         )
 
-ALLOWED_HOSTS = [host.strip() for host in _hosts.split(",") if host.strip()]
+ALLOWED_HOSTS = []
+for _h in [*(h.strip() for h in _hosts.split(",") if h.strip()), "localhost", "127.0.0.1"]:
+    if _h not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_h)
 
 # Par de claves criptográficas asimétricas para SimpleJWT RS256 (ADR-0001)
 JWT_PRIVATE_KEY, JWT_PUBLIC_KEY = obtener_claves_jwt(BASE_DIR)
@@ -128,15 +132,15 @@ MIDDLEWARE = [
 ]
 
 # Política CORS restrictiva sin comodín '*' (T2.5 y docs/seguridad.md)
-_cors_origenes = os.environ.get(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000",
+_cors_default = (
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000"
 )
-CORS_ALLOWED_ORIGINS = [
-    origen.strip()
-    for origen in _cors_origenes.split(",")
-    if origen.strip() and origen.strip() != "*"
-]
+_cors_origenes = os.environ.get("CORS_ALLOWED_ORIGINS", _cors_default)
+CORS_ALLOWED_ORIGINS = []
+for _origen in [*_cors_origenes.split(","), *_cors_default.split(",")]:
+    _limpio = _origen.strip()
+    if _limpio and _limpio != "*" and _limpio not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(_limpio)
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
@@ -174,12 +178,32 @@ ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
 USE_SQLITE = _a_booleano(os.environ.get("USE_SQLITE", "False"))
+_database_url = os.environ.get("DATABASE_URL", "").strip()
 
 if USE_SQLITE:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+elif _database_url:
+    # Soporte nativo para DATABASE_URL de PostgreSQL en Aiven / Render
+    _parsed_db = urlparse(_database_url)
+    _query_db = parse_qs(_parsed_db.query)
+    _opciones_db = {}
+    if "sslmode" in _query_db:
+        _opciones_db["sslmode"] = _query_db["sslmode"][0]
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": (_parsed_db.path or "").lstrip("/")
+            or os.environ.get("POSTGRES_DB", "cafe_gestion"),
+            "USER": _parsed_db.username or os.environ.get("POSTGRES_USER", "cafe_user"),
+            "PASSWORD": _parsed_db.password or os.environ.get("POSTGRES_PASSWORD", ""),
+            "HOST": _parsed_db.hostname or os.environ.get("POSTGRES_HOST", "localhost"),
+            "PORT": str(_parsed_db.port or os.environ.get("POSTGRES_PORT", "5432")),
+            "OPTIONS": _opciones_db,
         }
     }
 else:

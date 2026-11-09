@@ -40,32 +40,50 @@
                         Diseñado específicamente para cafeterías de especialidad y gastronomía de alto flujo. Control total de stock por gramo/mililitro, costeo dinámico de recetas y arqueo de caja con seguridad comercial.
                     </p>
                     <ul class="login-beneficios-lista">
-                        <li><span>✓</span> Facturación ultra-rápida con lector de código de barras</li>
-                        <li><span>✓</span> Costeo exacto en vivo y congelamiento de margen por ticket</li>
-                        <li><span>✓</span> Cierre de caja con arqueo ciego para auditoría de gerencia</li>
-                        <li><span>✓</span> Inteligencia Artificial para digitalizar listas de proveedores</li>
+                        <li>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            <span>Facturación ultra-rápida con lector de código de barras</span>
+                        </li>
+                        <li>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            <span>Costeo exacto en vivo y congelamiento de margen por ticket</span>
+                        </li>
+                        <li>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            <span>Cierre de caja con arqueo ciego para auditoría de gerencia</span>
+                        </li>
+                        <li>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            <span>Importación CSV y procesamiento inteligente de listas de proveedores</span>
+                        </li>
                     </ul>
                 </div>
 
                 <div class="login-demo-selector">
-                    <span class="demo-selector-etiqueta">⚡ Acceso Rápido para Demostración Comercial (1 Clic):</span>
+                    <span class="demo-selector-etiqueta">Acceso Rápido para Demostración Comercial (1 Clic):</span>
                     <div class="demo-tarjetas-grilla">
                         <button type="button" class="btn-demo-acceso" id="btn-demo-duenio" data-usuario="duenio_demo" data-password="Demo1234!">
-                            <span class="demo-avatar">👑</span>
+                            <span class="demo-avatar">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+                            </span>
                             <div class="demo-info">
                                 <strong>Dueño / Gerencia</strong>
                                 <small>Finanzas, IA y Recalcular Costos</small>
                             </div>
                         </button>
                         <button type="button" class="btn-demo-acceso" id="btn-demo-encargado" data-usuario="encargado_demo" data-password="Demo1234!">
-                            <span class="demo-avatar">📋</span>
+                            <span class="demo-avatar">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                            </span>
                             <div class="demo-info">
                                 <strong>Encargado de Salón</strong>
                                 <small>Compras, Recetas y Supervisión</small>
                             </div>
                         </button>
                         <button type="button" class="btn-demo-acceso" id="btn-demo-cajero" data-usuario="cajero_demo" data-password="Demo1234!">
-                            <span class="demo-avatar">🛒</span>
+                            <span class="demo-avatar">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                            </span>
                             <div class="demo-info">
                                 <strong>Cajero / Mostrador</strong>
                                 <small>Venta Rápida y Arqueo Ciego</small>
@@ -117,9 +135,15 @@
                     </div>
                 </form>
 
-                <div class="login-footer-seguridad">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                    <span>Ambiente comercial seguro · Operación continua en red local (LAN)</span>
+                <div class="login-footer-seguridad" style="display: flex; flex-direction: column; gap: 0.65rem;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        <span>Ambiente comercial seguro · Operación híbrida Cloud / LAN / Offline</span>
+                    </div>
+                    <button type="button" id="btn-config-servidor-login" class="btn-secundario-comercial" style="font-size: 0.78rem; padding: 0.45rem 0.85rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        <span>Configuración de Servidor / Modo de Conexión</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -184,7 +208,7 @@
                     <div class="usuario-avatar-circulo" id="usuario-avatar-letra">D</div>
                     <div class="usuario-datos">
                         <strong id="sidebar-nombre-usuario">Dueño Demo</strong>
-                        <span id="badge-rol-usuario" class="badge-rol duenio">👑 Dueño</span>
+                        <span id="badge-rol-usuario" class="badge-rol duenio">Dueño</span>
                     </div>
                 </div>
                 <button type="button" id="btn-cerrar-sesion" class="btn-sidebar-logout" title="Cerrar Sesión">
@@ -204,6 +228,16 @@
                 </div>
 
                 <div class="cabecera-estado-vivo">
+                    <!-- Indicador de Contingencia Offline y Cola Local -->
+                    <div id="banner-cola-offline" class="pildora-offline-alerta" style="display: none;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                        <span id="texto-cola-offline">Modo Sin Internet Activo — 0 ventas en cola local</span>
+                        <button type="button" id="btn-sincronizar-offline" class="btn-sincronizar-cola">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                            <span>Sincronizar Ventas Pendientes</span>
+                        </button>
+                    </div>
+
                     <!-- Turno actual -->
                     <div id="indicador-turno-cabecera" class="pildora-estado turno-abierto">
                         <span class="punto-pulso"></span>
@@ -213,6 +247,11 @@
                     <!-- Presencia y Sockets -->
                     <span id="insignia-presencia" class="pildora-presencia">1 terminal activa</span>
                     <span id="insignia-socket" class="pildora-socket conectado">Sistema en Línea</span>
+
+                    <!-- Botón de Configuración de Servidor / Modo de Conexión -->
+                    <button type="button" id="btn-config-servidor-header" class="btn-icono-panel" title="Configuración de Servidor / Modo de Conexión">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </button>
 
                     <!-- Botón para ver monitor lateral en tiempo real -->
                     <button type="button" id="btn-toggle-monitor" class="btn-icono-panel" title="Monitor de Actividad en Vivo">
@@ -246,16 +285,16 @@
                                             autocomplete="off"
                                             autofocus
                                         />
-                                        <span class="laser-badge-estado">🟢 Lector Láser Listo (F4)</span>
+                                        <span class="laser-badge-estado">Lector Láser Listo (F4)</span>
                                     </div>
                                 </div>
 
                                 <!-- Filtros rápidos de categoría -->
                                 <div class="pos-filtros-categorias">
                                     <button type="button" class="btn-categoria-filtro activo" data-filtro="todos">Todos</button>
-                                    <button type="button" class="btn-categoria-filtro" data-filtro="cafe">☕ Café de Especialidad</button>
-                                    <button type="button" class="btn-categoria-filtro" data-filtro="panaderia">🥐 Panadería & Salados</button>
-                                    <button type="button" class="btn-categoria-filtro" data-filtro="bebidas">🥤 Bebidas Frías</button>
+                                    <button type="button" class="btn-categoria-filtro" data-filtro="cafe">Café de Especialidad</button>
+                                    <button type="button" class="btn-categoria-filtro" data-filtro="panaderia">Panadería & Salados</button>
+                                    <button type="button" class="btn-categoria-filtro" data-filtro="bebidas">Bebidas Frías</button>
                                 </div>
                             </div>
 
@@ -310,15 +349,15 @@
                                     <div class="medios-pago-selector">
                                         <label class="metodo-pago-chip activo">
                                             <input type="radio" name="medio_pago_radio" value="EFECTIVO" checked />
-                                            <span>💵 Efectivo</span>
+                                            <span>Efectivo</span>
                                         </label>
                                         <label class="metodo-pago-chip">
                                             <input type="radio" name="medio_pago_radio" value="TRANSFERENCIA" />
-                                            <span>📱 QR / MP</span>
+                                            <span>QR / Transferencia</span>
                                         </label>
                                         <label class="metodo-pago-chip">
                                             <input type="radio" name="medio_pago_radio" value="TARJETA" />
-                                            <span>💳 Tarjeta</span>
+                                            <span>Tarjeta</span>
                                         </label>
                                     </div>
 
@@ -377,10 +416,10 @@
 
                             <div class="tarjeta-kpi acciones-rapidas-caja">
                                 <button type="button" id="btn-modal-movimiento" class="btn-secundario-comercial w-100">
-                                    <span>💸 Movimiento de Caja Chica</span>
+                                    <span>Movimiento de Caja Chica</span>
                                 </button>
                                 <button type="button" id="btn-modal-abrir-turno" class="btn-primario-comercial w-100 mt-2">
-                                    <span>🔑 Abrir Nuevo Turno</span>
+                                    <span>Abrir Nuevo Turno</span>
                                 </button>
                             </div>
                         </div>
@@ -397,7 +436,9 @@
                             <!-- Panel específico para rol Cajero: Arqueo Ciego -->
                             <div id="caja-panel-cajero-ciego" class="panel-arqueo-ciego-cajero">
                                 <div class="aviso-seguridad-comercial">
-                                    <div class="aviso-icono">🔒</div>
+                                    <div class="aviso-icono">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                    </div>
                                     <div class="aviso-contenido">
                                         <strong>Modo Arqueo Ciego Activo</strong>
                                         <p>Ingrese el recuento físico exacto de los billetes y monedas presentes en el cajón. El saldo esperado por el sistema permanece confidencial para auditoría de gerencia.</p>
@@ -418,8 +459,8 @@
                             <!-- Panel para rol Dueño / Encargado: Auditoría de Turnos y Diferencias -->
                             <div id="caja-panel-gerencia-auditoria" class="panel-auditoria-turnos">
                                 <div class="auditoria-cabecera">
-                                    <span class="auditoria-insignia">👑 Vista de Gerencia · Comparativa de Arqueos y Auditoría</span>
-                                    <button type="button" id="btn-refrescar-turnos" class="btn-refrescar-mini">🔄 Actualizar</button>
+                                    <span class="auditoria-insignia">Vista de Gerencia · Comparativa de Arqueos y Auditoría</span>
+                                    <button type="button" id="btn-refrescar-turnos" class="btn-refrescar-mini">Actualizar</button>
                                 </div>
 
                                 <div class="tabla-contenedor-responsive">
@@ -473,22 +514,81 @@
                 </section>
 
                 <!-- ============================================================
-                     3. MÓDULO COMPRAS E IMPORTADOR IA
+                     3. MÓDULO COMPRAS E IMPORTACIÓN DE LISTAS (CSV / IA)
                      ============================================================ -->
                 <section id="vista-compras" class="vista-modulo">
                     <div class="modulo-compras-tabs">
                         <button type="button" class="tab-compras-btn activa" data-tab="ia">
-                            <span>✨ Asistente Inteligente de Listas de Precios (IA)</span>
+                            <span>Importación de Listas de Precios (CSV / IA)</span>
                         </button>
                         <button type="button" class="tab-compras-btn" data-tab="insumos">
-                            <span>📦 Inventario de Insumos & Compras Manuales</span>
+                            <span>Inventario de Insumos & Compras Manuales</span>
                         </button>
                     </div>
 
-                    <!-- Pestaña 1: Importador con IA -->
+                    <!-- Pestaña 1: Importador CSV + IA -->
                     <div id="subtab-ia" class="subtab-contenido activa">
                         <div class="asistente-ia-layout">
-                            <!-- Paso 1: Entrada de Lista -->
+                            <!-- Zona de Importación de Archivo CSV / TXT con Drag & Drop -->
+                            <div class="tarjeta-panel-blanca">
+                                <div class="panel-cabecera-linea">
+                                    <div>
+                                        <h3>Importar Archivo de Lista de Precios (.CSV / .TXT)</h3>
+                                        <p class="text-muted">Suba planillas exportadas de Excel (separadas por coma o punto y coma) para actualización masiva de costos.</p>
+                                    </div>
+                                    <button type="button" id="btn-descargar-plantilla-csv" class="btn-secundario-comercial" style="display: inline-flex; align-items: center; gap: 0.45rem;">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        <span>Descargar Plantilla CSV Modelo</span>
+                                    </button>
+                                </div>
+
+                                <div id="zona-drop-csv" class="zona-drop-csv">
+                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt" class="sr-only" />
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
+                                    <div>
+                                        <strong>Arrastre aquí su archivo .CSV o .TXT de proveedor</strong>
+                                        <p class="text-muted">o haga clic para seleccionar desde su equipo (soporta delimitador <code>,</code> y <code>;</code>)</p>
+                                    </div>
+                                </div>
+
+                                <!-- Previsualización formal de filas CSV -->
+                                <div id="panel-preview-csv" class="mt-4" style="display: none;">
+                                    <div class="panel-cabecera-linea">
+                                        <div>
+                                            <h4>Previsualización de Planilla Cargada</h4>
+                                            <span id="resumen-preview-csv" class="text-muted">0 filas detectadas</span>
+                                        </div>
+                                        <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+                                            <button type="button" id="btn-csv-circuito-ia" class="btn-secundario-comercial">
+                                                Enviar al Circuito de Aprobación
+                                            </button>
+                                            <button type="button" id="btn-csv-confirmar-directo" class="btn-exito-comercial">
+                                                Confirmar Directamente en Inventario y Recalcular
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="tabla-contenedor-responsive">
+                                        <table class="tabla-comercial">
+                                            <thead>
+                                                <tr>
+                                                    <th>Insumo</th>
+                                                    <th>Cantidad</th>
+                                                    <th>Unidad</th>
+                                                    <th class="text-right">Precio Total ($)</th>
+                                                    <th class="text-right">Alícuota IVA (%)</th>
+                                                    <th class="text-right">Envío ($)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tabla-preview-csv-body">
+                                                <!-- Filas previsualizadas del CSV -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Paso 1: Entrada de Lista por Texto Libre / IA -->
                             <div class="tarjeta-panel-blanca">
                                 <div class="ia-paso-cabecera">
                                     <div class="paso-circulo">1</div>
@@ -508,7 +608,7 @@
                                         <div class="flex-justify-between">
                                             <label for="textarea-lista-ia">Texto de la Lista de Precios</label>
                                             <button type="button" id="btn-ejemplo-proveedor" class="btn-enlace-magico">
-                                                <span>✨ Cargar Ejemplo Real de Proveedor</span>
+                                                <span>Cargar Ejemplo de Proveedor</span>
                                             </button>
                                         </div>
                                         <textarea id="textarea-lista-ia" rows="5" placeholder="Pegue aquí el texto recibido por WhatsApp o escaneo..." required>Café tostado en grano 1 kg: $24500
@@ -618,7 +718,7 @@ Envío: $2000</textarea>
                                     <p class="text-muted">Monitoreo exacto de margen por producto combinando insumos, minutos de barista y descartables.</p>
                                 </div>
                                 <button type="button" id="btn-recalcular-toda-carta" class="btn-secundario-comercial">
-                                    <span>🔄 Recalcular Costos de toda la Carta</span>
+                                    <span>Recalcular Costos de toda la Carta</span>
                                 </button>
                             </div>
 
@@ -649,7 +749,9 @@ Envío: $2000</textarea>
                                     <h4 id="receta-detalle-nombre">Desglose de Receta: Café Espresso</h4>
                                     <p class="text-muted">Composición técnica de insumos por porción servida.</p>
                                 </div>
-                                <button type="button" id="btn-cerrar-desglose" class="btn-cerrar-panel">✕</button>
+                                <button type="button" id="btn-cerrar-desglose" class="btn-cerrar-panel" aria-label="Cerrar">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
                             </div>
                             <div class="tabla-contenedor-responsive">
                                 <table class="tabla-comercial">
@@ -792,7 +894,9 @@ Envío: $2000</textarea>
 
                     <!-- Mensaje restrictivo para Cajero en Módulo Finanzas -->
                     <div id="finanzas-bloqueo-cajero" class="tarjeta-panel-blanca text-center py-8" style="display: none;">
-                        <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+                        <div style="margin-bottom: 1rem; color: var(--color-ambar); display: inline-flex; justify-content: center;">
+                            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        </div>
                         <h3>Información Financiera Confidencial</h3>
                         <p class="text-muted max-w-md mx-auto">
                             El módulo de métricas financieras, ganancias netas y punto de equilibrio está reservado para la gerencia y propietarios del local gastronómico.
@@ -821,7 +925,9 @@ Envío: $2000</textarea>
 
                         <!-- Demostración en Vivo: Regla de Supervivencia del Dueño -->
                         <div class="aviso-supervivencia-card">
-                            <div class="aviso-supervivencia-icono">🛡️</div>
+                            <div class="aviso-supervivencia-icono">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            </div>
                             <div>
                                 <strong>Regla de Supervivencia del Dueño (Seguridad Garantizada)</strong>
                                 <p>El sistema protege la integridad del negocio bloqueando automáticamente cualquier intento de desactivar o revocar privilegios al único Dueño activo registrado.</p>
@@ -842,7 +948,9 @@ Envío: $2000</textarea>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                     <h3>Tablero en Tiempo Real</h3>
                 </div>
-                <button type="button" id="btn-cerrar-monitor" class="btn-cerrar-drawer">✕</button>
+                <button type="button" id="btn-cerrar-monitor" class="btn-cerrar-drawer" aria-label="Cerrar monitor">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
             </div>
 
             <!-- Métricas en vivo del socket -->
@@ -883,13 +991,15 @@ Envío: $2000</textarea>
          MODALES COMERCIALES
          ============================================================ -->
 
-    <!-- 1. MODAL DE TICKET TÉRMICO 80MM (EFECTO WOW) -->
+    <!-- 1. MODAL DE TICKET TÉRMICO 80MM -->
     <div id="modal-ticket-termico" class="modal-overlay" style="display: none;">
         <div class="ticket-termico-contenedor">
             <div class="ticket-termico-papel" id="ticket-papel-imprimible">
                 <!-- Encabezado Térmico -->
                 <div class="ticket-termico-header">
-                    <div class="ticket-logo-cafe">☕</div>
+                    <div class="ticket-logo-cafe">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line></svg>
+                    </div>
                     <h2>SAPORI STOCK COFFEE</h2>
                     <p class="ticket-sub">CAFETERÍA DE ESPECIALIDAD & POS</p>
                     <p class="ticket-dir">Av. San Martín 1420 · Resistencia, Chaco</p>
@@ -949,7 +1059,7 @@ Envío: $2000</textarea>
                         ||||| |||| |||||| ||||| |||| |||||||| ||| |||||||
                     </div>
                     <p class="ticket-agradecimiento">¡GRACIAS POR SU VISITA!</p>
-                    <p class="ticket-leyenda">Comprobante comercial no fiscal emitido por Sapori Stock</p>
+                    <p id="ticket-termico-leyenda" class="ticket-leyenda">Comprobante comercial no fiscal emitido por Sapori Stock</p>
                 </div>
             </div>
 
@@ -960,7 +1070,7 @@ Envío: $2000</textarea>
                     <span>Imprimir Comprobante (Ctrl+P)</span>
                 </button>
                 <button type="button" id="btn-nueva-venta" class="btn-nueva-venta">
-                    <span>✨ Nueva Venta</span>
+                    <span>Nueva Venta</span>
                 </button>
             </div>
         </div>
@@ -971,7 +1081,9 @@ Envío: $2000</textarea>
         <div class="modal-tarjeta">
             <div class="modal-cabecera">
                 <h3>Movimiento de Caja Chica</h3>
-                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-movimiento-caja">✕</button>
+                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-movimiento-caja" aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
             </div>
             <form id="form-movimiento-caja" class="modal-cuerpo">
                 <div class="campo-grupo">
@@ -1002,7 +1114,9 @@ Envío: $2000</textarea>
         <div class="modal-tarjeta">
             <div class="modal-cabecera">
                 <h3>Apertura de Turno de Caja</h3>
-                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-abrir-turno">✕</button>
+                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-abrir-turno" aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
             </div>
             <form id="form-abrir-turno" class="modal-cuerpo">
                 <div class="campo-grupo">
@@ -1023,7 +1137,9 @@ Envío: $2000</textarea>
         <div class="modal-tarjeta">
             <div class="modal-cabecera">
                 <h3>Registrar Factura de Compra</h3>
-                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-nueva-compra">✕</button>
+                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-nueva-compra" aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
             </div>
             <form id="form-nueva-compra" class="modal-cuerpo">
                 <div class="campo-grupo">
@@ -1080,7 +1196,9 @@ Envío: $2000</textarea>
                     <h3 id="permisos-usuario-titulo">Permisos de Usuario</h3>
                     <p class="text-muted" id="permisos-usuario-rol">Rol: Dueño · 30 permisos clasificados</p>
                 </div>
-                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-permisos">✕</button>
+                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-permisos" aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
             </div>
             <div class="modal-cuerpo">
                 <div id="permisos-categorias-grilla" class="permisos-categorias-grilla">
@@ -1090,6 +1208,43 @@ Envío: $2000</textarea>
             <div class="modal-footer-acciones">
                 <button type="button" class="btn-secundario-comercial" data-cerrar="modal-permisos">Cerrar</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 6. MODAL CONFIGURACIÓN DE SERVIDOR / MODO DE CONEXIÓN -->
+    <div id="modal-config-servidor" class="modal-overlay" style="display: none;">
+        <div class="modal-tarjeta">
+            <div class="modal-cabecera">
+                <div>
+                    <h3>Configuración de Servidor / Modo de Conexión</h3>
+                    <p class="text-muted">Arquitectura híbrida Cloud, Red Local (LAN) y Contingencia Offline</p>
+                </div>
+                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-config-servidor" aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <form id="form-config-servidor" class="modal-cuerpo">
+                <div class="campo-grupo">
+                    <label for="select-modo-conexion">Modo Operativo de Conexión</label>
+                    <select id="select-modo-conexion">
+                        <option value="local">Servidor Local LAN (PC de Mostrador / Docker)</option>
+                        <option value="cloud">Servidor Cloud Remoto (Render + Aiven + Atlas)</option>
+                        <option value="offline">Modo Contingencia Offline (Sin Internet)</option>
+                    </select>
+                </div>
+                <div class="campo-grupo">
+                    <label for="input-config-django-url">URL Backend Transaccional (Django API)</label>
+                    <input id="input-config-django-url" type="text" placeholder="http://localhost:8000" required />
+                </div>
+                <div class="campo-grupo">
+                    <label for="input-config-node-url">URL Backend Tiempo Real & IA (Node / Socket.IO)</label>
+                    <input id="input-config-node-url" type="text" placeholder="http://localhost:3000" required />
+                </div>
+                <div class="modal-footer-acciones">
+                    <button type="button" class="btn-secundario-comercial" data-cerrar="modal-config-servidor">Cancelar</button>
+                    <button type="submit" class="btn-primario-comercial">Guardar y Aplicar Conexión</button>
+                </div>
+            </form>
         </div>
     </div>
 

@@ -3,8 +3,13 @@ import {
     buscarProductoPorCodigoOTexto,
     calcularResumenCarrito,
     convertirMontoACentavos,
+    encolarVentaOffline,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
+    limpiarColaOffline,
+    obtenerContenidoPlantillaCsv,
+    obtenerVentasOffline,
+    parsearCsvProveedor,
 } from '../../../web/js/logicaPwa.js';
 
 describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () => {
@@ -104,6 +109,85 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             });
             expect(evImp.nivel).toBe('info');
             expect(evImp.titulo).toContain('5 ítems');
+        });
+    });
+
+    describe('Parser CSV robusto de listas de precios (coma y punto y coma)', () => {
+        it('parsea correctamente la plantilla oficial separada por comas y acumula envío', () => {
+            const csvComas = obtenerContenidoPlantillaCsv();
+            const resultado = parsearCsvProveedor(csvComas);
+
+            expect(resultado.delimitadorDetectado).toBe(',');
+            expect(resultado.items).toHaveLength(4);
+            expect(resultado.items[0]).toMatchObject({
+                nombre_insumo: 'Café Tostado en Grano Especial',
+                cantidad: '5',
+                unidad: 'kg',
+                precio_total: '115000.00',
+                alicuota: '21.00',
+                envio: '4500.00',
+            });
+            expect(resultado.envioTotal).toBe('4500.00');
+            expect(resultado.textoParaIa).toContain('Café Tostado en Grano Especial 5 kg: $115000.00');
+        });
+
+        it('parsea archivos exportados de Excel en español separados por punto y coma (;)', () => {
+            const csvPuntoYComa = [
+                'insumo;cantidad;unidad;precio_total;alicuota_iva;envio',
+                'Leche Descremada;12;l;15800,50;21,00;1200,00',
+                'Cacao Amargo Puro;2;kg;19400,00;10,50;0,00',
+            ].join('\n');
+
+            const resultado = parsearCsvProveedor(csvPuntoYComa);
+
+            expect(resultado.delimitadorDetectado).toBe(';');
+            expect(resultado.items).toHaveLength(2);
+            expect(resultado.items[0].nombre_insumo).toBe('Leche Descremada');
+            expect(resultado.items[0].precio_total).toBe('15800.50');
+            expect(resultado.items[1].alicuota).toBe('10.50');
+            expect(resultado.envioTotal).toBe('1200.00');
+        });
+    });
+
+    describe('Cola de Sincronización Offline de Ventas (Resiliencia ante corte de Internet)', () => {
+        const crearStorageMock = () => {
+            const mapa = new Map();
+            return {
+                getItem: (clave) => (mapa.has(clave) ? mapa.get(clave) : null),
+                setItem: (clave, valor) => mapa.set(clave, String(valor)),
+                removeItem: (clave) => mapa.delete(clave),
+            };
+        };
+
+        it('encola ventas offline en orden, las recupera y permite vaciar la cola al sincronizar', () => {
+            const storage = crearStorageMock();
+            expect(obtenerVentasOffline(storage)).toEqual([]);
+
+            const venta1 = {
+                turno_caja: 1,
+                metodo_pago: 'EFECTIVO',
+                items_entrada: [{ producto: 1, cantidad: 2 }],
+            };
+            const venta2 = {
+                turno_caja: 1,
+                metodo_pago: 'TARJETA',
+                items_entrada: [{ producto: 2, cantidad: 1 }],
+            };
+
+            const res1 = encolarVentaOffline(venta1, storage);
+            expect(res1.totalEnCola).toBe(1);
+            expect(res1.ventaEncolada.idTemporal).toMatch(/^OFF-/);
+
+            const res2 = encolarVentaOffline(venta2, storage);
+            expect(res2.totalEnCola).toBe(2);
+
+            const pendientes = obtenerVentasOffline(storage);
+            expect(pendientes).toHaveLength(2);
+            expect(pendientes[0].payload.metodo_pago).toBe('EFECTIVO');
+            expect(pendientes[1].payload.metodo_pago).toBe('TARJETA');
+
+            limpiarColaOffline(storage);
+            expect(obtenerVentasOffline(storage)).toEqual([]);
         });
     });
 });

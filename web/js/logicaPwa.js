@@ -197,3 +197,236 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
             };
     }
 };
+
+/**
+ * Contenido oficial para descargar la plantilla CSV modelo de proveedor.
+ */
+export const obtenerContenidoPlantillaCsv = () => {
+    return [
+        'insumo,cantidad,unidad,precio_total,alicuota_iva,envio',
+        'Café Tostado en Grano Especial,5,kg,115000.00,21.00,4500.00',
+        'Leche Entera Barista,12,l,16200.00,21.00,0.00',
+        'Azúcar Orgánica,10,kg,14500.00,21.00,0.00',
+        'Vasos Polipapel 8oz,100,un,12000.00,21.00,0.00',
+    ].join('\n');
+};
+
+/**
+ * Parsea un archivo CSV/TXT de lista de precios de proveedor soportando tanto coma (,)
+ * como punto y coma (;), estándar de Excel en español.
+ */
+export const parsearCsvProveedor = (contenidoCsv = '') => {
+    const texto = String(contenidoCsv || '').trim();
+    if (!texto) {
+        return { items: [], envioTotal: '0.00', textoParaIa: '' };
+    }
+
+    const lineas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+    if (lineas.length === 0) {
+        return { items: [], envioTotal: '0.00', textoParaIa: '' };
+    }
+
+    const primeraLinea = lineas[0];
+    const delimitador = primeraLinea.includes(';') ? ';' : ',';
+
+    const separarColumnas = (linea) => {
+        const resultado = [];
+        let actual = '';
+        let enComillas = false;
+        for (let i = 0; i < linea.length; i++) {
+            const char = linea[i];
+            if (char === '"') {
+                enComillas = !enComillas;
+            } else if (char === delimitador && !enComillas) {
+                resultado.push(actual.trim());
+                actual = '';
+            } else {
+                actual += char;
+            }
+        }
+        resultado.push(actual.trim());
+        return resultado;
+    };
+
+    const normalizarNumeroTexto = (val, defecto = '0.00') => {
+        if (val === undefined || val === null || String(val).trim() === '') {
+            return defecto;
+        }
+        let limpio = String(val).replace(/[$\s"]/g, '');
+        if (delimitador === ';' && limpio.includes(',')) {
+            limpio = limpio.replace(/\./g, '').replace(',', '.');
+        } else {
+            limpio = limpio.replace(',', '.');
+        }
+        const num = Number(limpio);
+        return Number.isFinite(num) && num >= 0 ? num.toFixed(2) : defecto;
+    };
+
+    const normalizarCantidadTexto = (val) => {
+        if (val === undefined || val === null || String(val).trim() === '') {
+            return '1';
+        }
+        const limpio = String(val).replace(/["\s]/g, '').replace(',', '.');
+        const num = Number(limpio);
+        return Number.isFinite(num) && num > 0 ? String(num) : '1';
+    };
+
+    const colsCabecera = separarColumnas(primeraLinea).map((c) =>
+        c
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+    );
+
+    const tieneCabecera = colsCabecera.some(
+        (c) =>
+            c.includes('insumo') ||
+            c.includes('producto') ||
+            c.includes('cantidad') ||
+            c.includes('precio')
+    );
+
+    const indiceInicio = tieneCabecera ? 1 : 0;
+    const idxInsumo = tieneCabecera
+        ? Math.max(0, colsCabecera.findIndex((c) => c.includes('insumo') || c.includes('producto') || c.includes('nombre')))
+        : 0;
+    const idxCantidad = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('cant'))
+        : 1;
+    const idxUnidad = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('unid'))
+        : 2;
+    const idxPrecio = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('precio') || c.includes('total') || c.includes('importe'))
+        : 3;
+    const idxAlicuota = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('iva') || c.includes('alicuota'))
+        : 4;
+    const idxEnvio = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('envio') || c.includes('flete'))
+        : 5;
+
+    const items = [];
+    let envioTotalCentavos = 0;
+
+    for (let i = indiceInicio; i < lineas.length; i++) {
+        const cols = separarColumnas(lineas[i]);
+        if (cols.length < 2) continue;
+
+        const nombreInsumo = String(cols[idxInsumo >= 0 ? idxInsumo : 0] || '').trim();
+        if (!nombreInsumo) continue;
+
+        const cantidad = normalizarCantidadTexto(cols[idxCantidad >= 0 ? idxCantidad : 1]);
+        const unidad = String(cols[idxUnidad >= 0 ? idxUnidad : 2] || 'un')
+            .trim()
+            .toLowerCase() || 'un';
+        const precioTotal = normalizarNumeroTexto(cols[idxPrecio >= 0 ? idxPrecio : 3], '0.00');
+        const alicuotaIva = normalizarNumeroTexto(
+            idxAlicuota >= 0 ? cols[idxAlicuota] : '21.00',
+            '21.00'
+        );
+        const envioFila = normalizarNumeroTexto(
+            idxEnvio >= 0 ? cols[idxEnvio] : '0.00',
+            '0.00'
+        );
+
+        if (Number(precioTotal) <= 0) continue;
+
+        envioTotalCentavos += convertirMontoACentavos(envioFila);
+
+        items.push({
+            nombre_insumo: nombreInsumo,
+            nombreInsumo,
+            cantidad,
+            unidad,
+            precio_total: precioTotal,
+            precioTotal,
+            iva_incluido: true,
+            alicuota: alicuotaIva,
+            alicuotaIva,
+            envio: envioFila,
+        });
+    }
+
+    const envioTotal = formatearCentavosADecimal(envioTotalCentavos);
+    const lineasTextoIa = items.map(
+        (it) => `${it.nombre_insumo} ${it.cantidad} ${it.unidad}: $${it.precio_total}`
+    );
+    if (envioTotalCentavos > 0) {
+        lineasTextoIa.push(`Envío: $${envioTotal}`);
+    }
+
+    return {
+        items,
+        envioTotal,
+        delimitadorDetectado: delimitador,
+        textoParaIa: lineasTextoIa.join('\n'),
+    };
+};
+
+export const CLAVE_COLA_VENTAS_OFFLINE = 'sapori_cola_ventas_offline';
+
+const obtenerStorageSeguro = (storagePersonalizado = null) => {
+    if (storagePersonalizado) return storagePersonalizado;
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
+    if (typeof globalThis !== 'undefined' && globalThis.localStorage) return globalThis.localStorage;
+    return null;
+};
+
+/**
+ * Obtiene la lista de ventas pendientes almacenadas en la cola offline.
+ */
+export const obtenerVentasOffline = (storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (!storage) return [];
+    try {
+        const crudo = storage.getItem(CLAVE_COLA_VENTAS_OFFLINE);
+        if (!crudo) return [];
+        const parseado = JSON.parse(crudo);
+        return Array.isArray(parseado) ? parseado : [];
+    } catch {
+        return [];
+    }
+};
+
+/**
+ * Encola una venta en localStorage cuando no hay conexión a internet o el backend no responde.
+ */
+export const encolarVentaOffline = (ventaPayload, storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    const colaActual = obtenerVentasOffline(storage);
+
+    const registroOffline = {
+        idTemporal: `OFF-${Date.now()}-${colaActual.length + 1}`,
+        creadoEn: new Date().toISOString(),
+        sincronizada: false,
+        payload: ventaPayload,
+    };
+
+    const nuevaCola = [...colaActual, registroOffline];
+    if (storage) {
+        storage.setItem(CLAVE_COLA_VENTAS_OFFLINE, JSON.stringify(nuevaCola));
+    }
+
+    return {
+        ventaEncolada: registroOffline,
+        totalEnCola: nuevaCola.length,
+        cola: nuevaCola,
+    };
+};
+
+/**
+ * Vacía la cola de ventas offline una vez sincronizadas con el servidor.
+ */
+export const limpiarColaOffline = (storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (storage) {
+        storage.removeItem(CLAVE_COLA_VENTAS_OFFLINE);
+    }
+    return [];
+};
+

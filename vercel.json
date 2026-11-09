@@ -1,0 +1,70 @@
+{
+    "version": 2,
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "X-Frame-Options",
+                    "value": "DENY"
+                },
+                {
+                    "key": "X-Content-Type-Options",
+                    "value": "nosniff"
+                },
+                {
+                    "key": "Referrer-Policy",
+                    "value": "strict-origin-when-cross-origin"
+                }
+            ]
+        },
+        {
+            "source": "/(.*)sw\\.js",
+            "headers": [
+                {
+                    "key": "Cache-Control",
+                    "value": "public, max-age=0, must-revalidate"
+                },
+                {
+                    "key": "Service-Worker-Allowed",
+                    "value": "/"
+                }
+            ]
+        },
+        {
+            "source": "/(.*)manifest\\.webmanifest",
+            "headers": [
+                {
+                    "key": "Content-Type",
+                    "value": "application/manifest+json"
+                }
+            ]
+        }
+    ],
+    "rewrites": [
+        {
+            "source": "/app/(.*)",
+            "destination": "/web/$1"
+        },
+        {
+            "source": "/css/(.*)",
+            "destination": "/web/css/$1"
+        },
+        {
+            "source": "/js/(.*)",
+            "destination": "/web/js/$1"
+        },
+        {
+            "source": "/sw.js",
+            "destination": "/web/sw.js"
+        },
+        {
+            "source": "/manifest.webmanifest",
+            "destination": "/web/manifest.webmanifest"
+        },
+        {
+            "source": "/",
+            "destination": "/web/index.html"
+        }
+    ]
+}

@@ -1026,5 +1026,47 @@ Cómo probarlo:
 - Validar sintaxis y configuración de Docker Compose con `docker compose config`.
 - Verificar sintaxis de scripts con `bash -n scripts/*.sh`.
 ---
+Fecha: 2026-11-09
+Tarea: Evolución comercial de Sapori Stock POS — Formalidad sin emojis, Importador CSV Drag & Drop, Operación Híbrida Cloud/LAN/Offline y Despliegue (Vercel + Render + Aiven)
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **1. Formalidad estricta (Cero emojis en toda la interfaz):**
+  - Se eliminó el 100 % de los emojis en `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js` y `web/css/estilos.css`.
+  - Se reemplazaron exclusivamente por íconos vectoriales SVG monocromáticos (`stroke="currentColor"`) y etiquetas tipográficas corporativas.
+- **2. Importación de archivos `.csv` / `.txt` de proveedores y precios:**
+  - En el módulo de Compras e Importación de Listas se incorporó una zona *Drag & Drop* y el botón **"Descargar Plantilla CSV Modelo"** (`plantilla_lista_proveedor.csv` con columnas `insumo,cantidad,unidad,precio_total,alicuota_iva,envio`).
+  - Se implementó `parsearCsvProveedor` en `web/js/logicaPwa.js` con soporte automático para coma (`,`) y punto y coma (`;`, estándar de Excel en español), previsualización tabular y botones para enviar al circuito de aprobación (`POST /api/importaciones`) o confirmar directamente en inventario (`POST /api/compras/confirmar-importacion/`) recalculando costos en cascada.
+- **3. Arquitectura híbrida (Modo Web Cloud + Modo Local LAN + Contingencia Offline):**
+  - Resolución dinámica de `DJANGO_API_URL` y `NODE_API_URL` en `web/js/app.js` con modal de **"Configuración de Servidor / Modo de Conexión"** accesible en el login y en la barra superior.
+  - Persistencia local automática en `localStorage` del catálogo de productos y estado del turno.
+  - Implementación de la **Cola de Sincronización Offline** (`localStorage` clave `sapori_cola_ventas_offline`) mediante `encolarVentaOffline`, `obtenerVentasOffline` y `limpiarColaOffline`: ante caída de red o `navigator.onLine === false`, el cajero cobra sin bloqueo, emite el Ticket Térmico de 80mm con leyenda *"Comprobante Emitido en Modo Offline - Pendiente de Sincronización"* y visualiza el indicador *"Modo Sin Internet Activo — X ventas en cola local"*.
+  - Detección automática de reconexión (`window.addEventListener('online', ...)`) y botón **"Sincronizar Ventas Pendientes"** para enviar en orden las ventas encoladas a `POST /api/ventas/`.
+  - Actualización de `web/sw.js` con estrategia *Network-First con Fallback a Caché* para todos los recursos de la cáscara PWA.
+- **4. Configuración de despliegue Cloud (Vercel + Render + Aiven):**
+  - Creación de `vercel.json` para servir la PWA (`web/`) con cabeceras de seguridad y Service Worker habilitado.
+  - Creación de `render.yaml` definiendo los 3 servicios (`sapori-backend-django`, `sapori-backend-node` y `sapori-ai-service` con `AI_PROVIDER=groq`).
+  - Actualización de `backend-django/config/settings/base.py` para lectura dinámica de `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS` y `DATABASE_URL` (PostgreSQL en Aiven), preservando compatibilidad local.
+- **5. Tests unitarios:**
+  - Incorporación de pruebas unitarias en `backend-node/tests/unit/logicaPwa.unit.test.js` para `parsearCsvProveedor` (coma y punto y coma) y para la cola de ventas offline (`encolarVentaOffline`, `obtenerVentasOffline`, `limpiarColaOffline`).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Cliente PWA (`web/`) ↔ `backend-django` (`POST /api/compras/confirmar-importacion/`, `POST /api/ventas/` con cola offline en `localStorage`) y `backend-node` (`POST /api/importaciones`), más descriptores de despliegue `vercel.json` y `render.yaml`.
+Archivos tocados:
+- `web/index.html`
+- `web/js/app.js`
+- `web/js/logicaPwa.js`
+- `web/css/estilos.css`
+- `web/sw.js`
+- `backend-django/config/settings/base.py`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `vercel.json`
+- `render.yaml`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar las 3 suites de pruebas (`backend-django`, `backend-node` y `ai-service`).
+- Probar la interfaz en `http://localhost:5173` (o `/app/`), verificando la ausencia total de emojis, la descarga e importación de `plantilla_lista_proveedor.csv`, el modal de modo de conexión y el cobro de tickets en modo sin internet.
+---
+
 
 

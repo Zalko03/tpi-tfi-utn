@@ -199,10 +199,19 @@ body {
     color: var(--color-crema-mutado);
 }
 
-.login-beneficios-lista span {
+.login-beneficios-lista li {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.login-beneficios-lista svg {
     color: var(--color-ambar);
-    font-weight: 700;
-    margin-right: 0.5rem;
+    flex-shrink: 0;
+}
+
+.login-beneficios-lista span {
+    color: var(--color-crema-mutado);
 }
 
 /* Selector Demo en 1 Clic */
@@ -2331,3 +2340,81 @@ textarea:focus {
         display: none;
     }
 }
+
+/* ============================================================
+   7. ZONA DE IMPORTACIÓN CSV DRAG & DROP Y BANNER OFFLINE
+   ============================================================ */
+.zona-drop-csv {
+    border: 2px dashed var(--color-borde-hover);
+    border-radius: var(--radio-lg);
+    background: #FAF7F2;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: var(--texto-color);
+    transition: all 0.2s ease;
+}
+
+.zona-drop-csv svg {
+    color: var(--color-ambar);
+}
+
+.zona-drop-csv:hover,
+.zona-drop-csv.drag-activo {
+    border-color: var(--color-ambar);
+    background: var(--color-ambar-light);
+}
+
+.pildora-offline-alerta {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    background: #FEF3C7;
+    border: 1px solid #F59E0B;
+    color: #92400E;
+    padding: 0.35rem 0.85rem;
+    border-radius: var(--radio-full);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.btn-sincronizar-cola {
+    background: var(--color-espresso);
+    color: #fff;
+    border: none;
+    border-radius: var(--radio-full);
+    padding: 0.25rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: background 0.15s ease;
+}
+
+.btn-sincronizar-cola:hover {
+    background: var(--color-ambar);
+}
+
+.producto-icono-grande svg {
+    color: var(--color-ambar);
+}
+
+.demo-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radio-sm);
+    background: rgba(200, 109, 31, 0.2);
+    color: var(--color-ambar);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+

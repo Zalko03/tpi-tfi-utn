@@ -6,13 +6,21 @@ const RECURSOS_CASCARA = [
     '/app/css/estilos.css',
     '/app/js/logicaPwa.js',
     '/app/js/app.js',
+    '/',
+    '/index.html',
+    '/manifest.webmanifest',
+    '/css/estilos.css',
+    '/js/logicaPwa.js',
+    '/js/app.js',
 ];
 
 self.addEventListener('install', (evento) => {
     evento.waitUntil(
         caches
             .open(NOMBRE_CACHE)
-            .then((cache) => cache.addAll(RECURSOS_CASCARA))
+            .then(async (cache) => {
+                await Promise.allSettled(RECURSOS_CASCARA.map((url) => cache.add(url)));
+            })
             .then(() => self.skipWaiting())
     );
 });
@@ -56,6 +64,17 @@ self.addEventListener('fetch', (evento) => {
                 }
                 return respuestaRed;
             })
-            .catch(() => caches.match(evento.request))
+            .catch(async () => {
+                const directa = await caches.match(evento.request);
+                if (directa) return directa;
+
+                if (evento.request.mode === 'navigate') {
+                    return (
+                        (await caches.match('/app/index.html')) ||
+                        (await caches.match('/index.html'))
+                    );
+                }
+                return directa;
+            })
     );
 });
