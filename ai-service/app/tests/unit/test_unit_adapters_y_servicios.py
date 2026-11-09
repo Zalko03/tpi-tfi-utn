@@ -14,6 +14,7 @@ from app.services.extraccion import extraer_precios_de_lista
 from app.services.proveedor_ia import (
     ErrorProveedorIA,
     GeminiAdapter,
+    GroqAdapter,
     OllamaAdapter,
     ProveedorIA,
     extraer_objeto_json,
@@ -185,7 +186,73 @@ class TestUnitAdapters:
         assert json_llamada["messages"][0] == {"role": "system", "content": "SISTEMA_OLLAMA"}
         assert json_llamada["messages"][1] == {"role": "user", "content": "USUARIO_OLLAMA"}
 
+    async def test_groq_adapter_falla_sin_api_key_cuando_no_hay_fallback(self):
+        adaptador = GroqAdapter(api_key="", modelo="llama-3.3-70b-versatile", fallback_demo=False)
+        with pytest.raises(ErrorProveedorIA, match="GROQ_API_KEY no está configurada"):
+            await adaptador.generar_json("instrucciones", "datos", timeout=2.0)
+
+    async def test_groq_adapter_usa_fallback_determinista_sin_api_key(self):
+        adaptador = GroqAdapter(api_key="", modelo="llama-3.3-70b-versatile", fallback_demo=True)
+        texto_demo = (
+            "Distribuidora Central Gastronómica - Lista Mayorista Octubre\n"
+            "- Café en grano Especialidad Tostado 1 kg: $24.500\n"
+            "- Leche Entera La Serenísima Caja x 12 litros: $18.600\n"
+            "- Flete / Envío puerta a puerta: $4.500"
+        )
+        datos = json.dumps({"texto_lista_precios": texto_demo})
+        resultado = await adaptador.generar_json("instrucciones", datos, timeout=2.0)
+        assert resultado["proveedor_detectado"] == "Central Gastronómica"
+        assert resultado["envio_detectado"] == "4500.00"
+        assert len(resultado["items"]) == 2
+        assert resultado["items"][0]["nombre_insumo"] == "Café en grano Especialidad Tostado"
+        assert resultado["items"][0]["precio_total"] == "24500.00"
+
+    async def test_groq_adapter_envia_bearer_y_response_format_json(self):
+        adaptador = GroqAdapter(
+            api_key="gsk-clave-ficticia-groq",
+            modelo="llama-3.3-70b-versatile",
+            base_url="https://api.groq.com/openai/v1",
+            fallback_demo=False,
+        )
+        respuesta_http_mock = MagicMock()
+        respuesta_http_mock.raise_for_status = MagicMock()
+        respuesta_http_mock.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": '{"moneda": "ARS", "items": []}',
+                    }
+                }
+            ]
+        }
+        cliente_mock = AsyncMock()
+        cliente_mock.post.return_value = respuesta_http_mock
+        cliente_mock.__aenter__.return_value = cliente_mock
+        cliente_mock.__aexit__.return_value = None
+
+        with patch("httpx.AsyncClient", return_value=cliente_mock):
+            resultado = await adaptador.generar_json(
+                instrucciones_sistema="SISTEMA_GROQ",
+                datos_usuario="USUARIO_GROQ",
+                timeout=3.0,
+            )
+
+        assert resultado == {"moneda": "ARS", "items": []}
+        llamada = cliente_mock.post.call_args
+        url_llamada = llamada.args[0]
+        headers_llamada = llamada.kwargs["headers"]
+        json_llamada = llamada.kwargs["json"]
+
+        assert url_llamada == "https://api.groq.com/openai/v1/chat/completions"
+        assert headers_llamada["Authorization"] == "Bearer gsk-clave-ficticia-groq"
+        assert json_llamada["model"] == "llama-3.3-70b-versatile"
+        assert json_llamada["response_format"] == {"type": "json_object"}
+        assert json_llamada["messages"][0] == {"role": "system", "content": "SISTEMA_GROQ"}
+        assert json_llamada["messages"][1] == {"role": "user", "content": "USUARIO_GROQ"}
+
     def test_fabrica_obtener_proveedor_ia_selecciona_correctamente(self):
+        assert isinstance(obtener_proveedor_ia("groq"), GroqAdapter)
         assert isinstance(obtener_proveedor_ia("gemini"), GeminiAdapter)
         assert isinstance(obtener_proveedor_ia("ollama"), OllamaAdapter)
         with pytest.raises(ErrorProveedorIA, match="no soportado"):

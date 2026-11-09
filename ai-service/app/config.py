@@ -15,7 +15,26 @@ class ConfiguracionIA:
 
     @property
     def proveedor_activo(self) -> str:
-        return os.getenv("AI_PROVIDER", "gemini").strip().lower()
+        return os.getenv("AI_PROVIDER", "groq").strip().lower()
+
+    @property
+    def groq_api_key(self) -> str:
+        return os.getenv("GROQ_API_KEY", "").strip()
+
+    @property
+    def groq_modelo(self) -> str:
+        return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+
+    @property
+    def groq_base_url(self) -> str:
+        return (
+            os.getenv(
+                "GROQ_BASE_URL",
+                "https://api.groq.com/openai/v1",
+            )
+            .strip()
+            .rstrip("/")
+        )
 
     @property
     def gemini_api_key(self) -> str:

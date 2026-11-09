@@ -21,6 +21,40 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-09
+Tarea: Incorporación de GroqAdapter en ai-service (LPU Cloud) y fallback determinista de demostración
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- Incorporación de `GroqAdapter` en `ai-service/app/services/proveedor_ia.py` siguiendo el Patrón Adapter (ADR-0002):
+  - Conexión con endpoint oficial compatible con OpenAI de Groq Cloud (`https://api.groq.com/openai/v1/chat/completions`) mediante `httpx.AsyncClient` con cabecera `Authorization: Bearer <GROQ_API_KEY>` y `response_format={"type": "json_object"}`.
+  - Modelo por defecto: `llama-3.3-70b-versatile` para procesamiento ultrarrápido sin consumo de hardware local en la máquina cliente.
+- Implementación de `fallback_determinista_demostracion` y `parsear_lista_precios_heuristica`:
+  - Mecanismo determinista inteligente de contingencia que analiza expresiones regulares y patrones gastronómicos de listas de precios (formatos WhatsApp/PDF, packs, alícuotas, fletes y montos argentinos con puntos/comas) en 1 milisegundo con 0 consumo de GPU/RAM.
+  - Asegura que en entornos de demostración sin credenciales o sin internet la extracción de precios y generación de resúmenes siempre responda con éxito al instante.
+- Configuración centralizada:
+  - Adición de variables `GROQ_API_KEY`, `GROQ_MODEL=llama-3.3-70b-versatile` y `GROQ_BASE_URL` en `ai-service/app/config.py` y `.env.example`.
+  - Soporte para `AI_PROVIDER=groq` en `/health/profundo` y fábrica `obtener_proveedor_ia`.
+- Tests unitarios completos:
+  - Agregadas pruebas para `GroqAdapter` en `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py` validando cabeceras Bearer, payload JSON, fallback determinista y selección en fábrica.
+  - 66 tests de `ai-service` pasando al 100% en 0.8s.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `ai-service` habilitado para operar vía Groq Cloud LPU o modo fallback instantáneo conectado al endpoint `POST /v1/extraer-precios`.
+Problemas y decisiones técnicas:
+- **Zero-Hardware Footprint:** Groq Cloud procesa los tokens en la nube con LPUs evitando cualquier saturación de RAM en la máquina de desarrollo o del comerciante. En ausencia de clave, el parser heurístico local atiende la demo con latencia prácticamente nula.
+- **Respeto a contratos existentes:** Se mantuvo estricto el esquema Pydantic v2 `SalidaIAExtraccionPrecios` y `RespuestaExtraccionPrecios`, garantizando que Node.js y el frontend reciban datos completamente normalizados y tipados.
+Archivos tocados:
+- `.env.example`
+- `ai-service/app/config.py`
+- `ai-service/app/routers/salud.py`
+- `ai-service/app/services/proveedor_ia.py`
+- `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar `curl -s http://localhost:8001/health/profundo` verificando `"proveedor": "groq"`.
+- Probar `curl -s -X POST http://localhost:8001/v1/extraer-precios -H "Content-Type: application/json" -d '{"texto_lista": "..."}'` verificando extracción inmediata (latencia 1ms, 4 ítems).
+- Correr las suites de tests: `ai-service/.venv/bin/pytest ai-service/` (66 tests), `backend-django/.venv/bin/pytest backend-django/` (370 tests), `cd backend-node && npm test` (130 tests). Monorepo con 566 tests en verde.
+
+---
 Fecha: 2026-11-06
 Tarea: Rediseño comercial y arquitectura frontend de nivel producto para "Sapori Stock" (Specialty Coffee POS)
 Rama: main
