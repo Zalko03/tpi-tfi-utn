@@ -220,13 +220,45 @@ def parsear_lista_precios_heuristica(
             return "0.00"
 
     for linea in lineas:
+        if re.match(
+            r"^\s*(?:insumo|producto|nombre)\s*[,;]\s*(?:cant|cantidad)",
+            linea,
+            re.IGNORECASE,
+        ):
+            continue
+
+        partes_csv = [p.strip(' "\t') for p in re.split(r"[,;]", linea)]
+        if len(partes_csv) >= 4 and not re.search(r"\$", linea):
+            nombre_csv = partes_csv[0]
+            cant_csv = partes_csv[1].replace(",", ".")
+            unidad_csv = partes_csv[2].lower() or "un"
+            precio_csv = normalizar_monto(partes_csv[3])
+            alicuota_csv = normalizar_monto(partes_csv[4]) if len(partes_csv) >= 5 else "21.00"
+            envio_csv = normalizar_monto(partes_csv[5]) if len(partes_csv) >= 6 else "0.00"
+            if nombre_csv and float(precio_csv) > 0:
+                if float(envio_csv) > 0:
+                    envio = f"{float(envio) + float(envio_csv):.2f}"
+                items.append(
+                    {
+                        "nombre_insumo": nombre_csv,
+                        "cantidad": cant_csv,
+                        "unidad": unidad_csv,
+                        "precio_total": precio_csv,
+                        "iva_incluido": True,
+                        "alicuota": alicuota_csv if float(alicuota_csv) > 0 else "21.00",
+                        "confianza": "0.99",
+                        "texto_original": linea,
+                    }
+                )
+                continue
+
         if re.search(r"(?:env[ií]o|flete)", linea, re.IGNORECASE):
-            m_envio = re.search(r"\$\s*([\d\.,]+)", linea)
+            m_envio = re.search(r"\$?\s*([\d\.,]+)", linea)
             if m_envio:
                 envio = normalizar_monto(m_envio.group(1))
                 continue
 
-        m_precio = re.search(r"\$\s*([\d\.,]+)", linea)
+        m_precio = re.search(r"\$\s*([\d\.,]+)", linea) or re.search(r":\s*([\d\.,]+)\s*$", linea)
         if not m_precio:
             continue
 

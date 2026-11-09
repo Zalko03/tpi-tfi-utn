@@ -368,6 +368,121 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
     };
 };
 
+/**
+ * Extrae ítems de precios desde texto libre o CSV en el cliente cuando se requiere
+ * previsualización o respaldo local ante listas pegadas manualmente.
+ */
+export const extraerItemsDesdeTextoLista = (textoCrudo = '') => {
+    const texto = String(textoCrudo || '').trim();
+    if (!texto) {
+        return { items: [], envioDetectado: '0.00' };
+    }
+
+    const resultadoCsv = parsearCsvProveedor(texto);
+    if (
+        resultadoCsv.items.length > 0 &&
+        (texto.includes(',') || texto.includes(';')) &&
+        !texto.includes('$')
+    ) {
+        return {
+            items: resultadoCsv.items.map((it) => ({
+                nombreInsumo: it.nombre_insumo,
+                nombre_insumo: it.nombre_insumo,
+                cantidad: it.cantidad,
+                unidad: it.unidad,
+                precioTotal: it.precio_total,
+                precio_total: it.precio_total,
+                ivaIncluido: true,
+                alicuota: it.alicuota || '21.00',
+                confianza: '0.99',
+            })),
+            envioDetectado: resultadoCsv.envioTotal,
+        };
+    }
+
+    const lineas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+    const normalizarMonto = (str) => {
+        let s = String(str || '')
+            .replace(/\$/g, '')
+            .trim();
+        if (s.includes('.') && s.includes(',')) {
+            s = s.replace(/\./g, '').replace(',', '.');
+        } else if (s.includes('.') && s.split('.').pop().length === 3) {
+            s = s.replace(/\./g, '');
+        } else if (s.includes(',')) {
+            s = s.replace(',', '.');
+        }
+        const n = Number(s);
+        return Number.isFinite(n) && n >= 0 ? n.toFixed(2) : '0.00';
+    };
+
+    let envioDetectado = '0.00';
+    const items = [];
+
+    for (const linea of lineas) {
+        if (/(?:env[ií]o|flete)/i.test(linea)) {
+            const mEnv = linea.match(/\$?\s*([\d.,]+)/);
+            if (mEnv) {
+                envioDetectado = normalizarMonto(mEnv[1]);
+                continue;
+            }
+        }
+
+        const mPrecio = linea.match(/\$\s*([\d.,]+)/) || linea.match(/:\s*([\d.,]+)\s*$/);
+        if (!mPrecio) continue;
+
+        const precioTotal = normalizarMonto(mPrecio[1]);
+        if (Number(precioTotal) <= 0) continue;
+
+        const sub = linea
+            .slice(0, mPrecio.index)
+            .replace(/^[-*•\s]+|[-*:\s]+$/g, '')
+            .trim();
+        let cantidad = '1';
+        let unidad = 'un';
+        let nombre = sub;
+
+        const mCant = sub.match(
+            /(?:x\s*)?(\d+(?:[.,]\d+)?)\s*(kg|kilo|kilos|g|gr|gramos|l|lt|litro|litros|ml|cc|un|u|unidad|unidades|docena)\b/i
+        );
+        if (mCant) {
+            cantidad = mCant[1].replace(',', '.');
+            const uRaw = mCant[2].toLowerCase();
+            if (uRaw.startsWith('kil')) unidad = 'kg';
+            else if (uRaw.startsWith('gr')) unidad = 'g';
+            else if (uRaw.startsWith('l')) unidad = 'l';
+            else if (uRaw.startsWith('u')) unidad = 'un';
+            else unidad = uRaw;
+
+            nombre = sub
+                .slice(0, mCant.index)
+                .replace(/(?:pack|caja|bolsa|x)\s*$/i, '')
+                .replace(/^[-*•\s,]+|[-*:\s,]+$/g, '')
+                .trim();
+        }
+
+        if (!nombre) nombre = sub;
+
+        items.push({
+            nombreInsumo: nombre,
+            nombre_insumo: nombre,
+            cantidad,
+            unidad,
+            precioTotal,
+            precio_total: precioTotal,
+            ivaIncluido: true,
+            alicuota: '21.00',
+            confianza: '0.98',
+        });
+    }
+
+    return { items, envioDetectado };
+};
+
 export const CLAVE_COLA_VENTAS_OFFLINE = 'sapori_cola_ventas_offline';
 
 const obtenerStorageSeguro = (storagePersonalizado = null) => {

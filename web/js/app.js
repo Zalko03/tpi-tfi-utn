@@ -9,6 +9,7 @@ import {
     buscarProductoPorCodigoOTexto,
     calcularResumenCarrito,
     encolarVentaOffline,
+    extraerItemsDesdeTextoLista,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
     limpiarColaOffline,
@@ -188,11 +189,105 @@ export const actualizarIndicadorColaOffline = () => {
     }
 };
 
+const asegurarSesionYTurnoParaSincronizacion = async () => {
+    const host = window.location.hostname;
+    const esLocalhost = host === 'localhost' || host === '127.0.0.1';
+    if (estadoApp.modoConexion === 'offline') {
+        estadoApp.modoConexion = esLocalhost ? 'local' : 'cloud';
+        localStorage.setItem(CLAVE_MODO_CONEXION, estadoApp.modoConexion);
+    }
+    if (esLocalhost && (!estadoApp.djangoUrl || estadoApp.djangoUrl.includes('onrender.com'))) {
+        estadoApp.djangoUrl = 'http://localhost:8000';
+        localStorage.setItem(CLAVE_DJANGO_URL, estadoApp.djangoUrl);
+    }
+    if (esLocalhost && (!estadoApp.nodeUrl || estadoApp.nodeUrl.includes('onrender.com'))) {
+        estadoApp.nodeUrl = 'http://localhost:3000';
+        localStorage.setItem(CLAVE_NODE_URL, estadoApp.nodeUrl);
+    }
+
+    const tokenInvalido = !estadoApp.tokenJwt || estadoApp.tokenJwt.startsWith('offline-token-');
+    if (tokenInvalido) {
+        const username = estadoApp.usuario?.username || 'duenio_demo';
+        const password = sessionStorage.getItem('cafe_pwd') || 'Demo1234!';
+        try {
+            const resAuth = await fetch(`${estadoApp.djangoUrl}/api/auth/token/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
+            });
+            if (resAuth.ok) {
+                const dataAuth = await resAuth.json();
+                estadoApp.tokenJwt = dataAuth.access;
+                sessionStorage.setItem('cafe_jwt', dataAuth.access);
+                if (dataAuth.usuario) {
+                    estadoApp.usuario = dataAuth.usuario;
+                    sessionStorage.setItem('cafe_user', JSON.stringify(dataAuth.usuario));
+                }
+            }
+        } catch {
+            // Se manejará en el intento de sincronización
+        }
+    }
+
+    let turnoIdValido = estadoApp.turnoActivo?.estado === 'ABIERTO' ? estadoApp.turnoActivo?.id : null;
+    try {
+        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
+            headers: {
+                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                'Content-Type': 'application/json',
+            },
+        });
+        if (resTurnos.ok) {
+            const dataTurnos = await resTurnos.json();
+            const listaTurnos = Array.isArray(dataTurnos)
+                ? dataTurnos
+                : (dataTurnos.datos || dataTurnos.results || []);
+            const miId = Number(estadoApp.usuario?.id || 0);
+            const esDuenioOEncargado = ['DUENIO', 'ENCARGADO'].includes(
+                String(estadoApp.usuario?.rol || '').toUpperCase()
+            );
+
+            const turnoPropioAbierto = listaTurnos.find(
+                (t) => t.estado === 'ABIERTO' && (Number(t.usuario) === miId || esDuenioOEncargado)
+            );
+            if (turnoPropioAbierto) {
+                turnoIdValido = turnoPropioAbierto.id;
+                estadoApp.turnoActivo = turnoPropioAbierto;
+                localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnoPropioAbierto));
+            } else {
+                const resCrear = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ efectivo_inicial: '10000.00' }),
+                });
+                if (resCrear.ok) {
+                    const nuevoTurno = await resCrear.json();
+                    turnoIdValido = nuevoTurno.id;
+                    estadoApp.turnoActivo = nuevoTurno;
+                    localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(nuevoTurno));
+                }
+            }
+        }
+    } catch {
+        // Fallback al turno en caché
+    }
+
+    return turnoIdValido || estadoApp.turnoActivo?.id || 1;
+};
+
 export const sincronizarVentasPendientes = async () => {
     const cola = obtenerVentasOffline();
     if (cola.length === 0) {
+        if (estadoApp.modoConexion === 'offline') {
+            estadoApp.modoConexion = 'local';
+            localStorage.setItem(CLAVE_MODO_CONEXION, 'local');
+            conectarSocketTiempoReal();
+        }
         actualizarIndicadorColaOffline();
-        mostrarToast('No hay ventas pendientes de sincronización en la cola local.', 'info');
+        mostrarToast('Modo en línea restablecido. No hay ventas pendientes en la cola local.', 'exito');
         return;
     }
 
@@ -202,9 +297,24 @@ export const sincronizarVentasPendientes = async () => {
     }
 
     mostrarToast(`Sincronizando ${cola.length} venta(s) pendiente(s) con el servidor...`, 'info');
+    const turnoIdActivo = await asegurarSesionYTurnoParaSincronizacion();
     let sincronizadas = 0;
 
     for (const itemCola of cola) {
+        const raw = itemCola.payload || {};
+        const itemsRaw = raw.items_entrada || raw.items || [];
+        const medioPago = raw.medio_pago || raw.metodo_pago || 'EFECTIVO';
+
+        const payloadNormalizado = {
+            turno_caja: turnoIdActivo,
+            medio_pago: medioPago,
+            origen: raw.origen || 'propio',
+            items_entrada: itemsRaw.map((it) => ({
+                producto_id: Number(it.producto_id || it.producto || 1),
+                cantidad: String(it.cantidad || 1),
+            })),
+        };
+
         try {
             const res = await fetch(`${estadoApp.djangoUrl}/api/ventas/`, {
                 method: 'POST',
@@ -212,7 +322,7 @@ export const sincronizarVentasPendientes = async () => {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 },
-                body: JSON.stringify(itemCola.payload),
+                body: JSON.stringify(payloadNormalizado),
             });
             if (res.ok) {
                 sincronizadas += 1;
@@ -226,14 +336,11 @@ export const sincronizarVentasPendientes = async () => {
 
     if (sincronizadas === cola.length) {
         limpiarColaOffline();
-        if (estadoApp.modoConexion === 'offline') {
-            estadoApp.modoConexion = 'local';
-            localStorage.setItem(CLAVE_MODO_CONEXION, 'local');
-        }
         actualizarIndicadorColaOffline();
-        mostrarToast(`Se sincronizaron ${sincronizadas} ventas pendientes con éxito.`, 'exito');
-        cargarTurnoActivo();
-        cargarFinanzas();
+        conectarSocketTiempoReal();
+        mostrarToast(`Se sincronizaron ${sincronizadas} venta(s) pendiente(s) con éxito.`, 'exito');
+        await cargarTurnoActivo();
+        await cargarFinanzas();
     } else {
         actualizarIndicadorColaOffline();
         mostrarToast('El servidor aún no está disponible para vaciar toda la cola.', 'advertencia');
@@ -312,7 +419,7 @@ const configurarVisibilidadPorRol = (rol) => {
     const esCajero = rol === 'CAJERO';
 
     if ($('caja-panel-cajero-ciego')) {
-        $('caja-panel-cajero-ciego').style.display = esCajero ? 'block' : 'none';
+        $('caja-panel-cajero-ciego').style.display = 'block';
     }
     if ($('caja-panel-gerencia-auditoria')) {
         $('caja-panel-gerencia-auditoria').style.display = esCajero ? 'none' : 'block';
@@ -365,6 +472,7 @@ const ejecutarLogin = async (username, password, tokenManual = '') => {
     }
 
     if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+        if (password) sessionStorage.setItem('cafe_pwd', password);
         iniciarSesionContingenciaOffline(username);
         return;
     }
@@ -389,6 +497,7 @@ const ejecutarLogin = async (username, password, tokenManual = '') => {
 
         estadoApp.tokenJwt = data.access;
         sessionStorage.setItem('cafe_jwt', data.access);
+        if (password) sessionStorage.setItem('cafe_pwd', password);
 
         if (data.usuario) {
             estadoApp.usuario = data.usuario;
@@ -651,19 +760,19 @@ const renderizarCarritoTicket = () => {
     for (const [idx, item] of estadoApp.carrito.entries()) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>
+            <td class="col-texto">
                 <strong>${item.nombre}</strong>
             </td>
-            <td class="text-center">
+            <td class="col-centro">
                 <div class="item-control-cant">
                     <button type="button" class="btn-cant-tactil btn-restar" data-idx="${idx}">-</button>
                     <span class="item-cant-numero">${item.cantidad}</span>
                     <button type="button" class="btn-cant-tactil btn-sumar" data-idx="${idx}">+</button>
                 </div>
             </td>
-            <td class="text-right">${formatearMoneda(item.precioUnitarioDecimal)}</td>
-            <td class="text-right font-bold"><strong>${formatearMoneda(item.subtotalDecimal)}</strong></td>
-            <td class="text-center">
+            <td class="col-numero">${formatearMoneda(item.precioUnitarioDecimal)}</td>
+            <td class="col-numero font-bold"><strong>${formatearMoneda(item.subtotalDecimal)}</strong></td>
+            <td class="col-centro">
                 <button type="button" class="btn-item-eliminar" data-idx="${idx}" title="Eliminar ítem" aria-label="Eliminar ítem">
                     ${SVG_ICONOS.cruz}
                 </button>
@@ -746,12 +855,13 @@ const cobrarTicketVenta = async () => {
 
     const payload = {
         turno_caja: turnoId,
+        medio_pago: metodoPago,
         metodo_pago: metodoPago,
         origen: 'propio',
         items_entrada: resumen.itemsPayload.map((it) => ({
-            producto_id: it.producto || it.producto_id,
-            producto: it.producto || it.producto_id,
-            cantidad: it.cantidad,
+            producto_id: Number(it.producto || it.producto_id),
+            producto: Number(it.producto || it.producto_id),
+            cantidad: String(it.cantidad),
         })),
     };
 
@@ -815,8 +925,8 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
         for (const item of estadoApp.carrito) {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="text-left">${item.cantidad}x ${item.nombre}</td>
-                <td class="text-right">${formatearMoneda(item.subtotalDecimal)}</td>
+                <td class="col-texto">${item.cantidad}x ${item.nombre}</td>
+                <td class="col-numero">${formatearMoneda(item.subtotalDecimal)}</td>
             `;
             itemsBody.appendChild(tr);
         }
@@ -899,11 +1009,55 @@ const actualizarCardTurnoActivo = (turno) => {
     }
 
     if ($('caja-turno-cajero-texto')) {
-        $('caja-turno-cajero-texto').textContent = `Responsable: ${turno.usuario_nombre || 'cajero_demo'}`;
+        $('caja-turno-cajero-texto').textContent = `Responsable: ${turno.usuario_nombre || estadoApp.usuario?.username || 'cajero_demo'}`;
+    }
+
+    if ($('caja-turno-apertura-hora') && turno.apertura) {
+        $('caja-turno-apertura-hora').textContent = `Apertura: ${new Date(turno.apertura).toLocaleString('es-AR')}`;
+    }
+
+    if ($('caja-turno-ventas-efectivo')) {
+        $('caja-turno-ventas-efectivo').textContent = formatearMoneda(turno.ventas_efectivo_total || 0);
+    }
+
+    if ($('caja-turno-cant-tickets')) {
+        const cant = Number(turno.cantidad_tickets || 0);
+        $('caja-turno-cant-tickets').textContent = `${cant} ticket${cant !== 1 ? 's' : ''} emitido${cant !== 1 ? 's' : ''}`;
     }
 
     if ($('input-turno-id')) {
         $('input-turno-id').value = String(turno.id);
+    }
+
+    renderizarMovimientosCaja(turno.movimientos || []);
+};
+
+const renderizarMovimientosCaja = (movimientos = []) => {
+    const tbody = $('tabla-movimientos-caja-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const lista = Array.isArray(movimientos) ? movimientos : [];
+    if (lista.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" class="col-centro text-muted py-4">No se registran egresos ni ingresos extraordinarios en el turno activo.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    for (const m of lista) {
+        const tr = document.createElement('tr');
+        const esIngreso = m.tipo === 'ENTRADA' || m.tipo === 'INGRESO';
+        const hora = m.fecha ? new Date(m.fecha).toLocaleTimeString('es-AR') : '-';
+        tr.innerHTML = `
+            <td class="col-centro">${hora}</td>
+            <td class="col-centro"><span class="${esIngreso ? 'badge-diferencia-sobrante' : 'badge-diferencia-faltante'}">${m.tipo}</span></td>
+            <td class="col-numero"><strong>${esIngreso ? '+' : '-'} ${formatearMoneda(m.monto)}</strong></td>
+            <td class="col-texto">${m.motivo || '-'}</td>
+        `;
+        tbody.appendChild(tr);
     }
 };
 
@@ -913,7 +1067,7 @@ const renderizarTablaTurnosAuditoria = () => {
     tbody.innerHTML = '';
 
     if (estadoApp.turnosHistorial.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">No hay turnos registrados aún.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="col-centro text-muted py-4">No hay turnos registrados aún.</td></tr>`;
         return;
     }
 
@@ -935,15 +1089,15 @@ const renderizarTablaTurnosAuditoria = () => {
         }
 
         tr.innerHTML = `
-            <td><strong>#${t.id}</strong></td>
-            <td>${t.usuario_nombre || 'cajero_demo'}</td>
-            <td>${t.apertura ? new Date(t.apertura).toLocaleDateString('es-AR') : '-'}</td>
-            <td>${t.cierre ? new Date(t.cierre).toLocaleTimeString('es-AR') : '<span class="badge-estado-verde">Abierto</span>'}</td>
-            <td>${formatearMoneda(t.efectivo_inicial)}</td>
-            <td>${t.efectivo_esperado !== null ? formatearMoneda(t.efectivo_esperado) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
-            <td>${t.efectivo_contado !== null ? formatearMoneda(t.efectivo_contado) : '-'}</td>
-            <td>${diferenciaBadge}</td>
-            <td><span class="badge-rol ${t.estado === 'ABIERTO' ? 'cajero' : 'duenio'}">${t.estado}</span></td>
+            <td class="col-centro"><strong>#${t.id}</strong></td>
+            <td class="col-texto">${t.usuario_nombre || 'cajero_demo'}</td>
+            <td class="col-centro">${t.apertura ? new Date(t.apertura).toLocaleDateString('es-AR') : '-'}</td>
+            <td class="col-centro">${t.cierre ? new Date(t.cierre).toLocaleTimeString('es-AR') : '<span class="badge-estado-verde">Abierto</span>'}</td>
+            <td class="col-numero">${formatearMoneda(t.efectivo_inicial)}</td>
+            <td class="col-numero">${t.efectivo_esperado !== null ? formatearMoneda(t.efectivo_esperado) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-numero">${t.efectivo_contado !== null ? formatearMoneda(t.efectivo_contado) : '-'}</td>
+            <td class="col-numero">${diferenciaBadge}</td>
+            <td class="col-centro"><span class="badge-rol ${t.estado === 'ABIERTO' ? 'cajero' : 'duenio'}">${t.estado}</span></td>
         `;
         tbody.appendChild(tr);
     }
@@ -1026,18 +1180,18 @@ const renderizarTablaInsumos = () => {
     tbody.innerHTML = '';
 
     if (estadoApp.insumos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No hay insumos registrados.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="col-centro text-muted py-4">No hay insumos registrados.</td></tr>`;
         return;
     }
 
     for (const ins of estadoApp.insumos) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>#${ins.id}</td>
-            <td><strong>${ins.nombre}</strong></td>
-            <td><span class="producto-codigo-badge">${ins.unidad_base}</span></td>
-            <td><strong>${formatearMoneda(ins.costo_unitario)}</strong> / ${ins.unidad_base}</td>
-            <td><span class="badge-estado-verde">Activo</span></td>
+            <td class="col-centro">#${ins.id}</td>
+            <td class="col-texto"><strong>${ins.nombre}</strong></td>
+            <td class="col-centro"><span class="producto-codigo-badge">${ins.unidad_base}</span></td>
+            <td class="col-numero"><strong>${formatearMoneda(ins.costo_unitario)}</strong> / ${ins.unidad_base}</td>
+            <td class="col-centro"><span class="badge-estado-verde">Activo</span></td>
         `;
         tbody.appendChild(tr);
     }
@@ -1114,12 +1268,12 @@ const renderizarPreviewCsv = (resultadoCsv) => {
     for (const item of resultadoCsv.items) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>${item.nombre_insumo}</strong></td>
-            <td>${item.cantidad}</td>
-            <td><span class="producto-codigo-badge">${item.unidad}</span></td>
-            <td class="text-right font-bold">${formatearMoneda(item.precio_total)}</td>
-            <td class="text-right">${item.alicuota}%</td>
-            <td class="text-right">${formatearMoneda(item.envio)}</td>
+            <td class="col-texto"><strong>${item.nombre_insumo}</strong></td>
+            <td class="col-centro">${item.cantidad}</td>
+            <td class="col-centro"><span class="producto-codigo-badge">${item.unidad}</span></td>
+            <td class="col-numero font-bold">${formatearMoneda(item.precio_total)}</td>
+            <td class="col-numero">${item.alicuota}%</td>
+            <td class="col-numero">${formatearMoneda(item.envio)}</td>
         `;
         tbody.appendChild(tr);
     }
@@ -1133,6 +1287,13 @@ const enviarCsvAlCircuitoAprobacion = async () => {
     }
 
     const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Proveedor Planilla CSV';
+    if ($('textarea-lista-ia')) {
+        $('textarea-lista-ia').value = csv.textoParaIa;
+    }
+    if ($('estado-importacion-ia')) {
+        $('estado-importacion-ia').textContent = 'Analizando planilla CSV con IA...';
+    }
+
     try {
         const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones`, {
             method: 'POST',
@@ -1147,14 +1308,35 @@ const enviarCsvAlCircuitoAprobacion = async () => {
             }),
         });
         const data = await res.json();
-        if (res.status === 202) {
-            mostrarToast('Planilla enviada al circuito de aprobación.', 'exito');
-            setTimeout(() => consultarDetalleImportacion(data.importacionId), 800);
+        if (res.status === 202 && data.importacionId) {
+            mostrarToast('Planilla enviada al circuito de aprobación. Cargando propuesta...', 'exito');
+            await consultarDetalleImportacion(data.importacionId);
+            if ($('estado-importacion-ia')) {
+                $('estado-importacion-ia').textContent = 'Propuesta lista para revisión en el Paso 2.';
+            }
         } else {
-            mostrarToast(data.mensaje || 'Error al enviar al circuito de aprobación.', 'peligro');
+            renderizarPropuestaIAComercial({
+                _id: 'local-csv',
+                estado: 'LISTA',
+                salida: {
+                    proveedorDetectado: proveedorNombre,
+                    envioDetectado: csv.envioTotal,
+                    items: csv.items,
+                },
+            });
+            mostrarToast('Propuesta generada desde CSV lista para aprobar en el Paso 2.', 'info');
         }
-    } catch (err) {
-        mostrarToast(`Error al conectar con el circuito de importaciones: ${err.message}`, 'peligro');
+    } catch {
+        renderizarPropuestaIAComercial({
+            _id: 'local-csv',
+            estado: 'LISTA',
+            salida: {
+                proveedorDetectado: proveedorNombre,
+                envioDetectado: csv.envioTotal,
+                items: csv.items,
+            },
+        });
+        mostrarToast('Propuesta generada en modo local lista para aprobar en el Paso 2.', 'info');
     }
 };
 
@@ -1205,22 +1387,30 @@ const confirmarCsvDirectoEnInventario = async () => {
     }
 };
 
-const consultarDetalleImportacion = async (importacionId) => {
+const consultarDetalleImportacion = async (importacionId, intento = 1) => {
     try {
         const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${importacionId}`, {
             headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` },
         });
         const datos = await res.json();
         if (res.ok) {
+            if (
+                (datos.estado === 'PENDIENTE' || datos.estado === 'PROCESANDO') &&
+                intento < 12
+            ) {
+                await new Promise((r) => setTimeout(r, 350));
+                return await consultarDetalleImportacion(importacionId, intento + 1);
+            }
             renderizarPropuestaIAComercial(datos);
+            return datos;
         }
     } catch {
         // Silencioso
     }
+    return null;
 };
 
 const renderizarPropuestaIAComercial = (doc) => {
-    estadoApp.importacionActual = doc;
     const panel = $('panel-revision-ia');
     const tabla = $('tabla-items-ia-body');
     const banner = $('ia-resumen-banner');
@@ -1228,22 +1418,92 @@ const renderizarPropuestaIAComercial = (doc) => {
 
     panel.style.display = 'block';
     const salida = doc.salida || {};
+    let itemsCrudos = Array.isArray(salida.items) && salida.items.length > 0
+        ? salida.items
+        : (Array.isArray(doc.items) && doc.items.length > 0 ? doc.items : []);
+
+    let envioDetectado = salida.envioDetectado ?? doc.envioDetectado ?? 0;
+
+    if (itemsCrudos.length === 0) {
+        const textoFuente = doc.entrada?.textoLista || $('textarea-lista-ia')?.value || '';
+        const extraidoLocal = extraerItemsDesdeTextoLista(textoFuente);
+        if (extraidoLocal.items.length > 0) {
+            itemsCrudos = extraidoLocal.items;
+            if (!Number(envioDetectado)) {
+                envioDetectado = extraidoLocal.envioDetectado;
+            }
+        } else if (estadoApp.csvParseadoActual?.items?.length > 0) {
+            itemsCrudos = estadoApp.csvParseadoActual.items;
+            if (!Number(envioDetectado)) {
+                envioDetectado = estadoApp.csvParseadoActual.envioTotal;
+            }
+        }
+    }
+
+    const itemsNormalizados = itemsCrudos.map((it) => {
+        const nombre = it.nombreInsumo || it.nombre_insumo || it.insumo_nombre || it.nombre || it.insumo || 'Insumo';
+        const cantidad = String(it.cantidad ?? '1');
+        const unidad = String(it.unidad || 'un');
+        const precio = String(it.precioTotal ?? it.precio_total ?? it.precio ?? '0.00');
+        const alicuota = String(it.alicuota ?? it.alicuotaIva ?? '21.00');
+        const confianzaNum = Number(it.confianza ?? 0.98);
+        return {
+            nombreInsumo: nombre,
+            nombre_insumo: nombre,
+            cantidad,
+            unidad,
+            precioTotal: precio,
+            precio_total: precio,
+            ivaIncluido: it.ivaIncluido ?? it.iva_incluido ?? true,
+            iva_incluido: it.iva_incluido ?? it.ivaIncluido ?? true,
+            alicuota,
+            confianza: Number.isFinite(confianzaNum) ? confianzaNum : 0.98,
+        };
+    });
+
+    const proveedorDetectado =
+        salida.proveedorDetectado ||
+        doc.entrada?.proveedorNombre ||
+        $('input-proveedor-ia')?.value.trim() ||
+        'Distribuidora';
+
+    estadoApp.importacionActual = {
+        ...doc,
+        salida: {
+            ...salida,
+            proveedorDetectado,
+            envioDetectado: String(envioDetectado || '0.00'),
+            items: itemsNormalizados,
+        },
+    };
+
     banner.innerHTML = `
-        <strong>Proveedor Detectado:</strong> ${salida.proveedorDetectado || 'Distribuidora'} ·
-        <strong>Flete Prorrateado:</strong> ${formatearMoneda(salida.envioDetectado || 0)} ·
-        <strong>Estado:</strong> <span class="badge-rol duenio">${doc.estado}</span>
+        <strong>Proveedor Detectado:</strong> ${proveedorDetectado} ·
+        <strong>Flete Prorrateado:</strong> ${formatearMoneda(envioDetectado || 0)} ·
+        <strong>Estado:</strong> <span class="badge-rol duenio">${doc.estado || 'LISTA'}</span>
     `;
 
     tabla.innerHTML = '';
-    const items = Array.isArray(salida.items) ? salida.items : [];
-    for (const it of items) {
+    if (itemsNormalizados.length === 0) {
+        tabla.innerHTML = `
+            <tr>
+                <td colspan="5" class="col-centro text-muted py-4">No se detectaron líneas con precios válidos en el texto ingresado.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    for (const it of itemsNormalizados) {
         const tr = document.createElement('tr');
+        const pctConfianza = Math.round(
+            (it.confianza <= 1 ? it.confianza * 100 : it.confianza)
+        );
         tr.innerHTML = `
-            <td><strong>${it.nombreInsumo}</strong></td>
-            <td>${it.cantidad}</td>
-            <td><span class="producto-codigo-badge">${it.unidad}</span></td>
-            <td>${formatearMoneda(it.precioTotal)}</td>
-            <td><span class="badge-estado-verde">${Math.round(Number(it.confianza || 1) * 100)}%</span></td>
+            <td class="col-texto"><strong>${it.nombreInsumo}</strong></td>
+            <td class="col-centro">${it.cantidad}</td>
+            <td class="col-centro"><span class="producto-codigo-badge">${it.unidad}</span></td>
+            <td class="col-numero font-bold">${formatearMoneda(it.precioTotal)}</td>
+            <td class="col-centro"><span class="badge-estado-verde">${pctConfianza}%</span></td>
         `;
         tbody.appendChild(tr);
     }
@@ -1299,18 +1559,18 @@ const renderizarTablaRecetas = () => {
         }
 
         tr.innerHTML = `
-            <td>
+            <td class="col-texto">
                 <div style="display: flex; align-items: center; gap: 0.65rem;">
                     <span style="display: inline-flex; color: var(--color-ambar);">${obtenerIconoProducto(p.nombre)}</span>
                     <strong>${p.nombre}</strong>
                 </div>
             </td>
-            <td><span class="producto-codigo-badge">${p.codigo_barras || 'S/C'}</span></td>
-            <td class="text-right font-bold">${formatearMoneda(p.precio_venta)}</td>
-            <td class="text-right">${!esCajero && costo !== null ? formatearMoneda(costo) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
-            <td class="text-right text-exito">${!esCajero && ganancia !== null ? formatearMoneda(ganancia) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
-            <td>${margenBarraHtml}</td>
-            <td class="text-center">
+            <td class="col-centro"><span class="producto-codigo-badge">${p.codigo_barras || 'S/C'}</span></td>
+            <td class="col-numero font-bold">${formatearMoneda(p.precio_venta)}</td>
+            <td class="col-numero">${!esCajero && costo !== null ? formatearMoneda(costo) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-numero text-exito">${!esCajero && ganancia !== null ? formatearMoneda(ganancia) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-texto">${margenBarraHtml}</td>
+            <td class="col-centro">
                 <button type="button" class="btn-refrescar-mini btn-recalcular-producto" data-id="${p.id}" title="Recalcular Costo" style="display: inline-flex; align-items: center; gap: 0.35rem;">
                     ${SVG_ICONOS.refrescar}
                     <span>Recalcular</span>
@@ -1318,11 +1578,55 @@ const renderizarTablaRecetas = () => {
             </td>
         `;
 
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', () => {
+            mostrarDesgloseReceta(p);
+        });
+
         tr.querySelector('.btn-recalcular-producto')?.addEventListener('click', async (e) => {
             e.stopPropagation();
             await recalcularProducto(p.id);
         });
 
+        tbody.appendChild(tr);
+    }
+};
+
+const mostrarDesgloseReceta = (producto) => {
+    const panel = $('panel-desglose-receta');
+    const titulo = $('receta-detalle-nombre');
+    const tbody = $('tabla-receta-items-body');
+    if (!panel || !titulo || !tbody) return;
+
+    panel.style.display = 'block';
+    titulo.textContent = `Desglose de Receta: ${producto.nombre}`;
+    tbody.innerHTML = '';
+
+    const items = Array.isArray(producto.receta_items) ? producto.receta_items : [];
+    if (items.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" class="col-centro text-muted py-4">Este producto utiliza el costo directo de carta sin sub-ítems detallados.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    const esCajero = estadoApp.usuario?.rol === 'CAJERO';
+    for (const item of items) {
+        const cant = Number(item.cantidad || 0);
+        const costoUnit = item.insumo_costo_unitario !== null && item.insumo_costo_unitario !== undefined
+            ? Number(item.insumo_costo_unitario)
+            : null;
+        const subtotal = costoUnit !== null ? cant * costoUnit : null;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="col-texto"><strong>${item.insumo_nombre || `Insumo #${item.insumo}`}</strong></td>
+            <td class="col-centro">${cant} <span class="producto-codigo-badge">${item.unidad || item.insumo_unidad_base || 'un'}</span></td>
+            <td class="col-numero">${!esCajero && costoUnit !== null ? `${formatearMoneda(costoUnit)} / ${item.insumo_unidad_base || item.unidad}` : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-numero font-bold">${!esCajero && subtotal !== null ? formatearMoneda(subtotal) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+        `;
         tbody.appendChild(tr);
     }
 };
@@ -1350,6 +1654,25 @@ const recalcularProducto = async (productoId) => {
 
 const recalcularTodaLaCarta = async () => {
     mostrarToast('Recalculando costos de toda la carta comercial...', 'info');
+    try {
+        const resBulk = await fetch(`${estadoApp.djangoUrl}/api/productos/recalcular/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                'Content-Type': 'application/json',
+            },
+        });
+        if (resBulk.ok) {
+            const dataBulk = await resBulk.json();
+            const cant = dataBulk.total_recalculados ?? estadoApp.catalogo.length;
+            mostrarToast(`Se recalcularon ${cant} recetas según las últimas compras.`, 'exito');
+            await cargarCatalogo();
+            return;
+        }
+    } catch {
+        // Fallback producto por producto si el endpoint masivo no está disponible
+    }
+
     let recalculados = 0;
     for (const prod of estadoApp.catalogo) {
         try {
@@ -1587,7 +1910,16 @@ const toggleEstadoUsuario = async (u) => {
             mostrarToast(`Usuario ${u.username} ${u.is_active ? 'desactivado' : 'activado'}.`, 'exito');
             await cargarPersonal();
         } else {
-            const errorMsg = data.mensaje || data.detail || 'Operación bloqueada';
+            let detalleMsg = '';
+            if (Array.isArray(data.detalles) && data.detalles.length > 0) {
+                detalleMsg = data.detalles[0];
+            } else if (data.detalles && typeof data.detalles === 'object') {
+                const primeraLista = Object.values(data.detalles)[0];
+                if (Array.isArray(primeraLista) && primeraLista.length > 0) {
+                    detalleMsg = primeraLista[0];
+                }
+            }
+            const errorMsg = detalleMsg || data.mensaje || data.detail || 'Operación bloqueada';
             mostrarToast(`Regla de Supervivencia del Dueño: ${errorMsg}`, 'peligro');
         }
     } catch (err) {
@@ -1962,8 +2294,8 @@ Flete y entrega a local: $4500`;
 
     $('form-importacion-ia')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const proveedorNombre = $('input-proveedor-ia')?.value.trim();
-        const textoLista = $('textarea-lista-ia')?.value.trim();
+        const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Mayorista Café del Litoral';
+        const textoLista = $('textarea-lista-ia')?.value.trim() || '';
         const estadoPill = $('estado-importacion-ia');
 
         if (estadoPill) estadoPill.textContent = 'Analizando texto con IA...';
@@ -1982,42 +2314,117 @@ Flete y entrega a local: $4500`;
                 }),
             });
             const data = await res.json();
-            if (res.status === 202) {
-                if (estadoPill) estadoPill.textContent = 'Propuesta procesada. Cargando revisión...';
+            if (res.status === 202 && data.importacionId) {
                 mostrarToast('Lista recibida. Procesando extracción de insumos...', 'info');
-                setTimeout(() => consultarDetalleImportacion(data.importacionId), 800);
+                await consultarDetalleImportacion(data.importacionId);
+                if (estadoPill) estadoPill.textContent = 'Propuesta procesada y lista en el Paso 2.';
             } else {
-                mostrarToast(data.mensaje || 'Error al procesar lista.', 'peligro');
+                const extraidoLocal = extraerItemsDesdeTextoLista(textoLista);
+                renderizarPropuestaIAComercial({
+                    _id: 'local-ia',
+                    estado: 'LISTA',
+                    salida: {
+                        proveedorDetectado: proveedorNombre,
+                        envioDetectado: extraidoLocal.envioDetectado,
+                        items: extraidoLocal.items,
+                    },
+                });
+                mostrarToast('Propuesta extraída lista para revisión.', 'info');
             }
-        } catch (err) {
-            mostrarToast(`Error de conexión con el servicio de IA: ${err.message}`, 'peligro');
+        } catch {
+            const extraidoLocal = extraerItemsDesdeTextoLista(textoLista);
+            renderizarPropuestaIAComercial({
+                _id: 'local-ia',
+                estado: 'LISTA',
+                salida: {
+                    proveedorDetectado: proveedorNombre,
+                    envioDetectado: extraidoLocal.envioDetectado,
+                    items: extraidoLocal.items,
+                },
+            });
+            mostrarToast('Propuesta extraída en modo local lista para revisión.', 'info');
         }
     });
 
     $('btn-aprobar-ia')?.addEventListener('click', async () => {
-        const id = estadoApp.importacionActual?._id;
-        if (!id) return;
+        const doc = estadoApp.importacionActual;
+        if (!doc) return;
+        const id = doc._id;
+        const salida = doc.salida || {};
+        const itemsParaAprobar = Array.isArray(salida.items) ? salida.items : [];
+        const proveedorNombre = salida.proveedorDetectado || $('input-proveedor-ia')?.value.trim() || 'Proveedor Importado IA';
+        const envio = salida.envioDetectado || '0.00';
+
         try {
-            const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
+            if (id && !String(id).startsWith('local-')) {
+                const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        proveedorNombre,
+                        envio,
+                        items: itemsParaAprobar,
+                    }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    const cantCompras = data.comprasCreadas?.length || itemsParaAprobar.length;
+                    const cantRecetas = data.productosRecalculados?.length || 0;
+                    mostrarToast(
+                        `Propuesta aprobada: ${cantCompras} insumos/compras actualizados y ${cantRecetas} recetas recalculadas.`,
+                        'exito'
+                    );
+                    if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
+                    await cargarInsumos();
+                    await cargarCatalogo();
+                    return;
+                }
+            }
+
+            // Fallback directo al endpoint transaccional de Django
+            const resDjango = await fetch(`${estadoApp.djangoUrl}/api/compras/confirmar-importacion/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 },
-                body: JSON.stringify({}),
+                body: JSON.stringify({
+                    proveedor_nombre: proveedorNombre,
+                    envio,
+                    items: itemsParaAprobar.map((it) => ({
+                        nombre_insumo: it.nombreInsumo || it.nombre_insumo,
+                        cantidad: it.cantidad,
+                        unidad: it.unidad,
+                        precio_total: it.precioTotal || it.precio_total,
+                        iva_incluido: true,
+                        alicuota: it.alicuota || '21.00',
+                    })),
+                }),
             });
-            const data = await res.json();
-            if (res.ok) {
-                mostrarToast(`Propuesta aprobada: ${data.comprasCreadas?.length || 0} compras y recetas actualizadas.`, 'exito');
+            const dataDjango = await resDjango.json();
+            if (resDjango.ok) {
+                const cantCompras = dataDjango.compras_creadas?.length || itemsParaAprobar.length;
+                const cantRecetas = dataDjango.productos_recalculados?.length || 0;
+                mostrarToast(
+                    `Propuesta aprobada: ${cantCompras} insumos/compras actualizados y ${cantRecetas} recetas recalculadas.`,
+                    'exito'
+                );
                 if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
-                cargarCatalogo();
-                cargarInsumos();
+                await cargarInsumos();
+                await cargarCatalogo();
             } else {
-                mostrarToast(data.mensaje || 'Error al aprobar.', 'peligro');
+                mostrarToast(dataDjango.mensaje || 'Error al aprobar la propuesta.', 'peligro');
             }
         } catch (err) {
             mostrarToast(`Error: ${err.message}`, 'peligro');
         }
+    });
+
+    $('btn-cerrar-desglose')?.addEventListener('click', () => {
+        if ($('panel-desglose-receta')) $('panel-desglose-receta').style.display = 'none';
     });
 
     $('btn-rechazar-ia')?.addEventListener('click', async () => {

@@ -43,9 +43,39 @@ class ProductoViewSet(viewsets.ModelViewSet):
             return [TienePermiso("recetas.editar")()]
         elif self.action == "destroy":
             return [TienePermiso("recetas.eliminar")()]
-        elif self.action in ("recalcular", "costo"):
+        elif self.action in ("recalcular", "recalcular_todos", "costo"):
             return [TienePermiso("recetas.ver_costos")()]
         return [IsAuthenticated()]
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="recalcular",
+        throttle_classes=[RecalculoRateThrottle],
+    )
+    def recalcular_todos(self, request):
+        """Fuerza el recálculo de costos y márgenes de toda la carta activa."""
+        productos = list(self.get_queryset().filter(estado_activo=True))
+        resultados = []
+        for producto in productos:
+            actualizar_costo_y_margen_producto(producto)
+            resultados.append(
+                {
+                    "producto_id": producto.id,
+                    "nombre": producto.nombre,
+                    "costo_total": str(producto.costo_total_calculado),
+                    "ganancia_bruta": str(producto.ganancia_bruta),
+                    "margen_bruto": str(producto.margen_bruto),
+                }
+            )
+        return Response(
+            {
+                "mensaje": f"Se recalcularon {len(resultados)} recetas exitosamente.",
+                "total_recalculados": len(resultados),
+                "productos": resultados,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(
         detail=True,

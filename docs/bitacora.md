@@ -1067,6 +1067,37 @@ Cómo probarlo:
 - Ejecutar las 3 suites de pruebas (`backend-django`, `backend-node` y `ai-service`).
 - Probar la interfaz en `http://localhost:5173` (o `/app/`), verificando la ausencia total de emojis, la descarga e importación de `plantilla_lista_proveedor.csv`, el modal de modo de conexión y el cobro de tickets en modo sin internet.
 ---
+Fecha: 2026-11-09
+Tarea: Corrección de alineación tabular, circuito de aprobación IA/CSV, sincronización de cola de ventas offline y auditoría E2E de las 6 secciones
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **1. Alineación simétrica de encabezados (`<th>`) y celdas (`<td>`) en todas las tablas:**
+  - En `web/css/estilos.css`, `web/index.html` y `web/js/app.js` se aplicaron las clases explícitas `.col-texto` (`text-align: left`), `.col-centro` (`text-align: center`) y `.col-numero` (`text-align: right; font-variant-numeric: tabular-nums`) con idéntica especificidad tanto en `<th>` como en `<td>` para las tablas de Punto de Venta, Turnos de Caja, Movimientos de Caja Chica, Previsualización CSV, Revisión de Importación IA, Inventario de Insumos, Recetas y Rentabilidad, Desglose de Receta y Ticket Térmico 80mm.
+- **2. Corrección de tabla vacía en el Importador IA y circuito CSV → Aprobación:**
+  - Se ajustó `consultarDetalleImportacion` en `web/js/app.js` con polling automático (hasta 12 reintentos cada 350 ms mientras el documento en MongoDB esté en estado `PENDIENTE` o `PROCESANDO`) para esperar la respuesta asíncrona de `ai-service` antes de renderizar la tabla del Paso 2.
+  - Se actualizó `renderizarPropuestaIAComercial` para leer `doc.salida?.items || doc.items || []`, mapear todas las variantes de nombres de campos (`nombreInsumo` / `nombre_insumo` / `insumo_nombre` / `nombre` / `insumo`, `cantidad`, `unidad`, `precioTotal` / `precio_total` / `precio`, `confianza`) y aplicar fallback determinístico mediante `extraerItemsDesdeTextoLista` en `web/js/logicaPwa.js`.
+  - Se amplió `parsear_lista_precios_heuristica` en `ai-service/app/services/proveedor_ia.py` para extraer también filas con formato CSV (`insumo,cantidad,unidad,precio_total,alicuota_iva,envio`).
+  - Se conectó el botón **"Enviar al Circuito de Aprobación"** del cargador CSV con el análisis y renderizado inmediato del Paso 2, y se verificó que **"Aprobar e Impactar Costos en Recetas"** (`POST /api/importaciones/:id/aprobar` con fallback transaccional a `POST /api/compras/confirmar-importacion/`) actualice insumos/compras, recalcule recetas y notifique la cantidad exacta de registros impactados.
+- **3. Corrección de sincronización de ventas offline (`sapori_cola_ventas_offline`):**
+  - Al pulsar **"Sincronizar Ventas Pendientes"**, `sincronizarVentasPendientes()` conmuta automáticamente el modo de conexión a Online (`local` en `localhost`), valida o renueva la sesión JWT si se había iniciado en modo contingencia (`offline-token-...`), resuelve o abre un `TurnoCaja` activo para el operador y envía cada venta encolada a `POST /api/ventas/` con el contrato exacto de `VentaSerializer` (`turno_caja`, `medio_pago`, `origen: "propio"`, `items_entrada: [{ producto_id, cantidad }]`), vaciando la cola, ocultando el banner y refrescando las métricas.
+- **4. Auditoría E2E de las 6 secciones:**
+  - Se agregó la acción colectiva `POST /api/productos/recalcular/` en `ProductoViewSet` (`backend-django/apps/recetas/views.py`) para el botón **"Recalcular Toda la Carta"**, además del recálculo individual `POST /api/productos/:id/recalcular/`.
+  - Se normalizó el campo `tipo` en `MovimientoCajaSerializer` (`backend-django/apps/caja/serializers.py`) y en `#select-movimiento-tipo` (`web/index.html`) para soportar `ENTRADA` y `SALIDA` (y sus alias `INGRESO` / `EGRESO`), y se agregaron `usuario_nombre`, `ventas_efectivo_total` y `cantidad_tickets` a `TurnoCajaSerializer`.
+  - Se verificaron de punta a punta contra los servidores activos las 6 vistas (POS online/offline/ticket 80mm, Caja apertura/movimiento/arqueo ciego, Compras CSV/IA/manual, Recetas recálculo individual y masivo, Finanzas ganancia diaria/ranking/punto de equilibrio y Personal con regla de supervivencia del Dueño).
+Archivos tocados:
+- `web/css/estilos.css`
+- `web/index.html`
+- `web/js/app.js`
+- `web/js/logicaPwa.js`
+- `ai-service/app/services/proveedor_ia.py`
+- `backend-django/apps/caja/serializers.py`
+- `backend-django/apps/recetas/views.py`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar las 3 suites de tests (`backend-django`, `backend-node`, `ai-service`) y linters (`ruff`, `eslint`).
+- Ingresar en `http://localhost:5173`, verificar la alineación de columnas en todas las tablas, subir un CSV o analizar con IA verificando las filas en el Paso 2 y su aprobación, cobrar una venta en modo offline y sincronizarla con el botón del banner superior.
+---
 
 
 

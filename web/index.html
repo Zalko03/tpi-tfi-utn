@@ -325,11 +325,11 @@
                                     <table class="tabla-ticket-comercial">
                                         <thead>
                                             <tr>
-                                                <th>Producto</th>
-                                                <th class="text-center">Cant.</th>
-                                                <th class="text-right">Unitario</th>
-                                                <th class="text-right">Subtotal</th>
-                                                <th></th>
+                                                <th class="col-texto">Producto</th>
+                                                <th class="col-centro">Cant.</th>
+                                                <th class="col-numero">Unitario</th>
+                                                <th class="col-numero">Subtotal</th>
+                                                <th class="col-centro"></th>
                                             </tr>
                                         </thead>
                                         <tbody id="tabla-carrito-body">
@@ -467,15 +467,15 @@
                                     <table class="tabla-comercial">
                                         <thead>
                                             <tr>
-                                                <th>Turno</th>
-                                                <th>Cajero</th>
-                                                <th>Apertura</th>
-                                                <th>Cierre</th>
-                                                <th>Fondo Inicial</th>
-                                                <th>Efectivo Esperado</th>
-                                                <th>Efectivo Declarado</th>
-                                                <th>Diferencia Exacta</th>
-                                                <th>Estado</th>
+                                                <th class="col-centro">Turno</th>
+                                                <th class="col-texto">Cajero</th>
+                                                <th class="col-centro">Apertura</th>
+                                                <th class="col-centro">Cierre</th>
+                                                <th class="col-numero">Fondo Inicial</th>
+                                                <th class="col-numero">Efectivo Esperado</th>
+                                                <th class="col-numero">Efectivo Declarado</th>
+                                                <th class="col-numero">Diferencia Exacta</th>
+                                                <th class="col-centro">Estado</th>
                                             </tr>
                                         </thead>
                                         <tbody id="tabla-turnos-historial-body">
@@ -496,15 +496,15 @@
                                 <table class="tabla-comercial">
                                     <thead>
                                         <tr>
-                                            <th>Hora</th>
-                                            <th>Tipo</th>
-                                            <th>Monto</th>
-                                            <th>Motivo</th>
+                                            <th class="col-centro">Hora</th>
+                                            <th class="col-centro">Tipo</th>
+                                            <th class="col-numero">Monto</th>
+                                            <th class="col-texto">Motivo</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tabla-movimientos-caja-body">
                                         <tr>
-                                            <td colspan="4" class="text-center text-muted py-4">No se registran egresos ni ingresos extraordinarios en el turno activo.</td>
+                                            <td colspan="4" class="col-centro text-muted py-4">No se registran egresos ni ingresos extraordinarios en el turno activo.</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -572,12 +572,12 @@
                                         <table class="tabla-comercial">
                                             <thead>
                                                 <tr>
-                                                    <th>Insumo</th>
-                                                    <th>Cantidad</th>
-                                                    <th>Unidad</th>
-                                                    <th class="text-right">Precio Total ($)</th>
-                                                    <th class="text-right">Alícuota IVA (%)</th>
-                                                    <th class="text-right">Envío ($)</th>
+                                                    <th class="col-texto">Insumo</th>
+                                                    <th class="col-centro">Cantidad</th>
+                                                    <th class="col-centro">Unidad</th>
+                                                    <th class="col-numero">Precio Total ($)</th>
+                                                    <th class="col-numero">Alícuota IVA (%)</th>
+                                                    <th class="col-numero">Envío ($)</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="tabla-preview-csv-body">
@@ -646,11 +646,11 @@ Envío: $2000</textarea>
                                     <table class="tabla-comercial">
                                         <thead>
                                             <tr>
-                                                <th>Insumo Detectado</th>
-                                                <th>Cantidad</th>
-                                                <th>Unidad</th>
-                                                <th>Precio Detectado</th>
-                                                <th>Confianza IA</th>
+                                                <th class="col-texto">Insumo Detectado</th>
+                                                <th class="col-centro">Cantidad</th>
+                                                <th class="col-centro">Unidad</th>
+                                                <th class="col-numero">Precio Detectado</th>
+                                                <th class="col-centro">Confianza IA</th>
                                             </tr>
                                         </thead>
                                         <tbody id="tabla-items-ia-body">
@@ -690,11 +690,11 @@ Envío: $2000</textarea>
                                 <table class="tabla-comercial">
                                     <thead>
                                         <tr>
-                                            <th>ID</th>
-                                            <th>Insumo</th>
-                                            <th>Unidad Base</th>
-                                            <th>Costo por Unidad Base</th>
-                                            <th>Estado</th>
+                                            <th class="col-centro">ID</th>
+                                            <th class="col-texto">Insumo</th>
+                                            <th class="col-centro">Unidad Base</th>
+                                            <th class="col-numero">Costo por Unidad Base</th>
+                                            <th class="col-centro">Estado</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tabla-insumos-body">
@@ -726,13 +726,13 @@ Envío: $2000</textarea>
                                 <table class="tabla-comercial tabla-rentabilidad">
                                     <thead>
                                         <tr>
-                                            <th>Producto</th>
-                                            <th>Código EAN-13</th>
-                                            <th class="text-right">Precio en Carta</th>
-                                            <th class="text-right">Costo Receta Exacto</th>
-                                            <th class="text-right">Ganancia Neta ($)</th>
-                                            <th style="min-width: 170px;">Margen de Rentabilidad (%)</th>
-                                            <th class="text-center">Acciones</th>
+                                            <th class="col-texto">Producto</th>
+                                            <th class="col-centro">Código EAN-13</th>
+                                            <th class="col-numero">Precio en Carta</th>
+                                            <th class="col-numero">Costo Receta Exacto</th>
+                                            <th class="col-numero">Ganancia Neta ($)</th>
+                                            <th class="col-texto" style="min-width: 170px;">Margen de Rentabilidad (%)</th>
+                                            <th class="col-centro">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tabla-recetas-productos-body">
@@ -757,10 +757,10 @@ Envío: $2000</textarea>
                                 <table class="tabla-comercial">
                                     <thead>
                                         <tr>
-                                            <th>Insumo</th>
-                                            <th>Cantidad Requerida</th>
-                                            <th>Costo Unitario Insumo</th>
-                                            <th>Subtotal en Receta</th>
+                                            <th class="col-texto">Insumo</th>
+                                            <th class="col-centro">Cantidad Requerida</th>
+                                            <th class="col-numero">Costo Unitario Insumo</th>
+                                            <th class="col-numero">Subtotal en Receta</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tabla-receta-items-body">
@@ -1024,8 +1024,8 @@ Envío: $2000</textarea>
                 <table class="ticket-termico-tabla">
                     <thead>
                         <tr>
-                            <th class="text-left">Cant  Descripción</th>
-                            <th class="text-right">Subtotal</th>
+                            <th class="col-texto">Cant  Descripción</th>
+                            <th class="col-numero">Subtotal</th>
                         </tr>
                     </thead>
                     <tbody id="ticket-termico-items-body">
@@ -1089,8 +1089,8 @@ Envío: $2000</textarea>
                 <div class="campo-grupo">
                     <label for="select-movimiento-tipo">Tipo de Movimiento</label>
                     <select id="select-movimiento-tipo" required>
-                        <option value="INGRESO">Ingreso de Efectivo (ej. Cambio para mostrador)</option>
-                        <option value="EGRESO">Retiro de Efectivo (ej. Pago proveedor menor / Salón)</option>
+                        <option value="ENTRADA">Entrada de Efectivo (ej. Cambio para mostrador)</option>
+                        <option value="SALIDA">Salida de Efectivo (ej. Pago proveedor menor / Salón)</option>
                     </select>
                 </div>
                 <div class="campo-grupo">

@@ -90,9 +90,12 @@ body {
     border: 0;
 }
 
-.text-center { text-align: center; }
-.text-right { text-align: right; }
-.text-left { text-align: left; }
+.text-center { text-align: center !important; }
+.text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
+.text-left { text-align: left !important; }
+.col-texto { text-align: left !important; }
+.col-centro { text-align: center !important; }
+.col-numero { text-align: right !important; font-variant-numeric: tabular-nums; }
 .text-exito { color: var(--color-exito) !important; }
 .text-advertencia { color: var(--color-advertencia) !important; }
 .text-peligro { color: var(--color-peligro) !important; }
@@ -1439,6 +1442,38 @@ textarea:focus {
     border-bottom: 1px solid var(--color-borde-suave);
     color: var(--texto-color);
     vertical-align: middle;
+}
+
+.tabla-comercial th.col-texto,
+.tabla-comercial td.col-texto {
+    text-align: left !important;
+}
+
+.tabla-comercial th.col-centro,
+.tabla-comercial td.col-centro {
+    text-align: center !important;
+}
+
+.tabla-comercial th.col-numero,
+.tabla-comercial td.col-numero,
+.tabla-ticket-comercial th.col-numero,
+.tabla-ticket-comercial td.col-numero,
+.ticket-termico-tabla th.col-numero,
+.ticket-termico-tabla td.col-numero {
+    text-align: right !important;
+    font-variant-numeric: tabular-nums;
+}
+
+.tabla-ticket-comercial th.col-centro,
+.tabla-ticket-comercial td.col-centro {
+    text-align: center !important;
+}
+
+.tabla-ticket-comercial th.col-texto,
+.tabla-ticket-comercial td.col-texto,
+.ticket-termico-tabla th.col-texto,
+.ticket-termico-tabla td.col-texto {
+    text-align: left !important;
 }
 
 .tabla-comercial tr:hover td {

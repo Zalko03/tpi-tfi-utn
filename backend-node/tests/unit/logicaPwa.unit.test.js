@@ -4,6 +4,7 @@ import {
     calcularResumenCarrito,
     convertirMontoACentavos,
     encolarVentaOffline,
+    extraerItemsDesdeTextoLista,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
     limpiarColaOffline,
@@ -146,6 +147,31 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(resultado.items[0].precio_total).toBe('15800.50');
             expect(resultado.items[1].alicuota).toBe('10.50');
             expect(resultado.envioTotal).toBe('1200.00');
+        });
+
+        it('extrae ítems estructurados desde texto libre o CSV usando extraerItemsDesdeTextoLista', () => {
+            const texto = [
+                'Mayorista Café del Litoral',
+                '- Café Colombia Supremo x 5 kg: $115000',
+                '- Leche Entera Barista x 12 litros: $16200',
+                'Envío: $4500',
+            ].join('\n');
+
+            const extraido = extraerItemsDesdeTextoLista(texto);
+            expect(extraido.envioDetectado).toBe('4500.00');
+            expect(extraido.items).toHaveLength(2);
+            expect(extraido.items[0]).toMatchObject({
+                nombreInsumo: 'Café Colombia Supremo',
+                cantidad: '5',
+                unidad: 'kg',
+                precioTotal: '115000.00',
+            });
+            expect(extraido.items[1]).toMatchObject({
+                nombreInsumo: 'Leche Entera Barista',
+                cantidad: '12',
+                unidad: 'l',
+                precioTotal: '16200.00',
+            });
         });
     });
 
