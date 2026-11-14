@@ -812,6 +812,32 @@ Envío: $2000</textarea>
                             </div>
                         </div>
 
+                        <!-- Panel de Consultoría IA para el Dueño: Stock Crítico y Auditoría de Caja -->
+                        <div class="tarjeta-panel-blanca" id="panel-consultor-ia">
+                            <div class="panel-cabecera-linea">
+                                <div>
+                                    <h3>Consultor IA de Stock y Cierre de Caja</h3>
+                                    <p class="text-muted">Dictámenes analíticos y auditoría en tiempo real para gerencia, basados en el inventario real y arqueo contable.</p>
+                                </div>
+                                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                                    <button type="button" id="btn-ia-diagnostico-stock" class="btn-primario-comercial">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                                        <span>Consultar Diagnóstico de Stock e Insumos a Reponer con IA</span>
+                                    </button>
+                                    <button type="button" id="btn-ia-auditar-caja" class="btn-secundario-comercial">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                                        <span>Auditar Cierre de Caja y Rentabilidad del Turno con IA</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="contenedor-resultado-ia" style="display: none; margin-top: 1.25rem;">
+                                <div class="tarjeta-ejecutiva-ia" id="tarjeta-ejecutiva-ia-cuerpo">
+                                    <!-- Contenido generado por el consultor IA sin emojis -->
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Fila 2: Simulador de Punto de Equilibrio y Metas -->
                         <div class="tarjeta-panel-blanca">
                             <div class="panel-cabecera-linea">
