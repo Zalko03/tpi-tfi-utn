@@ -57,6 +57,13 @@ class VentaSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "fecha", "total", "costo_total_snapshot", "creado_en"]
 
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = dict(data)
+            if "items" in data and "items_entrada" not in data:
+                data["items_entrada"] = data["items"]
+        return super().to_internal_value(data)
+
     def validate_origen(self, value):
         if str(value).lower() in ("local", "caja", "propio"):
             return "propio"

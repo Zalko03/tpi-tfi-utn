@@ -60,6 +60,13 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
             "cantidad_tickets",
         ]
 
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = dict(data)
+            if "monto_apertura" in data and "efectivo_inicial" not in data:
+                data["efectivo_inicial"] = data["monto_apertura"]
+        return super().to_internal_value(data)
+
     def get_ventas_efectivo_total(self, obj) -> str:
         from decimal import InvalidOperation
 

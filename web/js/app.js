@@ -261,7 +261,10 @@ const asegurarSesionYTurnoParaSincronizacion = async () => {
                         'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ efectivo_inicial: '10000.00' }),
+                    body: JSON.stringify({
+                        monto_apertura: '10000.00',
+                        efectivo_inicial: '10000.00',
+                    }),
                 });
                 if (resCrear.ok) {
                     const nuevoTurno = await resCrear.json();
@@ -279,6 +282,18 @@ const asegurarSesionYTurnoParaSincronizacion = async () => {
 };
 
 export const sincronizarVentasPendientes = async () => {
+    // Si el modo de conexión estaba en "offline" manual/contingencia, intentar reconectar contra el servidor local/activo sin bloquearse por el flag manual
+    if (estadoApp.modoConexion === 'offline') {
+        const host = window.location.hostname;
+        const esLocalhost = host === 'localhost' || host === '127.0.0.1';
+        estadoApp.modoConexion = esLocalhost ? 'local' : 'cloud';
+        localStorage.setItem(CLAVE_MODO_CONEXION, estadoApp.modoConexion);
+        if (esLocalhost && (!estadoApp.djangoUrl || estadoApp.djangoUrl.includes('onrender.com') || estadoApp.djangoUrl === 'offline')) {
+            estadoApp.djangoUrl = 'http://localhost:8000';
+            localStorage.setItem(CLAVE_DJANGO_URL, estadoApp.djangoUrl);
+        }
+    }
+
     const cola = obtenerVentasOffline();
     if (cola.length === 0) {
         if (estadoApp.modoConexion === 'offline') {
@@ -305,14 +320,26 @@ export const sincronizarVentasPendientes = async () => {
         const itemsRaw = raw.items_entrada || raw.items || [];
         const medioPago = raw.medio_pago || raw.metodo_pago || 'EFECTIVO';
 
+        const itemsMapeados = itemsRaw.map((it) => {
+            const prodId = Number(it.producto || it.producto_id || it.id || 1);
+            const cant = String(it.cantidad || 1);
+            const itemObj = {
+                producto: prodId,
+                producto_id: prodId,
+                cantidad: cant,
+            };
+            if (it.precio_unitario) {
+                itemObj.precio_unitario = String(it.precio_unitario);
+            }
+            return itemObj;
+        });
+
         const payloadNormalizado = {
             turno_caja: turnoIdActivo,
-            medio_pago: medioPago,
+            medio_pago: String(medioPago).toUpperCase(),
             origen: raw.origen || 'propio',
-            items_entrada: itemsRaw.map((it) => ({
-                producto_id: Number(it.producto_id || it.producto || 1),
-                cantidad: String(it.cantidad || 1),
-            })),
+            items: itemsMapeados,
+            items_entrada: itemsMapeados,
         };
 
         try {
@@ -336,11 +363,18 @@ export const sincronizarVentasPendientes = async () => {
 
     if (sincronizadas === cola.length) {
         limpiarColaOffline();
+        if (estadoApp.modoConexion === 'offline') {
+            estadoApp.modoConexion = 'local';
+            localStorage.setItem(CLAVE_MODO_CONEXION, 'local');
+        }
         actualizarIndicadorColaOffline();
         conectarSocketTiempoReal();
         mostrarToast(`Se sincronizaron ${sincronizadas} venta(s) pendiente(s) con éxito.`, 'exito');
         await cargarTurnoActivo();
-        await cargarFinanzas();
+        await cargarCatalogo();
+        if (estadoApp.usuario?.rol !== 'CAJERO') {
+            await cargarFinanzas();
+        }
     } else {
         actualizarIndicadorColaOffline();
         mostrarToast('El servidor aún no está disponible para vaciar toda la cola.', 'advertencia');
@@ -853,16 +887,20 @@ const cobrarTicketVenta = async () => {
     const metodoRadio = document.querySelector('input[name="medio_pago_radio"]:checked');
     const metodoPago = metodoRadio ? metodoRadio.value : 'EFECTIVO';
 
+    const itemsMapeados = resumen.itemsPayload.map((it) => ({
+        producto_id: Number(it.producto || it.producto_id),
+        producto: Number(it.producto || it.producto_id),
+        cantidad: String(it.cantidad),
+        precio_unitario: String(it.precioUnitarioDecimal || '0.00'),
+    }));
+
     const payload = {
         turno_caja: turnoId,
         medio_pago: metodoPago,
         metodo_pago: metodoPago,
         origen: 'propio',
-        items_entrada: resumen.itemsPayload.map((it) => ({
-            producto_id: Number(it.producto || it.producto_id),
-            producto: Number(it.producto || it.producto_id),
-            cantidad: String(it.cantidad),
-        })),
+        items: itemsMapeados,
+        items_entrada: itemsMapeados,
     };
 
     if (navigator.onLine === false || estadoApp.modoConexion === 'offline') {
