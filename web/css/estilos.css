@@ -1,63 +1,81 @@
 /* ============================================================
    SAPORI STOCK · SISTEMA POS & GESTIÓN GASTRONÓMICA
    Estilos Comerciales de Nivel Producto (Specialty Coffee POS)
+   Diseño de Autor Gastronómico · Estándar Impeccable UI
    ============================================================ */
 
 :root {
-    /* Paleta Gastronómica Profesional */
-    --color-espresso: #1E1410;
+    /* Paleta Gastronómica Profesional (Espresso, Crema Cálido, Terracota Tostado, Salvia) */
+    --color-espresso: #1A120E;
+    --color-espresso-superficie: #231813;
     --color-espresso-hover: #2B1D17;
     --color-espresso-active: #3C2921;
     --color-espresso-borde: #35241C;
-    --color-crema-texto: #F5EBE6;
+    --color-crema-texto: #FAF5F0;
     --color-crema-mutado: #C4B5AE;
 
-    --color-canvas: #F8F5F0;
+    /* Superficies y Fondos Cálidos (Anti-Plantilla Genérica) */
+    --color-canvas: #FAF7F2;
     --color-blanco: #FFFFFF;
-    --color-borde-suave: #E6DFD5;
-    --color-borde-hover: #D4C9BC;
+    --color-superficie-elevada: #FFFFFF;
+    --color-borde-suave: #E8E2D8;
+    --color-borde-hover: #D6CCC0;
+    --color-borde-fuerte: #B8ABA0;
 
-    /* Acento Primario: Caramelo Tostado / Ámbar */
-    --color-ambar: #C86D1F;
-    --color-ambar-hover: #A85814;
-    --color-ambar-light: rgba(200, 109, 31, 0.12);
+    /* Acento Primario: Terracota Tostado / Caramelo Artesanal */
+    --color-ambar: #A3481F;
+    --color-ambar-hover: #883813;
+    --color-ambar-active: #702D0E;
+    --color-ambar-light: rgba(163, 72, 31, 0.08);
+    --color-tostado: #6B4226;
 
-    /* Estados Semafóricos */
-    --color-exito: #10B981;
-    --color-exito-hover: #059669;
-    --color-exito-light: rgba(16, 185, 129, 0.12);
+    /* Estados Semafóricos de Autor Gastronómico (Sin Gradientes Neón) */
+    --color-exito: #2D6A4F;
+    --color-exito-hover: #1E4A37;
+    --color-exito-light: rgba(45, 106, 79, 0.08);
 
-    --color-advertencia: #F59E0B;
-    --color-advertencia-light: rgba(245, 158, 11, 0.12);
+    --color-advertencia: #C05621;
+    --color-advertencia-hover: #9C4217;
+    --color-advertencia-light: rgba(192, 86, 33, 0.08);
 
-    --color-peligro: #EF4444;
-    --color-peligro-hover: #DC2626;
-    --color-peligro-light: rgba(239, 68, 68, 0.12);
+    --color-peligro: #9B2C2C;
+    --color-peligro-hover: #7E2222;
+    --color-peligro-light: rgba(155, 44, 44, 0.08);
 
-    --color-info: #0284C7;
-    --color-info-light: rgba(2, 132, 199, 0.12);
+    --color-info: #2B6CB0;
+    --color-info-hover: #1E4E82;
+    --color-info-light: rgba(43, 108, 176, 0.08);
 
-    /* Tipografía y Sombras */
-    --fuente-principal: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    --fuente-mono: 'JetBrains Mono', monospace;
-    --texto-color: #1F2937;
-    --texto-mutado: #6B7280;
+    /* Tipografía Editorial y Tabular */
+    --fuente-principal: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --fuente-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --texto-color: #1A1412;
+    --texto-secundario: #4A3E38;
+    --texto-mutado: #7A6C64;
+    --texto-atenuado: #A3968E;
 
+    /* Radios Rítmicos y Consistentes */
     --radio-sm: 6px;
     --radio-md: 10px;
     --radio-lg: 14px;
     --radio-full: 9999px;
 
-    --sombra-card: 0 2px 8px rgba(30, 20, 16, 0.04), 0 1px 2px rgba(30, 20, 16, 0.02);
-    --sombra-hover: 0 8px 20px rgba(30, 20, 16, 0.08);
-    --sombra-modal: 0 25px 50px -12px rgba(30, 20, 16, 0.25);
+    /* Sombras Orgánicas Multicapa de Elevación Real (Sin Halos Artificiales) */
+    --sombra-card: 0 1px 3px rgba(26, 18, 14, 0.04), 0 1px 2px rgba(26, 18, 14, 0.02);
+    --sombra-hover: 0 4px 12px -2px rgba(26, 18, 14, 0.07), 0 2px 4px -1px rgba(26, 18, 14, 0.03);
+    --sombra-dropdown: 0 10px 15px -3px rgba(26, 18, 14, 0.08), 0 4px 6px -2px rgba(26, 18, 14, 0.04);
+    --sombra-modal: 0 20px 25px -5px rgba(26, 18, 14, 0.12), 0 8px 10px -6px rgba(26, 18, 14, 0.05);
 }
 
-/* Reset básico */
+/* Reset y Normalización */
 *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+}
+
+html {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 body {
@@ -66,8 +84,65 @@ body {
     color: var(--texto-color);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
     min-height: 100vh;
+    text-rendering: optimizeLegibility;
+}
+
+/* Superficies del Navegador (Browser Surfaces Tematizadas) */
+::selection {
+    background-color: rgba(163, 72, 31, 0.18);
+    color: var(--color-espresso);
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-borde-hover);
+    border-radius: var(--radio-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-borde-fuerte);
+}
+
+:focus-visible {
+    outline: 2px solid var(--color-ambar);
+    outline-offset: 2px;
+}
+
+/* Jerarquía Tipográfica Editorial y Rítmica */
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--fuente-principal);
+    color: var(--texto-color);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    text-wrap: balance;
+}
+
+p, span, label {
+    text-wrap: pretty;
+}
+
+/* Números Tabulares en Datos Financieros, Métricas y Tablas */
+.tabular-nums,
+[data-moneda],
+.kpi-monto,
+.total-monto-gigante,
+.pe-valor-destacado,
+.producto-precio-grande,
+.col-numero {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.015em;
 }
 
 /* Selector para compatibilidad con suite Jest (clientePwa.integration.test.js) */
@@ -136,13 +211,13 @@ td.col-numero {
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(circle at 20% 20%, #2A1D17 0%, #160D0A 100%);
+    background: radial-gradient(circle at 30% 20%, #261A14 0%, #150E0B 100%);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 9999;
     padding: 1.5rem;
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(6px);
 }
 
 .login-split-card {
@@ -153,13 +228,13 @@ td.col-numero {
     background: var(--color-blanco);
     border-radius: var(--radio-lg);
     overflow: hidden;
-    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.45);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--color-espresso-borde);
 }
 
 /* Columna Izquierda: Branding */
 .login-branding-panel {
-    background: linear-gradient(145deg, #1E1410 0%, #2E1B15 100%);
+    background: #1A120E;
     color: var(--color-crema-texto);
     padding: 3rem;
     display: flex;
@@ -179,18 +254,19 @@ td.col-numero {
     width: 56px;
     height: 56px;
     border-radius: var(--radio-md);
-    background: linear-gradient(135deg, var(--color-ambar) 0%, #8A4610 100%);
+    background: var(--color-ambar);
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 16px rgba(200, 109, 31, 0.35);
+    box-shadow: 0 4px 10px rgba(26, 18, 14, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .login-titulo {
     font-size: 1.85rem;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
     color: #fff;
 }
 
@@ -256,8 +332,8 @@ td.col-numero {
 }
 
 .btn-demo-acceso {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
     border-radius: var(--radio-md);
     padding: 0.75rem 1rem;
     display: flex;
@@ -266,13 +342,13 @@ td.col-numero {
     text-align: left;
     color: var(--color-crema-texto);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
 }
 
 .btn-demo-acceso:hover {
-    background: rgba(200, 109, 31, 0.2);
+    background: rgba(255, 255, 255, 0.08);
     border-color: var(--color-ambar);
-    transform: translateX(4px);
+    transform: translateY(-1px);
 }
 
 .demo-avatar {
@@ -283,6 +359,7 @@ td.col-numero {
     display: block;
     font-size: 0.9rem;
     color: #fff;
+    font-weight: 700;
 }
 
 .demo-info small {
@@ -304,6 +381,7 @@ td.col-numero {
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--texto-color);
+    letter-spacing: -0.02em;
 }
 
 .login-form-cabecera p {
@@ -361,7 +439,7 @@ textarea {
     padding: 0.75rem 1rem;
     font-size: 0.95rem;
     color: var(--texto-color);
-    transition: all 0.15s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 input:focus,
@@ -396,14 +474,14 @@ textarea:focus {
     justify-content: center;
     gap: 0.6rem;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(200, 109, 31, 0.35);
-    transition: all 0.15s ease;
+    box-shadow: 0 2px 5px rgba(26, 18, 14, 0.15);
+    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-cta-primario:hover {
     background: var(--color-ambar-hover);
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(200, 109, 31, 0.45);
+    box-shadow: 0 4px 10px rgba(26, 18, 14, 0.2);
 }
 
 .mensaje-estado-login {
@@ -461,18 +539,19 @@ textarea:focus {
     width: 38px;
     height: 38px;
     border-radius: var(--radio-sm);
-    background: linear-gradient(135deg, var(--color-ambar) 0%, #8A4610 100%);
+    background: var(--color-ambar);
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .sidebar-marca-texto h2 {
     font-size: 1.15rem;
     font-weight: 800;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
     color: #fff;
     line-height: 1.2;
 }
@@ -538,7 +617,7 @@ textarea:focus {
 .nav-shortcut {
     margin-left: auto;
     font-size: 0.7rem;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
     padding: 0.15rem 0.4rem;
     border-radius: 4px;
     font-family: var(--fuente-mono);
@@ -548,10 +627,11 @@ textarea:focus {
     margin-left: auto;
     font-size: 0.68rem;
     font-weight: 800;
-    background: linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%);
+    background: var(--color-ambar);
     color: #fff;
     padding: 0.15rem 0.5rem;
     border-radius: var(--radio-full);
+    letter-spacing: 0.04em;
 }
 
 .sidebar-footer {
@@ -607,18 +687,21 @@ textarea:focus {
 }
 
 .badge-rol.duenio {
-    background: rgba(245, 158, 11, 0.2);
-    color: #FBBF24;
+    background: rgba(192, 86, 33, 0.18);
+    color: #F6AD55;
+    border: 1px solid rgba(192, 86, 33, 0.3);
 }
 
 .badge-rol.encargado {
-    background: rgba(2, 132, 199, 0.2);
-    color: #38BDF8;
+    background: rgba(43, 108, 176, 0.18);
+    color: #90CDF4;
+    border: 1px solid rgba(43, 108, 176, 0.3);
 }
 
 .badge-rol.cajero {
-    background: rgba(16, 185, 129, 0.2);
-    color: #34D399;
+    background: rgba(45, 106, 79, 0.18);
+    color: #9AE6B4;
+    border: 1px solid rgba(45, 106, 79, 0.3);
 }
 
 .btn-sidebar-logout {
@@ -1246,23 +1329,29 @@ textarea:focus {
 }
 
 .tarjeta-kpi {
-    background: #fff;
+    background: var(--color-blanco);
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-lg);
-    padding: 1.25rem;
+    padding: 1.25rem 1.35rem;
     box-shadow: var(--sombra-card);
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tarjeta-kpi:hover {
+    border-color: var(--color-borde-hover);
+    box-shadow: var(--sombra-hover);
 }
 
 .tarjeta-kpi.destacada-verde {
-    background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
-    border-color: #A7F3D0;
+    background: #F4F9F5;
+    border-color: #C8E3D4;
 }
 
 .kpi-titulo {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -1281,6 +1370,8 @@ textarea:focus {
     font-weight: 800;
     color: var(--texto-color);
     font-family: var(--fuente-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
 }
 
 .kpi-subtexto {
@@ -1289,13 +1380,13 @@ textarea:focus {
 }
 
 .badge-estado-verde {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 800;
-    color: #065F46;
+    color: var(--color-exito);
 }
 
 .tarjeta-panel-blanca {
-    background: #fff;
+    background: var(--color-blanco);
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-lg);
     padding: 1.5rem;
@@ -1315,11 +1406,12 @@ textarea:focus {
     font-size: 1.2rem;
     font-weight: 800;
     color: var(--texto-color);
+    letter-spacing: -0.02em;
 }
 
 .aviso-seguridad-comercial {
-    background: #FEF3C7;
-    border: 1px solid #FCD34D;
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
     border-radius: var(--radio-md);
     padding: 1.25rem;
     display: flex;
@@ -1331,6 +1423,7 @@ textarea:focus {
 .aviso-icono {
     font-size: 1.75rem;
     line-height: 1;
+    color: var(--color-advertencia);
 }
 
 .aviso-contenido strong {
@@ -1338,11 +1431,12 @@ textarea:focus {
     font-size: 0.95rem;
     color: #92400E;
     margin-bottom: 0.25rem;
+    font-weight: 700;
 }
 
 .aviso-contenido p {
     font-size: 0.88rem;
-    color: #B45309;
+    color: #78350F;
     line-height: 1.5;
 }
 
@@ -1356,37 +1450,43 @@ textarea:focus {
 .btn-peligro-comercial {
     background: var(--color-peligro);
     color: #fff;
-    border: none;
+    border: 1px solid var(--color-peligro);
     border-radius: var(--radio-md);
     padding: 0.75rem 1.5rem;
     font-size: 0.95rem;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(26, 18, 14, 0.08);
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .btn-peligro-comercial:hover {
     background: var(--color-peligro-hover);
+    border-color: var(--color-peligro-hover);
+    transform: translateY(-1px);
 }
 
 .btn-primario-comercial {
     background: var(--color-ambar);
     color: #fff;
-    border: none;
+    border: 1px solid var(--color-ambar);
     border-radius: var(--radio-md);
     padding: 0.65rem 1.25rem;
     font-size: 0.9rem;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(26, 18, 14, 0.08);
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .btn-primario-comercial:hover {
     background: var(--color-ambar-hover);
+    border-color: var(--color-ambar-hover);
+    transform: translateY(-1px);
 }
 
 .btn-secundario-comercial {
-    background: var(--color-canvas);
+    background: var(--color-blanco);
     color: var(--texto-color);
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-md);
@@ -1394,12 +1494,14 @@ textarea:focus {
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(26, 18, 14, 0.03);
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .btn-secundario-comercial:hover {
-    background: #fff;
+    background: var(--color-canvas);
     border-color: var(--color-borde-hover);
+    color: var(--texto-color);
 }
 
 .auditoria-cabecera {
@@ -1816,7 +1918,7 @@ textarea:focus {
 
 .barra-progreso-relleno {
     height: 100%;
-    background: linear-gradient(90deg, var(--color-ambar) 0%, var(--color-exito) 100%);
+    background: var(--color-exito);
     border-radius: var(--radio-full);
     transition: width 0.3s ease;
 }
@@ -2472,12 +2574,12 @@ textarea:focus {
    TARJETA EJECUTIVA DE CONSULTORÍA IA (DUEÑO)
    ============================================================ */
 .tarjeta-ejecutiva-ia {
-    background: #FAF8F5;
-    border: 1px solid var(--color-borde-suave, #E6DDD4);
-    border-left: 4px solid var(--color-tostado, #6F4E37);
-    border-radius: var(--radio-md, 8px);
-    padding: 1.25rem 1.5rem;
-    color: var(--texto-color, #2B2118);
+    background: var(--color-canvas);
+    border: 1px solid var(--color-borde-suave);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-card);
+    padding: 1.5rem;
+    color: var(--texto-color);
     font-size: 0.92rem;
     line-height: 1.6;
 }
@@ -2487,22 +2589,21 @@ textarea:focus {
     margin-bottom: 0.75rem;
     font-size: 1.05rem;
     font-weight: 700;
-    color: var(--color-tostado, #6F4E37);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    border-bottom: 1px solid var(--color-borde-suave, #E6DDD4);
+    color: var(--color-espresso);
+    letter-spacing: -0.015em;
+    border-bottom: 1px solid var(--color-borde-suave);
     padding-bottom: 0.5rem;
 }
 
 .tarjeta-ejecutiva-ia .ia-bloque {
     margin-top: 0.85rem;
     padding-top: 0.75rem;
-    border-top: 1px dashed var(--color-borde-suave, #E6DDD4);
+    border-top: 1px solid var(--color-borde-suave);
 }
 
 .tarjeta-ejecutiva-ia .ia-bloque-titulo {
     font-weight: 700;
-    color: var(--color-tostado, #6F4E37);
+    color: var(--color-ambar);
     margin-bottom: 0.35rem;
     text-transform: uppercase;
     font-size: 0.8rem;
