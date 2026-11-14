@@ -1294,6 +1294,17 @@ const enviarCsvAlCircuitoAprobacion = async () => {
         $('estado-importacion-ia').textContent = 'Analizando planilla CSV con IA...';
     }
 
+    // Rellenar inmediatamente la tabla del Paso 2 con los ítems detectados del CSV
+    renderizarPropuestaIAComercial({
+        _id: 'local-csv',
+        estado: 'LISTA',
+        salida: {
+            proveedorDetectado: proveedorNombre,
+            envioDetectado: csv.envioTotal,
+            items: csv.items,
+        },
+    });
+
     try {
         const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones`, {
             method: 'POST',
@@ -1310,33 +1321,21 @@ const enviarCsvAlCircuitoAprobacion = async () => {
         const data = await res.json();
         if (res.status === 202 && data.importacionId) {
             mostrarToast('Planilla enviada al circuito de aprobación. Cargando propuesta...', 'exito');
-            await consultarDetalleImportacion(data.importacionId);
+            if (estadoApp.importacionActual) {
+                estadoApp.importacionActual._id = data.importacionId;
+            }
+            const datosDetalle = await consultarDetalleImportacion(data.importacionId);
+            if (datosDetalle) {
+                renderizarPropuestaIAComercial(datosDetalle);
+            }
             if ($('estado-importacion-ia')) {
                 $('estado-importacion-ia').textContent = 'Propuesta lista para revisión en el Paso 2.';
             }
         } else {
-            renderizarPropuestaIAComercial({
-                _id: 'local-csv',
-                estado: 'LISTA',
-                salida: {
-                    proveedorDetectado: proveedorNombre,
-                    envioDetectado: csv.envioTotal,
-                    items: csv.items,
-                },
-            });
             mostrarToast('Propuesta generada desde CSV lista para aprobar en el Paso 2.', 'info');
         }
     } catch {
-        renderizarPropuestaIAComercial({
-            _id: 'local-csv',
-            estado: 'LISTA',
-            salida: {
-                proveedorDetectado: proveedorNombre,
-                envioDetectado: csv.envioTotal,
-                items: csv.items,
-            },
-        });
-        mostrarToast('Propuesta generada en modo local lista para aprobar en el Paso 2.', 'info');
+        mostrarToast('Propuesta generada desde CSV lista para aprobar en el Paso 2.', 'info');
     }
 };
 
@@ -1418,11 +1417,16 @@ const renderizarPropuestaIAComercial = (doc) => {
 
     panel.style.display = 'block';
     const salida = doc.salida || {};
-    let itemsCrudos = Array.isArray(salida.items) && salida.items.length > 0
-        ? salida.items
-        : (Array.isArray(doc.items) && doc.items.length > 0 ? doc.items : []);
+    let itemsCrudos = [];
+    if (Array.isArray(salida.items) && salida.items.length > 0) {
+        itemsCrudos = salida.items;
+    } else if (Array.isArray(doc.items) && doc.items.length > 0) {
+        itemsCrudos = doc.items;
+    } else if (Array.isArray(doc.propuesta?.items) && doc.propuesta.items.length > 0) {
+        itemsCrudos = doc.propuesta.items;
+    }
 
-    let envioDetectado = salida.envioDetectado ?? doc.envioDetectado ?? 0;
+    let envioDetectado = salida.envioDetectado ?? doc.envioDetectado ?? doc.propuesta?.envioDetectado ?? 0;
 
     if (itemsCrudos.length === 0) {
         const textoFuente = doc.entrada?.textoLista || $('textarea-lista-ia')?.value || '';
@@ -1441,19 +1445,36 @@ const renderizarPropuestaIAComercial = (doc) => {
     }
 
     const itemsNormalizados = itemsCrudos.map((it) => {
-        const nombre = it.nombreInsumo || it.nombre_insumo || it.insumo_nombre || it.nombre || it.insumo || 'Insumo';
+        const nombre =
+            it.insumo ||
+            it.nombre ||
+            it.insumo_nombre ||
+            it.nombreInsumo ||
+            it.nombre_insumo ||
+            'Insumo';
         const cantidad = String(it.cantidad ?? '1');
         const unidad = String(it.unidad || 'un');
-        const precio = String(it.precioTotal ?? it.precio_total ?? it.precio ?? '0.00');
+        const precio = String(
+            it.precio_total ??
+            it.precio ??
+            it.costo_total ??
+            it.precioTotal ??
+            '0.00'
+        );
         const alicuota = String(it.alicuota ?? it.alicuotaIva ?? '21.00');
         const confianzaNum = Number(it.confianza ?? 0.98);
         return {
+            insumo: nombre,
+            nombre,
+            insumo_nombre: nombre,
             nombreInsumo: nombre,
             nombre_insumo: nombre,
             cantidad,
             unidad,
-            precioTotal: precio,
+            precio,
             precio_total: precio,
+            costo_total: precio,
+            precioTotal: precio,
             ivaIncluido: it.ivaIncluido ?? it.iva_incluido ?? true,
             iva_incluido: it.iva_incluido ?? it.ivaIncluido ?? true,
             alicuota,
@@ -1463,12 +1484,15 @@ const renderizarPropuestaIAComercial = (doc) => {
 
     const proveedorDetectado =
         salida.proveedorDetectado ||
+        doc.proveedorDetectado ||
+        doc.propuesta?.proveedorDetectado ||
         doc.entrada?.proveedorNombre ||
         $('input-proveedor-ia')?.value.trim() ||
         'Distribuidora';
 
     estadoApp.importacionActual = {
         ...doc,
+        _id: doc._id || estadoApp.importacionActual?._id || 'local-csv',
         salida: {
             ...salida,
             proveedorDetectado,
@@ -1505,7 +1529,7 @@ const renderizarPropuestaIAComercial = (doc) => {
             <td class="col-numero font-bold">${formatearMoneda(it.precioTotal)}</td>
             <td class="col-centro"><span class="badge-estado-verde">${pctConfianza}%</span></td>
         `;
-        tbody.appendChild(tr);
+        tabla.appendChild(tr);
     }
 };
 
