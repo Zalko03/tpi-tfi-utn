@@ -1,17 +1,23 @@
 # cafe-gestion
 
-Sistema de gestión integral para cafetería de especialidad: costeo dinámico de recetas, arqueo y control de caja/ventas, importación de listas de proveedores con inteligencia artificial y tablero reactivo en tiempo real.
-Trabajo Final Integrador — Programación IV, UTN FRRe.
+Sistema de gestión comercial y contable integral para cafetería de especialidad y panadería artesanal: costeo dinámico de recetas por lote y porción, control de arqueo ciego y caja diaria, punto de venta (POS) de alto rendimiento con interfaz editorial **Impeccable UI**, cola de ventas offline en IndexedDB, importación híbrida de listas de precios con inteligencia artificial (Groq LPU / Gemini) y contingencia determinista en CSV, y consultoría gerencial de stock crítico y auditoría en tiempo real.
+
+Trabajo Final Integrador (TFI) — Programación IV, UTN FRRe.
 
 ---
 
-## Estado del Proyecto
+## Estado del Proyecto y Capacidades Implementadas
 
-* **TP 0:** Fundaciones del monorepo, convenciones y arquitectura base. (Completado)
-* **TP 1:** Núcleo de datos transaccional (Django + PostgreSQL) y documental (Node + MongoDB). (Completado)
-* **TP 2:** Autenticación asimétrica con JWT RS256, roles y permisos granulares, arqueo ciego y endurecimiento perimetral. (Completado)
-* **TP 3:** Microservicio de IA (`ai-service` FastAPI + Gemini/Ollama), eventos en tiempo real con Socket.IO y cliente PWA en LAN. (Completado)
-* **TP 4:** Contenedorización multi-stage, Docker Compose, CI/CD con GitHub Actions, observabilidad (`X-Request-ID`), logging JSON estructurado y scripts de respaldo. (Completado)
+* **TP 0:** Fundaciones del monorepo, convenciones y arquitectura base políglota.
+* **TP 1:** Núcleo contable transaccional (Django 5 + PostgreSQL 16) y subdominio documental de auditoría (Node 20 + MongoDB 7).
+* **TP 2:** Autenticación asimétrica con JWT RS256, roles granulares (Dueño, Encargado, Cajero), arqueo ciego y endurecimiento perimetral.
+* **TP 3:** Microservicio de IA (`ai-service` FastAPI + Pydantic v2 + GroqAdapter / Gemini / Ollama), eventos en vivo con Socket.IO y cliente PWA offline-first.
+* **TP 4 & Entrega Final TFI:**
+  * **Punto de Venta Comercial (POS) de Alta Velocidad:** Búsqueda reactiva instantánea por nombre/código, soporte nativo de lector de código de barras (HID / EAN-13 / UPC), atajos de teclado para mostrador y estética visual editorial **Impeccable UI**.
+  * **Modo Sin Internet y Cola Offline (IndexedDB):** Resguardo local transaccional ante cortes de red o caídas de servidor y sincronización bidireccional automática con backoff exponencial al recuperar conectividad (`window.ononline`).
+  * **Importador Híbrido de Listas de Precios:** Extracción multimodal con IA para listas desestructuradas (Groq / Gemini) combinado con importador CSV determinista de contingencia.
+  * **Consultor IA de Stock Crítico y Auditoría de Cierre de Caja:** Diagnóstico en tiempo real para el Propietario mediante `GroqAdapter` (LPU Cloud ultrarrápido sin consumo local de CPU/RAM) con fallback determinista inmediato ante cortes o falta de credenciales.
+  * **Endurecimiento, Observabilidad y Calidad:** Trazabilidad distribuida (`X-Request-ID`), logging estructurado JSON con sanitización de credenciales, respaldo automatizado y **570+ tests automatizados pasando en verde**.
 
 ---
 
@@ -19,19 +25,43 @@ Trabajo Final Integrador — Programación IV, UTN FRRe.
 
 | Servicio | Tecnología | Rol Principal | Puerto Local |
 |---|---|---|---|
-| `web` (PWA) | HTML5, CSS3, JS ES Modules, Service Worker | Interfaz de caja rápida con lector HID, tablero en vivo e importación de precios | 80 (vía Nginx) |
-| `web-proxy` | Nginx 1.27 Alpine (no-root) | Reverse proxy perimetral, compresión Gzip y entrega de la PWA estática | 80 |
-| `backend-django` | Django 5 + DRF + PostgreSQL 16 + Gunicorn 23 | Núcleo contable y transaccional: insumos, recetas, compras, ventas, caja y emisor de JWT RS256 | 8000 (interno) |
-| `backend-node` | Express 5 + Mongoose + MongoDB 7 + Socket.IO 4 | Subdominio documental (`historial_precios`, `snapshots_costeo`), salas de WebSocket y orquestación de IA | 3000 (interno) |
-| `ai-service` | FastAPI + Pydantic v2 + Gemini API / Ollama | Extracción inteligente de insumos y precios de listas desestructuradas y resumen semanal | 8001 (interno) |
-| `postgres` | PostgreSQL 16 Alpine | Base de datos relacional transaccional (volumen `postgres_data`) | 5432 (interno) |
-| `mongodb` | MongoDB 7.0 | Base de datos documental para auditoría e historial (volumen `mongo_data`) | 27017 (interno) |
+| `web` (PWA) | HTML5, CSS3, JS ES Modules, IndexedDB, Service Worker | POS comercial editorial **Impeccable UI**, cola offline transaccional, lector HID, tablero en vivo y consultoría IA | 80 (vía Nginx) |
+| `web-proxy` | Nginx 1.27 Alpine (no-root) | Reverse proxy perimetral, compresión Gzip, enrutamiento semántico y entrega de la PWA estática | 80 |
+| `backend-django` | Django 5 + DRF + PostgreSQL 16 + Gunicorn 23 | Núcleo transaccional: insumos, recetas, compras, ventas, arqueos de caja y emisor maestro de JWT RS256 | 8000 (interno) |
+| `backend-node` | Express 5 + Mongoose + MongoDB 7 + Socket.IO 4 | Subdominio documental (`historial_precios`, `snapshots_costeo`), salas WebSocket y orquestación de IA | 3000 (interno) |
+| `ai-service` | FastAPI + Pydantic v2 + Groq LPU / Gemini / Ollama | Inferencia ultrarrápida con `GroqAdapter` (LPU Cloud), extracción de listas, diagnóstico de stock y fallback | 8001 (interno) |
+| `postgres` | PostgreSQL 16 Alpine | Base de datos relacional ACID para contabilidad y stock (volumen persistente `postgres_data`) | 5432 (interno) |
+| `mongodb` | MongoDB 7.0 (WiredTiger 0.25GB) | Base de datos documental para auditoría e historial cronológico (volumen `mongo_data`) | 27017 (interno) |
+
+---
+
+## Características Destacadas del Sistema
+
+### 1. Punto de Venta (POS) Comercial e Impeccable UI
+- **Estética Editorial Impeccable:** Jerarquía tipográfica refinada, paleta de café de especialidad cálida y contrastes conformes a estándares de accesibilidad WCAG AA.
+- **Operación Rápida en Mostrador:** Búsqueda en vivo de productos, disparo de venta con escáner de código de barras físico o manual, y catálogo categorizado (Cafetería, Pastelería, Almacén).
+- **Atajos de Teclado:** Foco directo en barra de búsqueda (`/` o `F2`), cobro rápido (`F9` o `Enter`), y cancelación de selección (`Esc`).
+
+### 2. Resiliencia Offline con Cola en IndexedDB
+- Ante cortes de conexión a Internet o indisponibilidad del servidor, el sistema conmuta automáticamente al **Modo Sin Internet Activo**.
+- Las ventas se resguardan de forma segura en almacenamiento local indexado (**IndexedDB**), preservando ticket, productos, cantidades y medio de pago.
+- Al restaurarse la conexión (`online`), el cliente sincroniza automáticamente la cola en segundo plano hacia el servidor central sin pérdida de información ni duplicación de cobros.
+
+### 3. Importador Híbrido de Precios y Contingencia
+- **Vía Inteligente (IA Multimodal):** Ingesta listas desestructuradas de proveedores (PDF/texto) reconociendo nombres, marcas, presentaciones y precios unitarios.
+- **Vía Determinista (CSV Contingente):** En caso de corte de red externa o agotamiento de cuota, el importador CSV procesa las planillas de contingencia aplicando normalización de unidades y prorrateo de fletes de forma 100% determinista.
+
+### 4. Consultor IA de Stock Crítico y Auditoría de Cierre de Caja
+- **GroqAdapter (LPU Cloud):** Inferencia de baja latencia mediante modelos de última generación (Llama 3.3 70B Versatile) sin sobrecargar de cómputo el hardware del local.
+- **Diagnóstico de Stock:** Identificación de insumos críticos con mayor desvío de costo o quiebre de stock, y cálculo de impacto directo en márgenes de recetas.
+- **Auditoría de Caja:** Análisis del arqueo ciego, cotejo de ventas por medio de pago (Efectivo, Transferencia, Tarjeta) y detección automática de sobrantes o faltantes.
+- **Fallback Determinista Local:** Si el servicio de IA no responde, el sistema genera inmediatamente un dictamen analítico en base a reglas de negocio puras.
 
 ---
 
 ## Puesta en Marcha con Docker Compose (Un solo comando)
 
-Modalidad oficial para producción en la PC local del comercio (respaldada por la sección 3.5 de la Guía y ADR 0003):
+Modalidad oficial para producción (PC local o nube, respaldada por la sección 3.5 de la Guía y ADR 0003):
 
 ### 1. Clonar el repositorio y preparar variables de entorno
 ```bash
@@ -39,7 +69,7 @@ git clone https://github.com/tu-usuario/tpi-tfi-utn.git
 cd tpi-tfi-utn
 cp .env.example .env
 ```
-*(Opcional: configurar `GEMINI_API_KEY` en `.env` si se dispone de conexión para inferencia con IA).*
+*(Configurar `GROQ_API_KEY` o `GEMINI_API_KEY` en `.env` para habilitar el Consultor IA y la extracción de listas).*
 
 ### 2. Ejecutar el script automatizado de despliegue
 ```bash
@@ -50,8 +80,13 @@ O directamente con Docker Compose:
 docker compose up -d --build
 ```
 
-### 3. Acceder al sistema
-* **PWA / Tablero y Caja:** [http://localhost](http://localhost) (o desde la red Wi-Fi del comercio con la IP local).
+### 3. Cargar catálogo de demostración gastronómico
+```bash
+docker compose exec backend-django python manage.py seed_demo
+```
+
+### 4. Acceder al sistema
+* **PWA / Tablero y POS:** [http://localhost](http://localhost) (o dominio / IP pública asignada).
 * **Diagnóstico de salud general:** [http://localhost/healthz](http://localhost/healthz)
 * **Diagnóstico profundo Django:** [http://localhost/api/health/profundo/](http://localhost/api/health/profundo/)
 * **Diagnóstico profundo Node:** [http://localhost/health/profundo/](http://localhost/health/profundo/)
@@ -61,7 +96,6 @@ docker compose up -d --build
 ## Puesta en Marcha para Desarrollo Local (Sin Docker)
 
 ### 1. Variables de entorno locales
-Copiar `.env.example` a `.env` y activar `USE_SQLITE=True` para desarrollo sin depender del servicio PostgreSQL del host:
 ```bash
 cp .env.example .env
 echo "USE_SQLITE=True" >> .env
@@ -70,11 +104,11 @@ echo "USE_SQLITE=True" >> .env
 ### 2. backend-django
 ```bash
 cd backend-django
-python3 -m venv .venv
-source .venv/bin/activate # En Windows: .\.venv\Scripts\Activate.ps1
+source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py runserver
+python manage.py seed_demo
+python manage.py runserver 8000
 ```
 
 ### 3. backend-node
@@ -87,7 +121,6 @@ npm run dev
 ### 4. ai-service
 ```bash
 cd ai-service
-python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --port 8001 --reload
@@ -95,31 +128,37 @@ uvicorn app.main:app --port 8001 --reload
 
 ---
 
-## Suites de Pruebas y Linters
+## Suites de Pruebas y Calidad de Código
 
-El proyecto cuenta con **563 tests automatizados** distribuidos entre pruebas unitarias puras y de integración, ejecutadas en el pipeline de GitHub Actions (`.github/workflows/ci.yml`):
+El proyecto cuenta con **570 tests automatizados** distribuidos entre pruebas unitarias puras, integración y ensayos de resiliencia en el pipeline de GitHub Actions (`.github/workflows/ci.yml`):
 
-* **backend-django:** 370 tests pasando (pytest + pytest-django)
+* **backend-django:** **370 tests pasando** (pytest + pytest-django)
   ```bash
   backend-django/.venv/bin/pytest backend-django/
   ```
-* **backend-node:** 130 tests pasando (Jest con soporte ES Modules)
+* **backend-node:** **134 tests pasando** (Jest con soporte nativo de ES Modules)
   ```bash
   cd backend-node && npm test
   ```
-* **ai-service:** 63 tests pasando (pytest + anyio)
+* **ai-service:** **66 tests pasando** (pytest + anyio/asyncio)
   ```bash
   ai-service/.venv/bin/pytest ai-service/
   ```
-* **Verificación de Linters y Estilo:**
-  * Python (Ruff): `.venv/bin/ruff check backend-django/ ai-service/`
-  * Node.js (ESLint): `cd backend-node && npm run lint`
+* **Total:** **570 tests automatizados pasando 100% en verde.**
+
+### Verificación de Linters y Estilo
+* **Python (Ruff):** `.venv/bin/ruff check backend-django/ ai-service/`
+* **Node.js (ESLint):** `cd backend-node && npm run lint`
 
 ---
 
 ## Operación y Mantenimiento
 
-* **Generar respaldo (PostgreSQL + MongoDB):**
+* **Poblar o restaurar catálogo gastronómico demo:**
+  ```bash
+  python backend-django/manage.py seed_demo
+  ```
+* **Generar respaldo consistente (PostgreSQL + MongoDB):**
   ```bash
   ./scripts/backup.sh
   ```
@@ -127,4 +166,4 @@ El proyecto cuenta con **563 tests automatizados** distribuidos entre pruebas un
   ```bash
   ./scripts/restore.sh backups/backup_cafe_gestion_YYYYMMDD_HHMMSS.tar.gz
   ```
-* **Manual de Despliegue y Plan de Rollback:** Consultar `docs/despliegue.md`.
+* **Manual de Despliegue y Arquitectura:** Consultar `docs/despliegue.md`.

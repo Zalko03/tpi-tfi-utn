@@ -1098,6 +1098,37 @@ Cómo probarlo:
 - Ejecutar las 3 suites de tests (`backend-django`, `backend-node`, `ai-service`) y linters (`ruff`, `eslint`).
 - Ingresar en `http://localhost:5173`, verificar la alineación de columnas en todas las tablas, subir un CSV o analizar con IA verificando las filas en el Paso 2 y su aprobación, cobrar una venta en modo offline y sincronizarla con el botón del banner superior.
 ---
+Fecha: 2026-11-14
+Tarea: Propagación de variables GroqAdapter en Docker Compose/env, ampliación de catálogo gastronómico en seed_demo y documentación técnica para entrega TFI
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **1. Propagación de variables de entorno para GroqAdapter:**
+  - Se actualizaron `docker-compose.yml`, `docker-compose.prod.yml`, `.env.example` y se creó `ai-service/.env.example` para inyectar `GROQ_API_KEY`, `GROQ_MODEL` y `GROQ_BASE_URL` al contenedor `ai-service` junto con las configuraciones de Gemini y Ollama, estableciendo `groq` como proveedor activo por defecto.
+- **2. Catálogo gastronómico de especialidad y panadería artesanal en seed_demo:**
+  - Se enriqueció `backend-django/apps/insumos/management/commands/seed_demo.py` con 10 productos comerciales (espresso, latte, flat white, filtrado geisha, capuccino, cold brew, chipá, croissant artesanal, cookie doble chocolate, tostado en pan de masa madre) con códigos/SKUs de barras EAN-13, precios reales y minutos de mano de obra.
+  - Se configuraron 12 insumos gastronómicos con desglose completo en recetas y dos casos clave de stock crítico (`Café Geisha Panamá Lote Especial` por costo/exclusividad y `Manteca Calidad Extra 82%` por aumento reciente) para análisis con el Consultor IA de Stock.
+  - Se estructuraron compras iniciales para costeo unitario exacto, turno de caja abierto con movimientos de caja chica en efectivo (entradas y salidas) y 7 ventas registradas en diversos medios de pago (EFECTIVO, TRANSFERENCIA, TARJETA), manteniendo idempotencia estricta mediante `get_or_create` / `update_or_create`.
+- **3. Documentación técnica de entrega de TFI:**
+  - Se actualizaron `README.md` y `docs/despliegue.md` detallando las capacidades comerciales y de resiliencia del sistema: POS con estética editorial Impeccable UI, atajos de teclado y escáner de códigos de barras, cola offline en IndexedDB con autosincronización, importador híbrido de precios (IA multimodal + CSV determinista), Consultor IA de Stock y Arqueo de Caja con Groq LPU API y fallback local, y métricas consolidadas de calidad: 570 tests automatizados pasando.
+Archivos tocados:
+- `.env.example`
+- `docker-compose.yml`
+- `docker-compose.prod.yml`
+- `ai-service/.env.example`
+- `backend-django/apps/insumos/management/commands/seed_demo.py`
+- `README.md`
+- `docs/despliegue.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django`: ejecutar `python manage.py seed_demo`.
+- Ejecutar las 3 suites de tests:
+  - `backend-django/.venv/bin/pytest backend-django/` (370 tests)
+  - `cd backend-node && npm test` (134 tests)
+  - `ai-service/.venv/bin/pytest ai-service/` (66 tests)
+- Ejecutar linters:
+  - `.venv/bin/ruff check backend-django/ ai-service/`
+  - `cd backend-node && npm run lint`
+---
 
 
 

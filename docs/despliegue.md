@@ -34,7 +34,7 @@ flowchart TD
     subgraph RedInterna["red-interna (Aislada / Sin salida directa)"]
         Django["backend-django (Gunicorn 23)\nPuerto 8000 (interno)\nLímite RAM: 512 MB"]
         Node["backend-node (Express + Socket.IO)\nPuerto 3000 (interno)\nLímite RAM: 384 MB"]
-        AI["ai-service (FastAPI + Uvicorn)\nPuerto 8001 (interno)\nLímite RAM: 256 MB"]
+        AI["ai-service (FastAPI + Groq/Gemini/Ollama)\nPuerto 8001 (interno)\nLímite RAM: 256 MB"]
         PG[("PostgreSQL 16 Alpine\nPuerto 5432 (interno)\nVolumen: postgres_data\nLímite RAM: 512 MB")]
         Mongo[("MongoDB 7.0\nPuerto 27017 (interno)\nVolumen: mongo_data\nLímite RAM: 512 MB")]
     end
@@ -65,7 +65,7 @@ cp .env.example .env
 ```
 
 > [!IMPORTANT]
-> Editá `.env` para definir una clave segura en `DJANGO_SECRET_KEY` y, si disponés de conexión a internet para la extracción con IA, agregá tu `GEMINI_API_KEY`. Nunca hagas commit de este archivo (está bloqueado en `.gitignore`).
+> Editá `.env` para definir una clave segura en `DJANGO_SECRET_KEY` y, para la inferencia de IA en la nube (extracción de listas, consultoría de stock y auditoría de caja), configurá `GROQ_API_KEY` (proveedor predeterminado ultrarrápido sin consumo local) o `GEMINI_API_KEY`. Nunca hagas commit de este archivo (está bloqueado en `.gitignore`).
 
 ### Paso 2: Ejecutar el script automatizado de despliegue
 ```bash
@@ -89,12 +89,13 @@ docker compose up -d --build
 
 ---
 
-## 4. Mitigaciones de Memoria para 8 GB de RAM
+## 4. Mitigaciones de Memoria y Resiliencia Operativa
 
 De acuerdo con lo acordado con la cátedra en `docs/PLAN_IMPLEMENTACION.md` (§0 2d) y ADR 0003:
 1. **Límite de memoria WiredTiger en MongoDB:** Se fuerza `--wiredTigerCacheSizeGB 0.25` en `docker-compose.yml`, evitando que MongoDB consuma el 50 % de la memoria física de la máquina.
 2. **Límites cgroups por contenedor:** Cada servicio tiene un tope rígido de memoria configurado (`limits.memory`).
-3. **Consumo externo de IA (Gemini API):** No se ejecuta Ollama local en la PC de caja. Las llamadas de extracción inteligente salen por HTTPS a la API de Google, consumiendo escasos megabytes de memoria local. Ante cortes de internet, el sistema activa la contingencia automática hacia carga manual o CSV.
+3. **Consumo externo de IA (GroqAdapter / Gemini API):** No se ejecuta Ollama local en la PC de caja de forma obligatoria. Las llamadas de inferencia y extracción inteligente salen por HTTPS a la API de Groq (LPU Cloud, con latencias de respuesta submétricas) o Google Gemini, consumiendo escasos megabytes de memoria local. Ante cortes de internet o falta de API Key, el sistema activa la contingencia automática hacia importador determinista CSV y diagnósticos locales basados en reglas.
+4. **Cola de ventas offline en IndexedDB:** Si se corta la red o se pierde contacto con los servidores centrales, el POS conmuta al modo sin conexión y almacena los tickets en IndexedDB localmente, sincronizándolos automáticamente en segundo plano en cuanto se restaura el enlace (`window.ononline`).
 
 ---
 
