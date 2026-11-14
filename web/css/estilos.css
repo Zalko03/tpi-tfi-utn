@@ -899,7 +899,7 @@ textarea:focus {
 }
 
 .pos-herramientas-card {
-    background: #fff;
+    background: var(--color-blanco);
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-lg);
     padding: 1rem 1.25rem;
@@ -931,29 +931,34 @@ textarea:focus {
 }
 
 .pos-input-laser-contenedor input {
-    padding-left: 3rem !important;
+    padding-left: 2.85rem !important;
     padding-right: 12rem !important;
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     font-weight: 500;
     border-radius: var(--radio-md);
-    border: 2px solid var(--color-borde-suave);
+    border: 1px solid var(--color-borde-suave);
+    background: var(--color-blanco);
     height: 48px;
+    color: var(--texto-color);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .pos-input-laser-contenedor input:focus {
     border-color: var(--color-ambar);
+    box-shadow: 0 0 0 3px var(--color-ambar-light);
 }
 
 .laser-badge-estado {
     position: absolute;
     right: 0.75rem;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     font-weight: 700;
-    background: var(--color-canvas);
-    border: 1px solid var(--color-borde-suave);
-    padding: 0.35rem 0.65rem;
+    background: var(--color-exito-light);
+    border: 1px solid rgba(45, 106, 79, 0.25);
+    padding: 0.3rem 0.65rem;
     border-radius: var(--radio-sm);
-    color: #065F46;
+    color: var(--color-exito);
+    letter-spacing: 0.02em;
 }
 
 .pos-filtros-categorias {
@@ -967,15 +972,16 @@ textarea:focus {
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-full);
     padding: 0.4rem 0.9rem;
-    font-size: 0.85rem;
+    font-size: 0.84rem;
     font-weight: 600;
-    color: var(--texto-mutado);
+    color: var(--texto-secundario);
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .btn-categoria-filtro:hover {
-    background: #fff;
+    background: var(--color-blanco);
+    border-color: var(--color-borde-hover);
     color: var(--texto-color);
 }
 
@@ -994,12 +1000,12 @@ textarea:focus {
 
 .grilla-productos-comercial {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
     gap: 1rem;
 }
 
 .producto-card-comercial {
-    background: #fff;
+    background: var(--color-blanco);
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-lg);
     padding: 1.15rem 1rem;
@@ -1008,33 +1014,35 @@ textarea:focus {
     justify-content: space-between;
     cursor: pointer;
     box-shadow: var(--sombra-card);
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     user-select: none;
     position: relative;
     overflow: hidden;
 }
 
 .producto-card-comercial:hover {
-    transform: translateY(-3px);
-    border-color: var(--color-ambar);
+    transform: translateY(-2px);
+    border-color: var(--color-borde-hover);
     box-shadow: var(--sombra-hover);
 }
 
 .producto-card-comercial:active {
-    transform: scale(0.98);
+    transform: scale(0.99);
 }
 
 .producto-icono-grande {
-    font-size: 2.2rem;
+    font-size: 2.1rem;
     margin-bottom: 0.65rem;
+    color: var(--color-ambar);
 }
 
 .producto-titulo {
-    font-size: 0.98rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: var(--texto-color);
     line-height: 1.3;
     margin-bottom: 0.35rem;
+    letter-spacing: -0.01em;
 }
 
 .producto-codigo-badge {
@@ -1042,10 +1050,12 @@ textarea:focus {
     font-size: 0.72rem;
     color: var(--texto-mutado);
     background: var(--color-canvas);
-    padding: 0.15rem 0.4rem;
+    border: 1px solid var(--color-borde-suave);
+    padding: 0.15rem 0.45rem;
     border-radius: 4px;
     align-self: flex-start;
     margin-bottom: 0.85rem;
+    font-variant-numeric: tabular-nums;
 }
 
 .producto-precio-fila {
@@ -1053,15 +1063,17 @@ textarea:focus {
     justify-content: space-between;
     align-items: center;
     margin-top: auto;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--color-canvas);
+    padding-top: 0.65rem;
+    border-top: 1px solid var(--color-borde-suave);
 }
 
 .producto-precio-grande {
-    font-size: 1.2rem;
+    font-size: 1.15rem;
     font-weight: 800;
     color: var(--color-ambar);
     font-family: var(--fuente-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
 }
 
 .producto-btn-agregar {
@@ -1074,8 +1086,9 @@ textarea:focus {
     align-items: center;
     justify-content: center;
     color: var(--texto-color);
-    font-weight: 800;
+    font-weight: 700;
     font-size: 1.1rem;
+    transition: all 0.15s ease;
 }
 
 .producto-card-comercial:hover .producto-btn-agregar {
@@ -1084,13 +1097,13 @@ textarea:focus {
     border-color: var(--color-ambar);
 }
 
-/* Panel Derecho: Ticket de Venta */
+/* Panel Derecho: Ticket de Venta (Comanda Real) */
 .pos-ticket-columna {
     height: 100%;
 }
 
 .ticket-panel-card {
-    background: #fff;
+    background: var(--color-blanco);
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-lg);
     box-shadow: var(--sombra-card);
@@ -1101,22 +1114,23 @@ textarea:focus {
 }
 
 .ticket-cabecera {
-    padding: 1.25rem 1.5rem;
+    padding: 1.15rem 1.35rem;
     border-bottom: 1px solid var(--color-borde-suave);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #FAF7F2;
+    background: var(--color-canvas);
 }
 
 .ticket-cabecera-info h3 {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 800;
     color: var(--texto-color);
+    letter-spacing: -0.015em;
 }
 
 .ticket-cabecera-info span {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--texto-mutado);
 }
 
@@ -1125,7 +1139,7 @@ textarea:focus {
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-sm);
     padding: 0.35rem 0.65rem;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
     color: var(--color-peligro);
     cursor: pointer;
@@ -1152,18 +1166,19 @@ textarea:focus {
 }
 
 .tabla-ticket-comercial th {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--texto-mutado);
     padding: 0.65rem 0.5rem;
     border-bottom: 1px solid var(--color-borde-suave);
+    font-weight: 700;
 }
 
 .tabla-ticket-comercial td {
     padding: 0.75rem 0.5rem;
-    border-bottom: 1px dashed var(--color-borde-suave);
-    font-size: 0.9rem;
+    border-bottom: 1px solid var(--color-borde-suave);
+    font-size: 0.88rem;
     vertical-align: middle;
 }
 
@@ -1177,21 +1192,23 @@ textarea:focus {
 .btn-cant-tactil {
     width: 28px;
     height: 28px;
-    border-radius: 6px;
+    border-radius: var(--radio-sm);
     border: 1px solid var(--color-borde-suave);
     background: var(--color-canvas);
     color: var(--texto-color);
-    font-weight: 800;
+    font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.15s ease;
+    font-family: var(--fuente-mono);
 }
 
 .btn-cant-tactil:hover {
     background: var(--color-espresso);
     color: #fff;
+    border-color: var(--color-espresso);
 }
 
 .item-cant-numero {
@@ -1199,6 +1216,8 @@ textarea:focus {
     font-size: 0.95rem;
     min-width: 22px;
     text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--fuente-mono);
 }
 
 .btn-item-eliminar {
@@ -1206,8 +1225,12 @@ textarea:focus {
     border: none;
     color: var(--texto-mutado);
     cursor: pointer;
-    padding: 0.2rem;
+    padding: 0.25rem;
     border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease;
 }
 
 .btn-item-eliminar:hover {
@@ -1216,12 +1239,12 @@ textarea:focus {
 
 /* Sección de Cobro y Totales */
 .ticket-pago-seccion {
-    padding: 1.25rem 1.5rem;
-    border-top: 2px solid var(--color-borde-suave);
-    background: #FAF7F2;
+    padding: 1.25rem 1.35rem;
+    border-top: 1px solid var(--color-borde-suave);
+    background: var(--color-canvas);
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.95rem;
 }
 
 .ticket-total-banner {
@@ -1231,18 +1254,20 @@ textarea:focus {
 }
 
 .total-rotulo {
-    font-size: 0.85rem;
-    font-weight: 800;
+    font-size: 0.8rem;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--texto-color);
+    color: var(--texto-secundario);
 }
 
 .total-monto-gigante {
-    font-size: 2.1rem;
+    font-size: 2.2rem;
     font-weight: 800;
     color: var(--color-espresso);
     font-family: var(--fuente-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
 }
 
 .medios-pago-selector {
@@ -1254,13 +1279,13 @@ textarea:focus {
 .metodo-pago-chip {
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-md);
-    background: #fff;
+    background: var(--color-blanco);
     padding: 0.65rem 0.5rem;
     text-align: center;
     cursor: pointer;
     font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--texto-color);
+    font-weight: 600;
+    color: var(--texto-secundario);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1272,7 +1297,8 @@ textarea:focus {
 }
 
 .metodo-pago-chip:hover {
-    border-color: var(--color-ambar);
+    border-color: var(--color-borde-hover);
+    background: var(--color-canvas);
 }
 
 .metodo-pago-chip.activo {
@@ -1282,25 +1308,27 @@ textarea:focus {
 }
 
 .btn-cobrar-cta {
-    background: linear-gradient(135deg, var(--color-ambar) 0%, #A85814 100%);
+    background: var(--color-ambar);
     color: #fff;
-    border: none;
+    border: 1px solid var(--color-ambar);
     border-radius: var(--radio-md);
     padding: 1rem;
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     font-weight: 800;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.65rem;
-    box-shadow: 0 6px 18px rgba(200, 109, 31, 0.4);
-    transition: all 0.15s ease;
+    box-shadow: 0 1px 3px rgba(26, 18, 14, 0.12), 0 1px 2px rgba(26, 18, 14, 0.08);
+    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-cobrar-cta:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 22px rgba(200, 109, 31, 0.5);
+    background: var(--color-ambar-hover);
+    border-color: var(--color-ambar-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px -2px rgba(26, 18, 14, 0.18);
 }
 
 .btn-cobrar-cta:active {
@@ -1308,7 +1336,7 @@ textarea:focus {
 }
 
 .mensaje-estado-caja {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: var(--texto-mutado);
     text-align: center;
 }
@@ -1539,23 +1567,23 @@ textarea:focus {
 .tabla-comercial {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
 }
 
 .tabla-comercial th {
     background: #FAF7F2;
     color: var(--texto-mutado);
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     font-weight: 700;
-    padding: 0.85rem 1rem;
+    padding: 0.8rem 1rem;
     border-bottom: 1px solid var(--color-borde-suave);
     text-align: left;
 }
 
 .tabla-comercial td {
-    padding: 0.9rem 1rem;
+    padding: 0.85rem 1rem;
     border-bottom: 1px solid var(--color-borde-suave);
     color: var(--texto-color);
     vertical-align: middle;
@@ -1579,6 +1607,7 @@ textarea:focus {
 .ticket-termico-tabla td.col-numero {
     text-align: right !important;
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.015em;
 }
 
 .tabla-ticket-comercial th.col-centro,
@@ -1594,34 +1623,43 @@ textarea:focus {
 }
 
 .tabla-comercial tr:hover td {
-    background: #FAF9F6;
+    background: #FAF7F2;
 }
 
 .badge-diferencia-sobrante {
-    color: #065F46;
-    background: #D1FAE5;
-    padding: 0.25rem 0.6rem;
+    color: #1E4A37;
+    background: #E6F4EA;
+    border: 1px solid #CEEAD6;
+    padding: 0.2rem 0.6rem;
     border-radius: var(--radio-full);
     font-weight: 700;
     font-family: var(--fuente-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
 }
 
 .badge-diferencia-faltante {
-    color: #991B1B;
-    background: #FEE2E2;
-    padding: 0.25rem 0.6rem;
+    color: #7E2222;
+    background: #FCE8E6;
+    border: 1px solid #FAD2CF;
+    padding: 0.2rem 0.6rem;
     border-radius: var(--radio-full);
     font-weight: 700;
     font-family: var(--fuente-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
 }
 
 .badge-diferencia-exacta {
-    color: #1F2937;
-    background: #E5E7EB;
-    padding: 0.25rem 0.6rem;
+    color: var(--texto-secundario);
+    background: #F1EFEA;
+    border: 1px solid var(--color-borde-suave);
+    padding: 0.2rem 0.6rem;
     border-radius: var(--radio-full);
     font-weight: 700;
     font-family: var(--fuente-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
 }
 
 /* ============================================================
@@ -1637,24 +1675,27 @@ textarea:focus {
 
 .tab-compras-btn {
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
     padding: 0.65rem 1.25rem;
     border-radius: var(--radio-md);
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--texto-mutado);
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--texto-secundario);
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .tab-compras-btn:hover {
     color: var(--texto-color);
+    background: var(--color-canvas);
 }
 
 .tab-compras-btn.activa {
-    background: #fff;
-    color: var(--color-ambar);
+    background: var(--color-blanco);
+    color: var(--color-espresso);
+    border-color: var(--color-borde-suave);
     box-shadow: var(--sombra-card);
+    font-weight: 700;
 }
 
 .subtab-contenido {
@@ -1682,13 +1723,14 @@ textarea:focus {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: var(--color-ambar);
+    background: var(--color-espresso);
     color: #fff;
     font-weight: 800;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    font-size: 0.95rem;
 }
 
 .paso-circulo.exito {
@@ -1698,15 +1740,17 @@ textarea:focus {
 .btn-enlace-magico {
     background: transparent;
     border: none;
-    color: #7C3AED;
-    font-weight: 700;
+    color: var(--color-ambar);
+    font-weight: 600;
     font-size: 0.82rem;
     cursor: pointer;
     text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: color 0.15s ease;
 }
 
 .btn-enlace-magico:hover {
-    color: #6D28D9;
+    color: var(--color-ambar-hover);
 }
 
 .ia-acciones-fila {
@@ -1718,28 +1762,29 @@ textarea:focus {
 }
 
 .btn-ia-analizar {
-    background: linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%);
-    color: #fff;
-    border: none;
+    background: var(--color-espresso);
+    color: var(--color-crema-texto);
+    border: 1px solid var(--color-espresso-borde);
     border-radius: var(--radio-md);
     padding: 0.85rem 1.5rem;
-    font-size: 0.98rem;
+    font-size: 0.95rem;
     font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 0.65rem;
-    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
-    transition: all 0.15s ease;
+    box-shadow: 0 1px 3px rgba(26, 18, 14, 0.1);
+    transition: background 0.15s ease, transform 0.15s ease;
 }
 
 .btn-ia-analizar:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(124, 58, 237, 0.45);
+    background: var(--color-espresso-hover);
+    color: #fff;
+    transform: translateY(-1px);
 }
 
 .estado-ia-pill {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: var(--texto-mutado);
     background: var(--color-canvas);
     padding: 0.5rem 1rem;
@@ -1767,7 +1812,7 @@ textarea:focus {
 .btn-exito-comercial {
     background: var(--color-exito);
     color: #fff;
-    border: none;
+    border: 1px solid var(--color-exito);
     border-radius: var(--radio-md);
     padding: 0.85rem 1.5rem;
     font-size: 0.95rem;
@@ -1776,18 +1821,35 @@ textarea:focus {
     align-items: center;
     gap: 0.5rem;
     cursor: pointer;
-    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(26, 18, 14, 0.08);
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .btn-exito-comercial:hover {
     background: var(--color-exito-hover);
+    border-color: var(--color-exito-hover);
+    transform: translateY(-1px);
 }
 
 .btn-descartar-comercial {
-    background: var(--color-canvas);
+    background: var(--color-blanco);
     color: var(--color-peligro);
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-md);
+    padding: 0.85rem 1.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-descartar-comercial:hover {
+    background: var(--color-peligro-light);
+    border-color: var(--color-peligro);
+}
     padding: 0.85rem 1.5rem;
     font-size: 0.95rem;
     font-weight: 600;
@@ -2172,20 +2234,33 @@ textarea:focus {
 }
 
 .evento-item {
-    background: var(--color-canvas);
+    background: var(--color-blanco);
     border: 1px solid var(--color-borde-suave);
-    border-left: 4px solid var(--color-info);
-    border-radius: var(--radio-sm);
-    padding: 0.65rem 0.85rem;
+    border-radius: var(--radio-md);
+    padding: 0.75rem 0.95rem;
     font-size: 0.85rem;
+    box-shadow: 0 1px 2px rgba(26, 18, 14, 0.03);
 }
 
-.evento-item.exito { border-left-color: var(--color-exito); }
-.evento-item.peligro {
-    border-left-color: var(--color-peligro);
-    background: #FEF2F2;
+.evento-item.info {
+    border-color: rgba(43, 108, 176, 0.25);
+    background: rgba(43, 108, 176, 0.04);
 }
-.evento-item.advertencia { border-left-color: var(--color-advertencia); }
+
+.evento-item.exito {
+    border-color: rgba(45, 106, 79, 0.25);
+    background: rgba(45, 106, 79, 0.04);
+}
+
+.evento-item.peligro {
+    border-color: rgba(155, 44, 44, 0.25);
+    background: rgba(155, 44, 44, 0.04);
+}
+
+.evento-item.advertencia {
+    border-color: rgba(192, 86, 33, 0.25);
+    background: rgba(192, 86, 33, 0.04);
+}
 
 .evento-titulo {
     display: flex;
@@ -2209,7 +2284,7 @@ textarea:focus {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(30, 20, 16, 0.65);
+    background: rgba(26, 18, 14, 0.7);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
@@ -2219,7 +2294,8 @@ textarea:focus {
 }
 
 .modal-tarjeta {
-    background: #fff;
+    background: var(--color-blanco);
+    border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-lg);
     box-shadow: var(--sombra-modal);
     width: 100%;
@@ -2233,7 +2309,7 @@ textarea:focus {
 }
 
 @keyframes zoomIn {
-    from { opacity: 0; transform: scale(0.95); }
+    from { opacity: 0; transform: scale(0.97); }
     to { opacity: 1; transform: scale(1); }
 }
 
@@ -2243,7 +2319,14 @@ textarea:focus {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #FAF7F2;
+    background: var(--color-canvas);
+}
+
+.modal-cabecera h3 {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--texto-color);
+    letter-spacing: -0.015em;
 }
 
 .btn-cerrar-modal {
@@ -2252,6 +2335,14 @@ textarea:focus {
     font-size: 1.25rem;
     cursor: pointer;
     color: var(--texto-mutado);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease;
+}
+
+.btn-cerrar-modal:hover {
+    color: var(--texto-color);
 }
 
 .modal-cuerpo {
@@ -2288,15 +2379,15 @@ textarea:focus {
 
 .ticket-termico-papel {
     width: 320px;
-    background: #FFFDF9;
-    padding: 1.5rem 1.25rem;
+    background: #FCFBF8;
+    padding: 1.6rem 1.35rem;
     font-family: var(--fuente-mono);
-    color: #111;
+    color: #1A120E;
     font-size: 0.78rem;
-    line-height: 1.4;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    line-height: 1.45;
+    box-shadow: 0 10px 25px -5px rgba(26, 18, 14, 0.15), 0 4px 6px -2px rgba(26, 18, 14, 0.05);
     border-radius: 4px;
-    border: 1px solid #E5E0D8;
+    border: 1px solid #E5DFD5;
     position: relative;
 }
 
@@ -2307,21 +2398,23 @@ textarea:focus {
 .ticket-logo-cafe {
     font-size: 1.8rem;
     margin-bottom: 0.25rem;
+    color: var(--color-espresso);
 }
 
 .ticket-termico-header h2 {
     font-size: 1.05rem;
     font-weight: 800;
     letter-spacing: 0.05em;
+    color: var(--color-espresso);
 }
 
-.ticket-sub { font-size: 0.72rem; font-weight: 700; }
-.ticket-dir, .ticket-cuit { font-size: 0.65rem; color: #444; }
+.ticket-sub { font-size: 0.72rem; font-weight: 700; color: #4A3E38; }
+.ticket-dir, .ticket-cuit { font-size: 0.65rem; color: #665D56; }
 .ticket-separador-puntos, .ticket-separador-linea {
     overflow: hidden;
     white-space: nowrap;
     user-select: none;
-    color: #777;
+    color: #9C8E84;
     margin: 0.4rem 0;
 }
 
@@ -2348,11 +2441,12 @@ textarea:focus {
 .total-destacado {
     font-size: 0.98rem;
     font-weight: 800;
+    color: var(--color-espresso);
 }
 
 .ticket-iva-sub {
     font-size: 0.68rem;
-    color: #555;
+    color: #665D56;
 }
 
 .ticket-termico-footer {
@@ -2365,16 +2459,18 @@ textarea:focus {
     letter-spacing: 2px;
     font-weight: 900;
     margin: 0.5rem 0;
+    color: #1A120E;
 }
 
 .ticket-agradecimiento {
     font-weight: 800;
     font-size: 0.85rem;
+    color: var(--color-espresso);
 }
 
 .ticket-leyenda {
     font-size: 0.62rem;
-    color: #666;
+    color: #7A6C64;
     margin-top: 0.2rem;
 }
 
@@ -2384,9 +2480,9 @@ textarea:focus {
 }
 
 .btn-imprimir-ticket {
-    background: #111;
+    background: var(--color-espresso);
     color: #fff;
-    border: none;
+    border: 1px solid var(--color-espresso-borde);
     border-radius: var(--radio-md);
     padding: 0.75rem 1.25rem;
     font-size: 0.9rem;
@@ -2395,17 +2491,31 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    box-shadow: 0 1px 3px rgba(26, 18, 14, 0.1);
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.btn-imprimir-ticket:hover {
+    background: var(--color-espresso-hover);
+    transform: translateY(-1px);
 }
 
 .btn-nueva-venta {
     background: var(--color-ambar);
     color: #fff;
-    border: none;
+    border: 1px solid var(--color-ambar);
     border-radius: var(--radio-md);
     padding: 0.75rem 1.25rem;
     font-size: 0.9rem;
     font-weight: 700;
     cursor: pointer;
+    box-shadow: 0 1px 3px rgba(26, 18, 14, 0.1);
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.btn-nueva-venta:hover {
+    background: var(--color-ambar-hover);
+    transform: translateY(-1px);
 }
 
 /* ============================================================
@@ -2423,28 +2533,40 @@ textarea:focus {
 }
 
 .toast-notif {
-    background: #fff;
+    background: var(--color-blanco);
+    border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-md);
     padding: 0.85rem 1.25rem;
-    box-shadow: 0 10px 25px rgba(30, 20, 16, 0.15);
+    box-shadow: var(--sombra-dropdown);
     display: flex;
     align-items: center;
     gap: 0.85rem;
     font-size: 0.9rem;
     font-weight: 600;
-    border-left: 4px solid var(--color-ambar);
+    color: var(--texto-color);
     min-width: 280px;
     max-width: 380px;
     animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     pointer-events: auto;
 }
 
-.toast-notif.exito { border-left-color: var(--color-exito); }
-.toast-notif.peligro { border-left-color: var(--color-peligro); }
-.toast-notif.advertencia { border-left-color: var(--color-advertencia); }
+.toast-notif.exito {
+    border-color: rgba(45, 106, 79, 0.35);
+    background: #F4F9F5;
+}
+
+.toast-notif.peligro {
+    border-color: rgba(155, 44, 44, 0.35);
+    background: #FDF3F3;
+}
+
+.toast-notif.advertencia {
+    border-color: rgba(192, 86, 33, 0.35);
+    background: #FFFBEB;
+}
 
 @keyframes toastSlideIn {
-    from { opacity: 0; transform: translateX(50px); }
+    from { opacity: 0; transform: translateX(40px); }
     to { opacity: 1; transform: translateX(0); }
 }
 
@@ -2497,9 +2619,9 @@ textarea:focus {
    7. ZONA DE IMPORTACIÓN CSV DRAG & DROP Y BANNER OFFLINE
    ============================================================ */
 .zona-drop-csv {
-    border: 2px dashed var(--color-borde-hover);
+    border: 1px dashed var(--color-borde-hover);
     border-radius: var(--radio-lg);
-    background: #FAF7F2;
+    background: var(--color-canvas);
     padding: 2rem 1.5rem;
     text-align: center;
     cursor: pointer;
@@ -2526,8 +2648,8 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: 0.65rem;
-    background: #FEF3C7;
-    border: 1px solid #F59E0B;
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
     color: #92400E;
     padding: 0.35rem 0.85rem;
     border-radius: var(--radio-full);
