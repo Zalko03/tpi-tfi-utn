@@ -748,7 +748,7 @@ const renderizarCarritoTicket = () => {
     if (estadoApp.carrito.length === 0) {
         tabla.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted py-8">
+                <td colspan="5" class="col-centro text-center text-muted py-8">
                     El ticket está vacío.<br />Escanee un código de barras o seleccione productos.
                 </td>
             </tr>

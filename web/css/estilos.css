@@ -93,9 +93,24 @@ body {
 .text-center { text-align: center !important; }
 .text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
 .text-left { text-align: left !important; }
-.col-texto { text-align: left !important; }
-.col-centro { text-align: center !important; }
-.col-numero { text-align: right !important; font-variant-numeric: tabular-nums; }
+.col-texto,
+th.col-texto,
+td.col-texto {
+    text-align: left !important;
+}
+
+.col-centro,
+th.col-centro,
+td.col-centro {
+    text-align: center !important;
+}
+
+.col-numero,
+th.col-numero,
+td.col-numero {
+    text-align: right !important;
+    font-variant-numeric: tabular-nums;
+}
 .text-exito { color: var(--color-exito) !important; }
 .text-advertencia { color: var(--color-advertencia) !important; }
 .text-peligro { color: var(--color-peligro) !important; }
