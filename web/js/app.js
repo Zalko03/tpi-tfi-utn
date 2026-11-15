@@ -10,6 +10,7 @@ import {
     calcularResumenCarrito,
     eliminarVentaOffline,
     encolarVentaOffline,
+    escaparHtml,
     extraerItemsDesdeTextoLista,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
@@ -87,12 +88,21 @@ const leerCacheTurnoLocal = () => {
 
 const endpointsIniciales = resolverEndpointsServidor();
 
+sessionStorage.removeItem('cafe_pwd');
+const tokenInicialGuardado = sessionStorage.getItem('cafe_jwt') || '';
+if (tokenInicialGuardado.startsWith('offline-token-')) {
+    sessionStorage.removeItem('cafe_jwt');
+    sessionStorage.removeItem('cafe_user');
+}
+
 export const estadoApp = {
     modoConexion: endpointsIniciales.modoConexion,
     djangoUrl: endpointsIniciales.djangoUrl,
     nodeUrl: endpointsIniciales.nodeUrl,
-    tokenJwt: sessionStorage.getItem('cafe_jwt') || '',
-    usuario: JSON.parse(sessionStorage.getItem('cafe_user') || 'null'),
+    tokenJwt: tokenInicialGuardado.startsWith('offline-token-') ? '' : tokenInicialGuardado,
+    usuario: tokenInicialGuardado.startsWith('offline-token-')
+        ? null
+        : JSON.parse(sessionStorage.getItem('cafe_user') || 'null'),
     socket: null,
     turnoActivo: leerCacheTurnoLocal(),
     catalogo: leerCacheCatalogoLocal(),
@@ -158,7 +168,7 @@ export const mostrarToast = (mensaje, tipo = 'info') => {
     if (tipo === 'exito') iconoSvg = SVG_ICONOS.check;
     if (tipo === 'peligro' || tipo === 'advertencia') iconoSvg = SVG_ICONOS.alerta;
 
-    toast.innerHTML = `<span style="display: inline-flex; align-items: center;">${iconoSvg}</span><span>${mensaje}</span>`;
+    toast.innerHTML = `<span style="display: inline-flex; align-items: center;">${iconoSvg}</span><span>${escaparHtml(mensaje)}</span>`;
     contenedor.appendChild(toast);
 
     setTimeout(() => {
@@ -205,28 +215,13 @@ const asegurarSesionYTurnoParaSincronizacion = async () => {
         localStorage.setItem(CLAVE_NODE_URL, estadoApp.nodeUrl);
     }
 
-    const tokenInvalido = !estadoApp.tokenJwt || estadoApp.tokenJwt.startsWith('offline-token-');
-    if (tokenInvalido) {
-        const username = estadoApp.usuario?.username || 'duenio_demo';
-        const password = sessionStorage.getItem('cafe_pwd') || 'Demo1234!';
-        try {
-            const resAuth = await fetch(`${estadoApp.djangoUrl}/api/auth/token/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
-            });
-            if (resAuth.ok) {
-                const dataAuth = await resAuth.json();
-                estadoApp.tokenJwt = dataAuth.access;
-                sessionStorage.setItem('cafe_jwt', dataAuth.access);
-                if (dataAuth.usuario) {
-                    estadoApp.usuario = dataAuth.usuario;
-                    sessionStorage.setItem('cafe_user', JSON.stringify(dataAuth.usuario));
-                }
-            }
-        } catch {
-            // Se manejará en el intento de sincronización
-        }
+    const claimsToken = estadoApp.tokenJwt ? decodificarClaimsJwt(estadoApp.tokenJwt) : null;
+    const tokenExpirado = claimsToken?.exp ? claimsToken.exp * 1000 <= Date.now() : false;
+    if (!estadoApp.tokenJwt || !claimsToken || tokenExpirado) {
+        return {
+            ok: false,
+            error: 'La sesión expiró o es inválida. Iniciá sesión nuevamente para sincronizar.',
+        };
     }
 
     let turnoIdValido = estadoApp.turnoActivo?.estado === 'ABIERTO' ? estadoApp.turnoActivo?.id : null;
@@ -490,18 +485,42 @@ const configurarVisibilidadPorRol = (rol) => {
     }
 };
 
-const iniciarSesionContingenciaOffline = (username) => {
-    const uMin = String(username || 'cajero_demo').toLowerCase();
-    let rol = 'CAJERO';
-    if (uMin.includes('duenio')) rol = 'DUENIO';
-    else if (uMin.includes('encargado')) rol = 'ENCARGADO';
+const intentarReanudarSesionOffline = (usernameSolicitado = '') => {
+    const tokenGuardado = sessionStorage.getItem('cafe_jwt') || estadoApp.tokenJwt || '';
+    const claims = tokenGuardado && !tokenGuardado.startsWith('offline-token-')
+        ? decodificarClaimsJwt(tokenGuardado)
+        : null;
+    const tokenVigente = Boolean(
+        claims && (!claims.exp || claims.exp * 1000 > Date.now())
+    );
 
-    estadoApp.tokenJwt = `offline-token-${Date.now()}`;
-    estadoApp.usuario = {
-        id: 1,
-        username: username || 'cajero_demo',
-        rol,
-        permisos: [],
+    if (!tokenVigente) {
+        const estadoEl = $('mensaje-auth');
+        const msg = 'Sin conexión al servidor y sin sesión JWT válida en caché. Conectate para iniciar sesión.';
+        if (estadoEl) estadoEl.textContent = msg;
+        mostrarToast(msg, 'advertencia');
+        return false;
+    }
+
+    const usuarioCacheado = JSON.parse(sessionStorage.getItem('cafe_user') || 'null');
+    if (
+        usernameSolicitado
+        && claims.username
+        && claims.username.toLowerCase() !== String(usernameSolicitado).trim().toLowerCase()
+    ) {
+        const estadoEl = $('mensaje-auth');
+        const msg = 'Sin conexión: solo podés continuar con el usuario de la sesión JWT vigente en caché.';
+        if (estadoEl) estadoEl.textContent = msg;
+        mostrarToast(msg, 'advertencia');
+        return false;
+    }
+
+    estadoApp.tokenJwt = tokenGuardado;
+    estadoApp.usuario = usuarioCacheado || {
+        id: claims.user_id || claims.sub,
+        username: claims.username || 'Operador',
+        rol: claims.rol || 'CAJERO',
+        permisos: claims.permisos || [],
     };
     sessionStorage.setItem('cafe_jwt', estadoApp.tokenJwt);
     sessionStorage.setItem('cafe_user', JSON.stringify(estadoApp.usuario));
@@ -514,7 +533,8 @@ const iniciarSesionContingenciaOffline = (username) => {
     }
     actualizarEstadoSocketUI(false, '(Contingencia Offline)');
     actualizarIndicadorColaOffline();
-    mostrarToast(`Sesión iniciada en Modo Contingencia Offline (${username}).`, 'advertencia');
+    mostrarToast(`Sesión offline reanudada con JWT vigente (${estadoApp.usuario.username}).`, 'advertencia');
+    return true;
 };
 
 const ejecutarLogin = async (username, password, tokenManual = '') => {
@@ -529,8 +549,7 @@ const ejecutarLogin = async (username, password, tokenManual = '') => {
     }
 
     if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
-        if (password) sessionStorage.setItem('cafe_pwd', password);
-        iniciarSesionContingenciaOffline(username);
+        intentarReanudarSesionOffline(username);
         return;
     }
 
@@ -554,7 +573,6 @@ const ejecutarLogin = async (username, password, tokenManual = '') => {
 
         estadoApp.tokenJwt = data.access;
         sessionStorage.setItem('cafe_jwt', data.access);
-        if (password) sessionStorage.setItem('cafe_pwd', password);
 
         if (data.usuario) {
             estadoApp.usuario = data.usuario;
@@ -577,7 +595,7 @@ const ejecutarLogin = async (username, password, tokenManual = '') => {
         cargarDatosIniciales();
         mostrarToast(`Bienvenido a Sapori Stock, ${username}.`, 'exito');
     } catch {
-        iniciarSesionContingenciaOffline(username);
+        intentarReanudarSesionOffline(username);
     }
 };
 
@@ -586,6 +604,7 @@ const cerrarSesion = () => {
     estadoApp.usuario = null;
     sessionStorage.removeItem('cafe_jwt');
     sessionStorage.removeItem('cafe_user');
+    sessionStorage.removeItem('cafe_pwd');
     if (estadoApp.socket) {
         estadoApp.socket.disconnect();
     }
@@ -686,10 +705,10 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
         li.className = `evento-item ${item.nivel}`;
         li.innerHTML = `
             <div class="evento-titulo">
-                <span>${item.titulo}</span>
+                <span>${escaparHtml(item.titulo)}</span>
                 <small>${new Date(item.emitidoEn).toLocaleTimeString('es-AR')}</small>
             </div>
-            <div class="evento-detalle">${item.detalle}</div>
+            <div class="evento-detalle">${escaparHtml(item.detalle)}</div>
         `;
         lista.prepend(li);
     }
@@ -767,8 +786,8 @@ const renderizarCatalogoPOS = () => {
         card.innerHTML = `
             <div>
                 <div class="producto-icono-grande">${icono}</div>
-                <h4 class="producto-titulo">${prod.nombre}</h4>
-                <span class="producto-codigo-badge">${prod.codigo_barras || 'SIN CÓDIGO'}</span>
+                <h4 class="producto-titulo">${escaparHtml(prod.nombre)}</h4>
+                <span class="producto-codigo-badge">${escaparHtml(prod.codigo_barras || 'SIN CÓDIGO')}</span>
             </div>
             <div class="producto-precio-fila">
                 <span class="producto-precio-grande">${precioFormateado}</span>
@@ -818,7 +837,7 @@ const renderizarCarritoTicket = () => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td class="col-texto">
-                <strong>${item.nombre}</strong>
+                <strong>${escaparHtml(item.nombre)}</strong>
             </td>
             <td class="col-centro">
                 <div class="item-control-cant">
@@ -986,7 +1005,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
 
     if ($('ticket-termico-id')) $('ticket-termico-id').textContent = idFormateado;
     if ($('ticket-termico-fecha')) $('ticket-termico-fecha').textContent = new Date().toLocaleString('es-AR');
-    if ($('ticket-termico-cajero')) $('ticket-termico-cajero').textContent = estadoApp.usuario?.username || 'cajero_demo';
+    if ($('ticket-termico-cajero')) $('ticket-termico-cajero').textContent = estadoApp.usuario?.username || 'Operador';
     if ($('ticket-termico-turno')) $('ticket-termico-turno').textContent = datosVenta.turno_caja ? `#${datosVenta.turno_caja}` : '-';
 
     const leyendaEl = $('ticket-termico-leyenda');
@@ -1002,7 +1021,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
         for (const item of estadoApp.carrito) {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="col-texto">${item.cantidad}x ${item.nombre}</td>
+                <td class="col-texto">${item.cantidad}x ${escaparHtml(item.nombre)}</td>
                 <td class="col-numero">${formatearMoneda(item.subtotalDecimal)}</td>
             `;
             itemsBody.appendChild(tr);
@@ -1086,7 +1105,7 @@ const actualizarCardTurnoActivo = (turno) => {
     }
 
     if ($('caja-turno-cajero-texto')) {
-        $('caja-turno-cajero-texto').textContent = `Responsable: ${turno.usuario_nombre || estadoApp.usuario?.username || 'cajero_demo'}`;
+        $('caja-turno-cajero-texto').textContent = `Responsable: ${turno.usuario_nombre || estadoApp.usuario?.username || 'Operador'}`;
     }
 
     if ($('caja-turno-apertura-hora') && turno.apertura) {
@@ -1094,7 +1113,10 @@ const actualizarCardTurnoActivo = (turno) => {
     }
 
     if ($('caja-turno-ventas-efectivo')) {
-        $('caja-turno-ventas-efectivo').textContent = formatearMoneda(turno.ventas_efectivo_total || 0);
+        const ventasEfectivo = turno.ventas_efectivo_total;
+        $('caja-turno-ventas-efectivo').textContent = (ventasEfectivo === null || ventasEfectivo === undefined)
+            ? 'Confidencial (Arqueo ciego)'
+            : formatearMoneda(ventasEfectivo);
     }
 
     if ($('caja-turno-cant-tickets')) {
@@ -1130,9 +1152,9 @@ const renderizarMovimientosCaja = (movimientos = []) => {
         const hora = m.fecha ? new Date(m.fecha).toLocaleTimeString('es-AR') : '-';
         tr.innerHTML = `
             <td class="col-centro">${hora}</td>
-            <td class="col-centro"><span class="${esIngreso ? 'badge-diferencia-sobrante' : 'badge-diferencia-faltante'}">${m.tipo}</span></td>
+            <td class="col-centro"><span class="${esIngreso ? 'badge-diferencia-sobrante' : 'badge-diferencia-faltante'}">${escaparHtml(m.tipo)}</span></td>
             <td class="col-numero"><strong>${esIngreso ? '+' : '-'} ${formatearMoneda(m.monto)}</strong></td>
-            <td class="col-texto">${m.motivo || '-'}</td>
+            <td class="col-texto">${escaparHtml(m.motivo || '-')}</td>
         `;
         tbody.appendChild(tr);
     }
@@ -1167,14 +1189,14 @@ const renderizarTablaTurnosAuditoria = () => {
 
         tr.innerHTML = `
             <td class="col-centro"><strong>#${t.id}</strong></td>
-            <td class="col-texto">${t.usuario_nombre || 'cajero_demo'}</td>
+            <td class="col-texto">${escaparHtml(t.usuario_nombre || 'Operador')}</td>
             <td class="col-centro">${t.apertura ? new Date(t.apertura).toLocaleDateString('es-AR') : '-'}</td>
             <td class="col-centro">${t.cierre ? new Date(t.cierre).toLocaleTimeString('es-AR') : '<span class="badge-estado-verde">Abierto</span>'}</td>
             <td class="col-numero">${formatearMoneda(t.efectivo_inicial)}</td>
             <td class="col-numero">${t.efectivo_esperado !== null ? formatearMoneda(t.efectivo_esperado) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero">${t.efectivo_contado !== null ? formatearMoneda(t.efectivo_contado) : '-'}</td>
             <td class="col-numero">${diferenciaBadge}</td>
-            <td class="col-centro"><span class="badge-rol ${t.estado === 'ABIERTO' ? 'cajero' : 'duenio'}">${t.estado}</span></td>
+            <td class="col-centro"><span class="badge-rol ${t.estado === 'ABIERTO' ? 'cajero' : 'duenio'}">${escaparHtml(t.estado)}</span></td>
         `;
         tbody.appendChild(tr);
     }
@@ -1265,9 +1287,9 @@ const renderizarTablaInsumos = () => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td class="col-centro">#${ins.id}</td>
-            <td class="col-texto"><strong>${ins.nombre}</strong></td>
-            <td class="col-centro"><span class="producto-codigo-badge">${ins.unidad_base}</span></td>
-            <td class="col-numero"><strong>${formatearMoneda(ins.costo_unitario)}</strong> / ${ins.unidad_base}</td>
+            <td class="col-texto"><strong>${escaparHtml(ins.nombre)}</strong></td>
+            <td class="col-centro"><span class="producto-codigo-badge">${escaparHtml(ins.unidad_base)}</span></td>
+            <td class="col-numero"><strong>${formatearMoneda(ins.costo_unitario)}</strong> / ${escaparHtml(ins.unidad_base)}</td>
             <td class="col-centro"><span class="badge-estado-verde">Activo</span></td>
         `;
         tbody.appendChild(tr);
@@ -1345,11 +1367,11 @@ const renderizarPreviewCsv = (resultadoCsv) => {
     for (const item of resultadoCsv.items) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td class="col-texto"><strong>${item.nombre_insumo}</strong></td>
-            <td class="col-centro">${item.cantidad}</td>
-            <td class="col-centro"><span class="producto-codigo-badge">${item.unidad}</span></td>
+            <td class="col-texto"><strong>${escaparHtml(item.nombre_insumo)}</strong></td>
+            <td class="col-centro">${escaparHtml(item.cantidad)}</td>
+            <td class="col-centro"><span class="producto-codigo-badge">${escaparHtml(item.unidad)}</span></td>
             <td class="col-numero font-bold">${formatearMoneda(item.precio_total)}</td>
-            <td class="col-numero">${item.alicuota}%</td>
+            <td class="col-numero">${escaparHtml(item.alicuota)}%</td>
             <td class="col-numero">${formatearMoneda(item.envio)}</td>
         `;
         tbody.appendChild(tr);
@@ -1505,18 +1527,14 @@ const renderizarPropuestaIAComercial = (doc) => {
 
     let envioDetectado = salida.envioDetectado ?? doc.envioDetectado ?? doc.propuesta?.envioDetectado ?? 0;
 
-    if (itemsCrudos.length === 0) {
+    const esDocumentoServidor = Boolean(doc._id && !String(doc._id).startsWith('local-'));
+    if (itemsCrudos.length === 0 && !esDocumentoServidor) {
         const textoFuente = doc.entrada?.textoLista || $('textarea-lista-ia')?.value || '';
         const extraidoLocal = extraerItemsDesdeTextoLista(textoFuente);
         if (extraidoLocal.items.length > 0) {
             itemsCrudos = extraidoLocal.items;
             if (!Number(envioDetectado)) {
                 envioDetectado = extraidoLocal.envioDetectado;
-            }
-        } else if (estadoApp.csvParseadoActual?.items?.length > 0) {
-            itemsCrudos = estadoApp.csvParseadoActual.items;
-            if (!Number(envioDetectado)) {
-                envioDetectado = estadoApp.csvParseadoActual.envioTotal;
             }
         }
     }
@@ -1579,9 +1597,9 @@ const renderizarPropuestaIAComercial = (doc) => {
     };
 
     banner.innerHTML = `
-        <strong>Proveedor Detectado:</strong> ${proveedorDetectado} ·
+        <strong>Proveedor Detectado:</strong> ${escaparHtml(proveedorDetectado)} ·
         <strong>Flete Prorrateado:</strong> ${formatearMoneda(envioDetectado || 0)} ·
-        <strong>Estado:</strong> <span class="badge-rol duenio">${doc.estado || 'LISTA'}</span>
+        <strong>Estado:</strong> <span class="badge-rol duenio">${escaparHtml(doc.estado || 'LISTA')}</span>
     `;
 
     tabla.innerHTML = '';
@@ -1600,9 +1618,9 @@ const renderizarPropuestaIAComercial = (doc) => {
             (it.confianza <= 1 ? it.confianza * 100 : it.confianza)
         );
         tr.innerHTML = `
-            <td class="col-texto"><strong>${it.nombreInsumo}</strong></td>
-            <td class="col-centro">${it.cantidad}</td>
-            <td class="col-centro"><span class="producto-codigo-badge">${it.unidad}</span></td>
+            <td class="col-texto"><strong>${escaparHtml(it.nombreInsumo)}</strong></td>
+            <td class="col-centro">${escaparHtml(it.cantidad)}</td>
+            <td class="col-centro"><span class="producto-codigo-badge">${escaparHtml(it.unidad)}</span></td>
             <td class="col-numero font-bold">${formatearMoneda(it.precioTotal)}</td>
             <td class="col-centro"><span class="badge-estado-verde">${pctConfianza}%</span></td>
         `;
@@ -1663,10 +1681,10 @@ const renderizarTablaRecetas = () => {
             <td class="col-texto">
                 <div style="display: flex; align-items: center; gap: 0.65rem;">
                     <span style="display: inline-flex; color: var(--color-ambar);">${obtenerIconoProducto(p.nombre)}</span>
-                    <strong>${p.nombre}</strong>
+                    <strong>${escaparHtml(p.nombre)}</strong>
                 </div>
             </td>
-            <td class="col-centro"><span class="producto-codigo-badge">${p.codigo_barras || 'S/C'}</span></td>
+            <td class="col-centro"><span class="producto-codigo-badge">${escaparHtml(p.codigo_barras || 'S/C')}</span></td>
             <td class="col-numero font-bold">${formatearMoneda(p.precio_venta)}</td>
             <td class="col-numero">${!esCajero && costo !== null ? formatearMoneda(costo) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero text-exito">${!esCajero && ganancia !== null ? formatearMoneda(ganancia) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
@@ -1723,9 +1741,9 @@ const mostrarDesgloseReceta = (producto) => {
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td class="col-texto"><strong>${item.insumo_nombre || `Insumo #${item.insumo}`}</strong></td>
-            <td class="col-centro">${cant} <span class="producto-codigo-badge">${item.unidad || item.insumo_unidad_base || 'un'}</span></td>
-            <td class="col-numero">${!esCajero && costoUnit !== null ? `${formatearMoneda(costoUnit)} / ${item.insumo_unidad_base || item.unidad}` : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-texto"><strong>${escaparHtml(item.insumo_nombre || `Insumo #${item.insumo}`)}</strong></td>
+            <td class="col-centro">${cant} <span class="producto-codigo-badge">${escaparHtml(item.unidad || item.insumo_unidad_base || 'un')}</span></td>
+            <td class="col-numero">${!esCajero && costoUnit !== null ? `${formatearMoneda(costoUnit)} / ${escaparHtml(item.insumo_unidad_base || item.unidad || 'un')}` : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero font-bold">${!esCajero && subtotal !== null ? formatearMoneda(subtotal) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
         `;
         tbody.appendChild(tr);
@@ -1853,7 +1871,7 @@ const renderizarRankingProductos = (ranking) => {
             div.className = 'ranking-barra-item';
             div.innerHTML = `
                 <div class="ranking-barra-cabecera">
-                    <span>${item.producto_nombre}</span>
+                    <span>${escaparHtml(item.producto_nombre)}</span>
                     <strong>${cant} un. (${formatearMoneda(item.ingresos_totales)})</strong>
                 </div>
                 <div class="ranking-barra-riel">
@@ -1872,7 +1890,7 @@ const renderizarRankingProductos = (ranking) => {
             const div = document.createElement('div');
             div.className = 'item-sin-rotacion';
             div.innerHTML = `
-                <span><strong>${item.producto_nombre}</strong></span>
+                <span><strong>${escaparHtml(item.producto_nombre)}</strong></span>
                 <span class="badge-diferencia-faltante">0 ventas registradas</span>
             `;
             contenedorSin.appendChild(div);
@@ -2001,12 +2019,16 @@ const consultarDiagnosticoStockIA = async () => {
 
         const fechaDictamen = new Date().toLocaleString('es-AR');
         const itemsCriticosHtml = insumosCriticos.length > 0
-            ? insumosCriticos.map((ins) => `<li><strong>${ins.nombre}:</strong> Costo base ${formatearMoneda(ins.costo_unitario)} por ${ins.unidad_base}. Nivel de prioridad de adquisición: ALTO.</li>`).join('')
+            ? insumosCriticos.map((ins) => `<li><strong>${escaparHtml(ins.nombre)}:</strong> Costo base ${formatearMoneda(ins.costo_unitario)} por ${escaparHtml(ins.unidad_base)}. Nivel de prioridad de adquisición: ALTO.</li>`).join('')
             : '<li>No se registran insumos con desvíos de costo extraordinarios.</li>';
 
         const productosImpactoHtml = productosConReceta.length > 0
-            ? productosConReceta.slice(0, 4).map((p) => `<li><strong>${p.nombre}:</strong> Costo actual de receta ${formatearMoneda(p.costo_total_calculado || 0)} (Margen: ${p.margen_bruto ? Math.round(Number(p.margen_bruto) * 100) : 0}%).</li>`).join('')
+            ? productosConReceta.slice(0, 4).map((p) => `<li><strong>${escaparHtml(p.nombre)}:</strong> Costo actual de receta ${formatearMoneda(p.costo_total_calculado || 0)} (Margen: ${p.margen_bruto ? Math.round(Number(p.margen_bruto) * 100) : 0}%).</li>`).join('')
             : '<li>Las recetas registradas operan con parámetros de costeo directo estándar.</li>';
+
+        const resumenTextoIa = dictamenIa
+            ? escaparHtml(dictamenIa)
+            : 'El inventario refleja consistencia entre los costos unitarios de insumos registrados y el precio de venta al público en mostrador.';
 
         cuerpo.innerHTML = `
             <h4>INFORME EJECUTIVO: DIAGNÓSTICO DE INVENTARIO Y REPOSICIÓN ESTRATÉGICA</h4>
@@ -2014,7 +2036,7 @@ const consultarDiagnosticoStockIA = async () => {
             
             <div class="ia-bloque">
                 <div class="ia-bloque-titulo">1. Estado General del Inventario</div>
-                <p>Se auditaron ${insumos.length} insumos activos y ${catalogo.length} productos comerciales en carta. ${dictamenIa || 'El inventario refleja consistencia entre los costos unitarios de insumos registrados y el precio de venta al público en mostrador.'}</p>
+                <p>Se auditaron ${insumos.length} insumos activos y ${catalogo.length} productos comerciales en carta. ${resumenTextoIa}</p>
             </div>
 
             <div class="ia-bloque">
@@ -2037,7 +2059,7 @@ const consultarDiagnosticoStockIA = async () => {
     } catch (err) {
         cuerpo.innerHTML = `
             <h4>DIAGNÓSTICO DE INVENTARIO Y REPOSICIÓN</h4>
-            <p>Se produjo un inconveniente al consultar los servicios centrales: ${err.message}. Los datos de inventario local se encuentran resguardados en memoria.</p>
+            <p>Se produjo un inconveniente al consultar los servicios centrales: ${escaparHtml(err.message)}. Los datos de inventario local se encuentran resguardados en memoria.</p>
         `;
         mostrarToast('Error al procesar diagnóstico de stock.', 'peligro');
     }
@@ -2068,16 +2090,15 @@ const auditarCierreCajaIA = async () => {
             estadoApp.turnosHistorial = turnos;
         }
 
-        const turnoAuditado = turnos[0] || estadoApp.turnoActivo || {
-            id: 1,
-            usuario_nombre: 'cajero_demo',
-            estado: 'ABIERTO',
-            efectivo_inicial: '10000.00',
-            efectivo_esperado: '10000.00',
-            efectivo_contado: '10000.00',
-            diferencia: '0.00',
-            apertura: new Date().toISOString(),
-        };
+        const turnoAuditado = turnos[0] || estadoApp.turnoActivo;
+        if (!turnoAuditado || !turnoAuditado.id) {
+            cuerpo.innerHTML = `
+                <h4>AUDITORÍA DE CAJA Y RENTABILIDAD</h4>
+                <p class="text-muted">No hay turnos registrados ni activos en el servidor para auditar.</p>
+            `;
+            mostrarToast('No hay ningún turno disponible para auditar.', 'advertencia');
+            return;
+        }
 
         let movimientos = [];
         try {
@@ -2136,7 +2157,7 @@ const auditarCierreCajaIA = async () => {
 
             <div class="ia-bloque">
                 <div class="ia-bloque-titulo">1. Identificación del Turno Auditado</div>
-                <p><strong>Turno N°:</strong> #${turnoAuditado.id} · <strong>Cajero Asignado:</strong> ${turnoAuditado.usuario_nombre || 'cajero_demo'} · <strong>Estado:</strong> ${turnoAuditado.estado}</p>
+                <p><strong>Turno N°:</strong> #${turnoAuditado.id} · <strong>Cajero Asignado:</strong> ${escaparHtml(turnoAuditado.usuario_nombre || 'Operador')} · <strong>Estado:</strong> ${escaparHtml(turnoAuditado.estado)}</p>
                 <p><strong>Horario de Apertura:</strong> ${aperturaStr} · <strong>Horario de Cierre:</strong> ${cierreStr}</p>
             </div>
 
@@ -2162,7 +2183,7 @@ const auditarCierreCajaIA = async () => {
     } catch (err) {
         cuerpo.innerHTML = `
             <h4>DICTAMEN DE AUDITORÍA DE CAJA</h4>
-            <p>Se produjo un inconveniente al consultar los registros transaccionales: ${err.message}. Los datos locales de caja permanecen accesibles.</p>
+            <p>Se produjo un inconveniente al consultar los registros transaccionales: ${escaparHtml(err.message)}. Los datos locales de caja permanecen accesibles.</p>
         `;
         mostrarToast('Error al auditar cierre de caja.', 'peligro');
     }
@@ -2209,14 +2230,14 @@ const renderizarTarjetasPersonal = () => {
             rolClase = 'encargado';
         }
 
-        const nombre = u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.username;
+        const nombre = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.username || 'Usuario');
 
         card.innerHTML = `
             <div class="usuario-tarjeta-cabecera">
-                <div class="usuario-avatar-tarjeta">${nombre[0].toUpperCase()}</div>
+                <div class="usuario-avatar-tarjeta">${escaparHtml((nombre[0] || 'U').toUpperCase())}</div>
                 <div>
-                    <h4 style="font-size: 1.05rem; font-weight: 800;">${nombre}</h4>
-                    <span class="text-muted" style="font-size: 0.8rem;">@${u.username}</span>
+                    <h4 style="font-size: 1.05rem; font-weight: 800;">${escaparHtml(nombre)}</h4>
+                    <span class="text-muted" style="font-size: 0.8rem;">@${escaparHtml(u.username || '')}</span>
                 </div>
             </div>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -2653,6 +2674,7 @@ Flete y entrega a local: $4500`;
 
     $('form-importacion-ia')?.addEventListener('submit', async (e) => {
         e.preventDefault();
+        estadoApp.csvParseadoActual = null;
         const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Mayorista Café del Litoral';
         const textoLista = $('textarea-lista-ia')?.value.trim() || '';
         const estadoPill = $('estado-importacion-ia');
@@ -2741,9 +2763,14 @@ Flete y entrega a local: $4500`;
                     await cargarCatalogo();
                     return;
                 }
+                mostrarToast(
+                    data.mensaje || `Error ${res.status} al aprobar la propuesta en el servidor.`,
+                    'peligro'
+                );
+                return;
             }
 
-            // Fallback directo al endpoint transaccional de Django
+            // Solo para borradores locales sin ID en MongoDB se confirma directo en Django
             const resDjango = await fetch(`${estadoApp.djangoUrl}/api/compras/confirmar-importacion/`, {
                 method: 'POST',
                 headers: {

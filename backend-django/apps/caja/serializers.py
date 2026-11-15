@@ -118,4 +118,5 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
             if not puede_ver_esperado:
                 ret["efectivo_esperado"] = None
                 ret["diferencia"] = None
+                ret["ventas_efectivo_total"] = None
         return ret

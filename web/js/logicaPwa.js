@@ -1,4 +1,19 @@
 /**
+ * Escapa caracteres HTML especiales para prevenir XSS al renderizar texto externo en innerHTML.
+ */
+export const escaparHtml = (valor) => {
+    if (valor === null || valor === undefined) {
+        return '';
+    }
+    return String(valor)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+/**
  * Convierte un monto decimal (string o número) a entero en centavos
  * para evitar errores de punto flotante en cálculos de caja (AGENTS.md).
  */

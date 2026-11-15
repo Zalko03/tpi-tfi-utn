@@ -5,6 +5,7 @@ import {
     convertirMontoACentavos,
     eliminarVentaOffline,
     encolarVentaOffline,
+    escaparHtml,
     extraerItemsDesdeTextoLista,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
@@ -230,6 +231,16 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             const vacia = eliminarVentaOffline(r2.ventaEncolada.idTemporal, storage);
             expect(vacia).toEqual([]);
             expect(obtenerVentasOffline(storage)).toEqual([]);
+        });
+
+        it('escapa etiquetas HTML peligrosas para prevenir XSS en tablas y reportes', () => {
+            expect(escaparHtml('<img src=x onerror="alert(1)">')).toBe(
+                '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;'
+            );
+            expect(escaparHtml("Café 'Especial' & Co.")).toBe(
+                'Café &#39;Especial&#39; &amp; Co.'
+            );
+            expect(escaparHtml(null)).toBe('');
         });
     });
 });

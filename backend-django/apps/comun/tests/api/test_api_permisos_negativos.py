@@ -516,3 +516,58 @@ class TestApiPermisosNegativosSistematicos:
         assert data["efectivo_esperado"] == "5000.00"
         assert data["diferencia"] == "200.00"
         assert data["estado"] == "CERRADO"
+
+    def test_arqueo_ciego_cajero_no_recibe_ventas_efectivo_total(self, client, cajero):
+        """Un cajero no debe recibir ventas_efectivo_total al consultar turnos (arqueo 100% ciego)."""
+        from apps.recetas.models import Producto
+        from apps.ventas.services import registrar_venta
+
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("5000.00"))
+        prod = Producto.objects.create(
+            nombre="Espresso",
+            precio_venta=Decimal("2500.00"),
+            costo_total_calculado=Decimal("700.0000"),
+        )
+        registrar_venta(
+            items_data=[{"producto_id": prod.id, "cantidad": Decimal("1")}],
+            medio_pago="EFECTIVO",
+            turno_caja=turno,
+        )
+
+        client.force_authenticate(user=cajero)
+        res_detalle = client.get(f"/api/caja/turnos/{turno.id}/")
+        assert res_detalle.status_code == status.HTTP_200_OK
+        detalle = res_detalle.json()
+        assert detalle["efectivo_esperado"] is None
+        assert detalle["diferencia"] is None
+        assert detalle["ventas_efectivo_total"] is None
+
+        res_lista = client.get("/api/caja/turnos/")
+        assert res_lista.status_code == status.HTTP_200_OK
+        datos_lista = res_lista.json().get("datos", [])
+        assert len(datos_lista) >= 1
+        assert datos_lista[0]["ventas_efectivo_total"] is None
+
+    def test_arqueo_duenio_recibe_ventas_efectivo_total(self, client, duenio):
+        """Dueño con caja.ver_efectivo_esperado ve ventas_efectivo_total del turno."""
+        from apps.recetas.models import Producto
+        from apps.ventas.services import registrar_venta
+
+        turno = TurnoCaja.objects.create(usuario=duenio, efectivo_inicial=Decimal("5000.00"))
+        prod = Producto.objects.create(
+            nombre="Latte",
+            precio_venta=Decimal("3200.00"),
+            costo_total_calculado=Decimal("900.0000"),
+        )
+        registrar_venta(
+            items_data=[{"producto_id": prod.id, "cantidad": Decimal("1")}],
+            medio_pago="EFECTIVO",
+            turno_caja=turno,
+        )
+
+        client.force_authenticate(user=duenio)
+        res_detalle = client.get(f"/api/caja/turnos/{turno.id}/")
+        assert res_detalle.status_code == status.HTTP_200_OK
+        detalle = res_detalle.json()
+        assert detalle["ventas_efectivo_total"] == "3200.00"
+        assert detalle["efectivo_esperado"] is not None
