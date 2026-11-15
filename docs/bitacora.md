@@ -21,6 +21,32 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-15
+Tarea: Enforzar `producto.precio_venta` desde BD en `ventas`, auditoría offline y revisión de descuentos
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- Se agregó `NORMAS.md` en la raíz del repositorio con reglas de commits, fronteras de servicios, negocio/seguridad y comandos de verificación.
+- En `backend-django/apps/ventas/services.py` (`registrar_venta`), se ignoró siempre el `precio_unitario` enviado por el cliente y se calculó el cobro exclusivamente desde `producto.precio_venta` (`Decimal`).
+- Ante un `precio_unitario` recibido distinto de `producto.precio_venta` (ej. ventas offline sincronizadas tras cambio de precio), la venta no se rechaza, se cobra el precio vigente de BD y se registra la diferencia en un log estructurado (`logger.warning` con `venta_id`, `producto_id`, `producto_nombre`, `origen`, `precio_cliente`, `precio_bd`, `diferencia`).
+- En `backend-django/apps/ventas/models.py` (`0003_alter_venta_origen`) y `serializers.py`, se incorporó `"offline"` a `Venta.ORIGENES` y `allow_null=True` en `VentaItemInputSerializer.precio_unitario`.
+- Se verificó `backend-django/` y `web/` confirmando que no existen descuentos implementados en el POS ni en `Venta`/`VentaItem` (solo existe la clave de permiso `ventas.aplicar_descuento` en el catálogo RBAC).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Sin cambios de endpoints ni contratos de respuesta; `POST /api/ventas/` continúa aceptando `precio_unitario` opcionalmente y admite ahora `origen="offline"`.
+Problemas y decisiones técnicas:
+- `Venta` no posee campo `observaciones`/`notas`; para no alterar contratos existentes ni agregar columnas innecesarias, la discrepancia de precio offline se audita vía `logger.warning` estructurado compatible con `FormateadorJson`.
+Archivos tocados:
+- `NORMAS.md`
+- `backend-django/apps/ventas/models.py`, `backend-django/apps/ventas/migrations/0003_alter_venta_origen.py`, `backend-django/apps/ventas/serializers.py`, `backend-django/apps/ventas/services.py`
+- `backend-django/apps/ventas/tests/unit/test_unit_ventas_services.py`, `backend-django/apps/ventas/tests/api/test_api_ventas.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check backend-django/ ai-service/`
+---
+
+---
 Fecha: 2026-11-14
 Tarea: Remediación integral de hallazgos funcionales, seguridad, IA y despliegue en `feature/pos-comercial-sapori-stock`
 Rama: feature/pos-comercial-sapori-stock

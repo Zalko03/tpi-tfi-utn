@@ -1,5 +1,6 @@
 """Tests unitarios para ventas y congelamiento de snapshots de costo."""
 
+import logging
 from decimal import Decimal
 
 import pytest
@@ -98,3 +99,114 @@ class TestVentasServices:
             )
             assert ser.is_valid(), ser.errors
             assert ser.validated_data["origen"] == "propio"
+
+    def test_venta_ignora_precio_unitario_manipulado_menor_y_mayor_que_bd(self, caplog):
+        """Siempre se cobra producto.precio_venta ignorando precios manipulados del cliente."""
+        turno = TurnoCaja.objects.create(efectivo_inicial=Decimal("5000.00"))
+        producto = Producto.objects.create(
+            nombre="Latte Vainilla",
+            precio_venta=Decimal("3200.00"),
+            costo_total_calculado=Decimal("1000.0000"),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="apps.ventas.services"):
+            venta = registrar_venta(
+                items_data=[
+                    {
+                        "producto_id": producto.id,
+                        "cantidad": Decimal("1"),
+                        "precio_unitario": Decimal("10.00"),
+                    },
+                    {
+                        "producto_id": producto.id,
+                        "cantidad": Decimal("2"),
+                        "precio_unitario": Decimal("9900.00"),
+                    },
+                ],
+                medio_pago="EFECTIVO",
+                turno_caja=turno,
+            )
+
+        assert venta.total == Decimal("9600.00")
+        precios = [item.precio_unitario for item in venta.items.all()]
+        assert precios == [Decimal("3200.00"), Decimal("3200.00")]
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 2
+        assert warnings[0].producto_id == producto.id
+        assert warnings[0].producto_nombre == "Latte Vainilla"
+        assert warnings[0].origen == "propio"
+        assert warnings[0].precio_cliente == "10.00"
+        assert warnings[0].precio_bd == "3200.00"
+        assert warnings[0].diferencia == "3190.00"
+        assert warnings[1].precio_cliente == "9900.00"
+        assert warnings[1].diferencia == "-6700.00"
+
+    def test_venta_offline_sincronizada_tras_cambio_precio_no_se_rechaza_y_loguea(self, caplog):
+        """
+        Caso 1: una venta con origen='offline' y precio anterior al cambio en BD
+        se registra con producto.precio_venta sin rechazarse y emite log auditable.
+        """
+        turno = TurnoCaja.objects.create(efectivo_inicial=Decimal("5000.00"))
+        producto = Producto.objects.create(
+            nombre="Medialuna Manteca",
+            precio_venta=Decimal("2000.00"),
+            costo_total_calculado=Decimal("600.0000"),
+        )
+        # Cambio de precio posterior mientras el POS estuvo sin conexión
+        producto.precio_venta = Decimal("2500.00")
+        producto.save(update_fields=["precio_venta"])
+
+        with caplog.at_level(logging.WARNING, logger="apps.ventas.services"):
+            venta = registrar_venta(
+                items_data=[
+                    {
+                        "producto_id": producto.id,
+                        "cantidad": Decimal("2"),
+                        "precio_unitario": Decimal("2000.00"),
+                    }
+                ],
+                medio_pago="EFECTIVO",
+                origen="offline",
+                turno_caja=turno,
+            )
+
+        assert venta.origen == "offline"
+        assert venta.total == Decimal("5000.00")
+        item = venta.items.get()
+        assert item.precio_unitario == Decimal("2500.00")
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        rec = warnings[0]
+        assert rec.producto_id == producto.id
+        assert rec.producto_nombre == "Medialuna Manteca"
+        assert rec.origen == "offline"
+        assert rec.precio_cliente == "2000.00"
+        assert rec.precio_bd == "2500.00"
+        assert rec.diferencia == "500.00"
+        assert "origen=offline" in rec.getMessage()
+        assert "diferencia=500.00" in rec.getMessage()
+
+    def test_venta_con_mismo_precio_bd_no_emite_warning(self, caplog):
+        """Si precio_unitario coincide con producto.precio_venta, no se registra diferencia."""
+        producto = Producto.objects.create(
+            nombre="Americano",
+            precio_venta=Decimal("2100.00"),
+            costo_total_calculado=Decimal("500.0000"),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="apps.ventas.services"):
+            venta = registrar_venta(
+                items_data=[
+                    {
+                        "producto_id": producto.id,
+                        "cantidad": Decimal("1"),
+                        "precio_unitario": Decimal("2100.00"),
+                    }
+                ],
+                medio_pago="EFECTIVO",
+            )
+
+        assert venta.total == Decimal("2100.00")
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []

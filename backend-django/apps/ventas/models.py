@@ -15,6 +15,7 @@ class Venta(models.Model):
     ORIGENES = (
         ("propio", "Cobro propio en caja"),
         ("importado", "Importado de POS externo"),
+        ("offline", "Sincronizado de cola offline"),
     )
 
     turno_caja = models.ForeignKey(

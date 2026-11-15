@@ -12,7 +12,9 @@ class VentaItemInputSerializer(serializers.Serializer):
     producto_id = serializers.IntegerField(required=False)
     producto = serializers.IntegerField(required=False)
     cantidad = serializers.DecimalField(max_digits=8, decimal_places=2, default=Decimal("1.00"))
-    precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    precio_unitario = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
 
     def validate(self, attrs):
         if "producto_id" not in attrs and "producto" not in attrs:
@@ -62,12 +64,12 @@ class VentaSerializer(serializers.ModelSerializer):
             data = dict(data)
             if "items" in data and "items_entrada" not in data:
                 data["items_entrada"] = data["items"]
-            if "origen" in data and str(data["origen"]).strip().lower() in (
-                "local",
-                "caja",
-                "propio",
-            ):
-                data["origen"] = "propio"
+            if "origen" in data and data["origen"] is not None:
+                origen_norm = str(data["origen"]).strip().lower()
+                if origen_norm in ("local", "caja", "propio"):
+                    data["origen"] = "propio"
+                elif origen_norm in ("importado", "offline"):
+                    data["origen"] = origen_norm
         return super().to_internal_value(data)
 
     def validate(self, attrs):

@@ -1,5 +1,6 @@
 """Servicio de ventas, congelamiento de snapshots de costo y reportes agregados."""
 
+import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import transaction
@@ -8,6 +9,8 @@ from django.db.models.functions import TruncDate
 
 from apps.recetas.models import Producto
 from apps.ventas.models import Venta, VentaItem
+
+logger = logging.getLogger(__name__)
 
 
 @transaction.atomic
@@ -46,14 +49,45 @@ def registrar_venta(
             raise ValueError("La cantidad a vender debe ser mayor a cero.")
 
         producto = Producto.objects.select_for_update().get(id=producto_id, estado_activo=True)
+        precio_bd = (
+            producto.precio_venta
+            if isinstance(producto.precio_venta, Decimal)
+            else Decimal(str(producto.precio_venta))
+        )
         precio_raw = item.get("precio_unitario")
-        if precio_raw in (None, ""):
-            precio_unitario = producto.precio_venta
-        else:
-            precio_candidato = Decimal(str(precio_raw))
-            precio_unitario = (
-                producto.precio_venta if precio_candidato <= Decimal("0") else precio_candidato
-            )
+        if precio_raw not in (None, ""):
+            try:
+                precio_cliente = Decimal(str(precio_raw))
+            except (InvalidOperation, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"El precio_unitario informado para el producto {producto.id} no es válido."
+                ) from exc
+
+            if precio_cliente != precio_bd:
+                diferencia = precio_bd - precio_cliente
+                logger.warning(
+                    "Diferencia de precio en venta #%s: producto_id=%s producto=%r "
+                    "origen=%s precio_cliente=%s precio_bd=%s diferencia=%s",
+                    venta.id,
+                    producto.id,
+                    producto.nombre,
+                    origen,
+                    precio_cliente,
+                    precio_bd,
+                    diferencia,
+                    extra={
+                        "venta_id": venta.id,
+                        "producto_id": producto.id,
+                        "producto_nombre": producto.nombre,
+                        "origen": origen,
+                        "precio_cliente": str(precio_cliente),
+                        "precio_bd": str(precio_bd),
+                        "diferencia": str(diferencia),
+                    },
+                )
+
+        # El precio unitario se calcula siempre desde la BD (NORMAS.md §3).
+        precio_unitario = precio_bd
         costo_snapshot = producto.costo_total_calculado
 
         VentaItem.objects.create(
