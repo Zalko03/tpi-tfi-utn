@@ -62,12 +62,13 @@ class VentaSerializer(serializers.ModelSerializer):
             data = dict(data)
             if "items" in data and "items_entrada" not in data:
                 data["items_entrada"] = data["items"]
+            if "origen" in data and str(data["origen"]).strip().lower() in (
+                "local",
+                "caja",
+                "propio",
+            ):
+                data["origen"] = "propio"
         return super().to_internal_value(data)
-
-    def validate_origen(self, value):
-        if str(value).lower() in ("local", "caja", "propio"):
-            return "propio"
-        return value
 
     def validate(self, attrs):
         turno = attrs.get("turno_caja")

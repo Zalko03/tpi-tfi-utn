@@ -91,7 +91,11 @@ class Command(BaseCommand):
                 nombre=nombre_insumo,
                 defaults={"unidad_base": unidad_base, "costo_unitario": costo_inicial},
             )
-            if not creado and insumo.costo_unitario != costo_inicial:
+            if (
+                not creado
+                and insumo.costo_unitario != costo_inicial
+                and not Compra.objects.filter(insumo=insumo).exists()
+            ):
                 insumo.costo_unitario = costo_inicial
                 insumo.unidad_base = unidad_base
                 insumo.save(update_fields=["costo_unitario", "unidad_base", "actualizado_en"])
@@ -198,7 +202,7 @@ class Command(BaseCommand):
         ]
 
         for prov, ins, precio, cant, unidad, envio in compras_a_registrar:
-            if not Compra.objects.filter(proveedor=prov, insumo=ins).exists():
+            if not Compra.objects.filter(insumo=ins).exists():
                 registrar_compra_y_actualizar_costo(
                     proveedor=prov,
                     insumo=ins,
@@ -368,21 +372,20 @@ class Command(BaseCommand):
             actualizar_costo_y_margen_producto(prod)
             productos_dict[p_data["nombre"]] = prod
 
-        # 5. Turno de Caja Abierto y Movimientos de Caja Chica
+        # 5. Turno de Caja Abierto y Movimientos de Caja Chica (sin forzar id=1)
         cajero_user = usuarios_instancias.get(ROL_CAJERO)
-        turno, _ = TurnoCaja.objects.get_or_create(
-            id=1,
-            defaults={
-                "usuario": cajero_user,
-                "efectivo_inicial": Decimal("10000.00"),
-                "apertura": timezone.now(),
-                "estado": "ABIERTO",
-            },
+        turno = (
+            TurnoCaja.objects.filter(usuario=cajero_user, estado="ABIERTO")
+            .order_by("-apertura", "-id")
+            .first()
         )
-        if turno.usuario != cajero_user or turno.estado != "ABIERTO":
-            turno.usuario = cajero_user
-            turno.estado = "ABIERTO"
-            turno.save()
+        if turno is None:
+            turno = TurnoCaja.objects.create(
+                usuario=cajero_user,
+                efectivo_inicial=Decimal("10000.00"),
+                apertura=timezone.now(),
+                estado="ABIERTO",
+            )
 
         # Movimientos de caja chica (idempotente)
         movimientos_data = [

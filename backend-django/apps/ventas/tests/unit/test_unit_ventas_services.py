@@ -78,3 +78,23 @@ class TestVentasServices:
         assert venta.total == Decimal("11400.00")
         precios = [item.precio_unitario for item in venta.items.all()]
         assert precios == [Decimal("3800.00"), Decimal("3800.00")]
+
+    def test_venta_serializer_normaliza_origen_local_y_caja_a_propio(self):
+        """El alias de origen 'local' o 'caja' debe normalizarse antes de ChoiceField."""
+        from apps.ventas.serializers import VentaSerializer
+
+        producto = Producto.objects.create(
+            nombre="Cortado",
+            precio_venta=Decimal("2200.00"),
+            costo_total_calculado=Decimal("700.0000"),
+        )
+        for alias in ("local", "caja", "propio"):
+            ser = VentaSerializer(
+                data={
+                    "origen": alias,
+                    "medio_pago": "EFECTIVO",
+                    "items": [{"producto": producto.id, "cantidad": "1"}],
+                }
+            )
+            assert ser.is_valid(), ser.errors
+            assert ser.validated_data["origen"] == "propio"

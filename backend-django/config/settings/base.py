@@ -135,9 +135,12 @@ MIDDLEWARE = [
 _cors_default = (
     "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000"
 )
-_cors_origenes = os.environ.get("CORS_ALLOWED_ORIGINS", _cors_default)
+_cors_origenes = os.environ.get("CORS_ALLOWED_ORIGINS", _cors_default if DEBUG else "")
 CORS_ALLOWED_ORIGINS = []
-for _origen in [*_cors_origenes.split(","), *_cors_default.split(",")]:
+_candidatos_cors = list(_cors_origenes.split(","))
+if DEBUG:
+    _candidatos_cors.extend(_cors_default.split(","))
+for _origen in _candidatos_cors:
     _limpio = _origen.strip()
     if _limpio and _limpio != "*" and _limpio not in CORS_ALLOWED_ORIGINS:
         CORS_ALLOWED_ORIGINS.append(_limpio)

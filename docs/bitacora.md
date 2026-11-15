@@ -21,6 +21,35 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-14
+Tarea: Remediación integral de hallazgos funcionales, seguridad, IA y despliegue en `feature/pos-comercial-sapori-stock`
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **POS, Ventas y Cola Offline:** Se corrigió el envío de precios unitarios reales desde el carrito de `web/js/app.js` y el respaldo de servidor en `registrar_venta` (`backend-django/apps/ventas/services.py`) cuando llega `0` o `None`. Se eliminaron fallbacks silenciosos (`turno || 1`, `producto || 1`, apertura automática con `$10000`) y se agregó confirmación/borrado individual en `web/js/logicaPwa.js` (`eliminarVentaOffline`) para evitar cobros duplicados tras cortes parciales.
+- **Seguridad, Arqueo Ciego y XSS:** Se ocultó `ventas_efectivo_total` en `TurnoCajaSerializer` cuando el usuario no tiene permiso de arqueo esperado; se eliminaron credenciales hardcodeadas (`cafe_pwd`, `duenio_demo`/`Demo1234!`) en `web/js/app.js`, restringiendo el reingreso offline a JWT vigente en caché sin elevar roles por nombre de usuario; se incorporó `escaparHtml` en todas las tablas y reportes HTML dinámicos; y se eliminó el fallback silencioso a `confirmar-importacion` de Django o CSV previo al fallar `/aprobar` o devolver 0 ítems.
+- **Consultor IA, Node y ai-service:** Se implementó `POST /v1/resumen-semanal` en `backend-node` (protegido con JWT, permiso `reportes.ver_operativos`, rate limit y `express-validator`), conectado desde `web/js/app.js` con `?limite=100` y métricas reales de `ganancia-diaria` y `ranking-productos`. Se cambió `socket.io.js` en `web/index.html` a ruta relativa `/socket.io/socket.io.js`. En `ai-service`, `normalizar_monto` y el parser heurístico usan `Decimal` en lugar de `float`, el fallback heurístico marca `contingencia: True` y los `.env.example` dejan `GROQ_API_KEY=` vacío.
+- **Seed, CORS, Serializador, Symlink y README:** En `seed_demo.py` se evitó forzar `TurnoCaja(id=1)` y se protegió `costo_unitario`/compras previas si el insumo ya tenía `Compra`. En `backend-django/config/settings/base.py` los orígenes `localhost` por defecto en CORS se suman solo con `DEBUG=True`. En `VentaSerializer` la normalización de `origen` pasó a `to_internal_value`. Se removió el symlink recursivo `web/app` (agregando `location /app/` en `web/nginx.conf`) y se alineó `README.md` con `localStorage`, atajos reales (`F4`, `Enter`, `F2`, `Esc`) y conteo de 582 tests.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Nuevo endpoint autenticado `POST /v1/resumen-semanal` en `backend-node` delegando a `ai.client.js` (`POST /v1/resumen-semanal` en `ai-service`) y proxied en `web/nginx.conf`.
+- Mapeo Nginx `location /app/` a `/usr/share/nginx/html/` tras eliminar el symlink `web/app`.
+Problemas y decisiones técnicas:
+- Se mantuvo `/app/...` en URLs de `web/index.html` usando Nginx alias para compatibilidad simultánea con Express static (`/app`) y Docker Nginx sin mantener symlinks recursivos en Git.
+- Al no existir `Compra` con supplier coincidente o si existe compra previa con otro proveedor, `seed_demo.py` ahora comprueba `Compra.objects.filter(insumo=ins).exists()` antes de alterar costos.
+Archivos tocados:
+- `backend-django/apps/ventas/services.py`, `backend-django/apps/ventas/serializers.py`, `backend-django/apps/caja/serializers.py`, `backend-django/apps/insumos/management/commands/seed_demo.py`, `backend-django/config/settings/base.py`
+- `backend-node/app.js`, `backend-node/src/routes/resumenSemanal.routes.js`, `backend-node/src/controllers/resumenSemanal.controller.js`, `backend-node/src/services/resumenSemanal.service.js`
+- `ai-service/app/services/proveedor_ia.py`, `ai-service/app/services/extraccion.py`, `ai-service/app/services/resumen.py`, `.env.example`, `ai-service/.env.example`
+- `web/js/app.js`, `web/js/logicaPwa.js`, `web/index.html`, `web/nginx.conf`, eliminación de `web/app`
+- Tests nuevos/actualizados en Django (`test_unit_ventas_services.py`, `test_api_permisos_negativos.py`, `test_unit_seed_demo.py`), Node (`logicaPwa.unit.test.js`, `resumenSemanal.integration.test.js`) y `ai-service` (`test_unit_adapters_y_servicios.py`)
+- `README.md`, `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/` (375 passed)
+- `cd backend-node && npm test` (140 passed)
+- `ai-service/.venv/bin/pytest ai-service/` (67 passed)
+- `.venv/bin/ruff check backend-django/ ai-service/` y `cd backend-node && npm run lint`
+---
+
+---
 Fecha: 2026-11-09
 Tarea: Incorporación de GroqAdapter en ai-service (LPU Cloud) y fallback determinista de demostración
 Rama: feature/pos-comercial-sapori-stock
