@@ -226,7 +226,7 @@ const asegurarSesionYTurnoParaSincronizacion = async () => {
 
     let turnoIdValido = estadoApp.turnoActivo?.estado === 'ABIERTO' ? estadoApp.turnoActivo?.id : null;
     try {
-        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
+        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -735,7 +735,7 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 export const cargarCatalogo = async () => {
     if (estadoApp.modoConexion !== 'offline' && navigator.onLine !== false) {
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/productos/`, {
+            const res = await fetch(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -1052,7 +1052,7 @@ export const cargarTurnoActivo = async () => {
     }
 
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
+        const res = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -1238,7 +1238,7 @@ const cerrarTurnoCaja = async (efectivoContado) => {
 // ============================================================
 export const cargarInsumos = async () => {
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/insumos/`, {
+        const res = await fetch(`${estadoApp.djangoUrl}/api/insumos/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -1257,7 +1257,7 @@ export const cargarInsumos = async () => {
 
 export const cargarProveedores = async () => {
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/proveedores/`, {
+        const res = await fetch(`${estadoApp.djangoUrl}/api/proveedores/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -1833,7 +1833,7 @@ export const cargarFinanzas = async () => {
             if ($('fin-margen-promedio')) $('fin-margen-promedio').textContent = `Margen neto promedio: ${margenPct}%`;
         }
 
-        const resRanking = await fetch(`${estadoApp.djangoUrl}/api/ventas/ranking-productos/?limite=10`, {
+        const resRanking = await fetch(`${estadoApp.djangoUrl}/api/ventas/ranking-productos/?limite=100`, {
             headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` },
         });
         if (resRanking.ok) {
@@ -1949,7 +1949,7 @@ const consultarDiagnosticoStockIA = async () => {
     try {
         let insumos = estadoApp.insumos || [];
         if (insumos.length === 0) {
-            const resInsumos = await fetch(`${estadoApp.djangoUrl}/api/insumos/`, {
+            const resInsumos = await fetch(`${estadoApp.djangoUrl}/api/insumos/?limite=100`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -1964,7 +1964,7 @@ const consultarDiagnosticoStockIA = async () => {
 
         let catalogo = estadoApp.catalogo || [];
         if (catalogo.length === 0) {
-            const resCat = await fetch(`${estadoApp.djangoUrl}/api/productos/`, {
+            const resCat = await fetch(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -1988,30 +1988,77 @@ const consultarDiagnosticoStockIA = async () => {
 
         let dictamenIa = null;
         try {
-            const payloadAi = {
-                fecha_desde: new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0],
-                fecha_hasta: new Date().toISOString().split('T')[0],
-                total_ventas: String(catalogo.reduce((acc, p) => acc + (Number(p.precio_venta) || 0), 0).toFixed(2)),
-                ganancia_bruta_total: '0.00',
-                cantidad_tickets: 10,
-                productos: catalogo.slice(0, 5).map((p) => ({
+            const fechaDesde = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+            const fechaHasta = new Date().toISOString().split('T')[0];
+
+            const [resGanancia, resRanking] = await Promise.all([
+                fetch(
+                    `${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/?fecha_inicio=${fechaDesde}&fecha_fin=${fechaHasta}`,
+                    { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
+                ).catch(() => null),
+                fetch(
+                    `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?fecha_inicio=${fechaDesde}&fecha_fin=${fechaHasta}&limite=100`,
+                    { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
+                ).catch(() => null),
+            ]);
+
+            const gananciaData = resGanancia && resGanancia.ok ? await resGanancia.json() : null;
+            const rankingData = resRanking && resRanking.ok ? await resRanking.json() : null;
+
+            const mapaCatalogo = new Map(catalogo.map((p) => [Number(p.id), p]));
+            const masVendidos = Array.isArray(rankingData?.mas_vendidos) ? rankingData.mas_vendidos : [];
+
+            const productosPayload = masVendidos.length > 0
+                ? masVendidos.slice(0, 10).map((item) => {
+                    const prodCat = mapaCatalogo.get(Number(item.producto_id));
+                    const ingresos = Number(item.ingresos_totales || 0);
+                    const margenRatio = prodCat?.margen_bruto !== null && prodCat?.margen_bruto !== undefined
+                        ? Number(prodCat.margen_bruto)
+                        : 0;
+                    const gananciaItem = ingresos * margenRatio;
+                    return {
+                        nombre: item.producto_nombre,
+                        unidades_vendidas: Math.round(Number(item.unidades_vendidas || 0)),
+                        ingresos_totales: ingresos.toFixed(2),
+                        ganancia_bruta: gananciaItem.toFixed(2),
+                        margen_bruto_pct: (margenRatio * 100).toFixed(2),
+                    };
+                })
+                : catalogo.slice(0, 5).map((p) => ({
                     nombre: p.nombre,
-                    unidades_vendidas: 10,
-                    ingresos_totales: String(((Number(p.precio_venta) || 0) * 10).toFixed(2)),
-                    ganancia_bruta: '5000.00',
-                    margen_bruto_pct: String(Math.round((Number(p.margen_bruto) || 0.6) * 100)),
-                })),
-                alertas_insumos: insumosCriticos.map((i) => `Insumo ${i.nombre}: costo unitario $${i.costo_unitario} por ${i.unidad_base}`),
-                version_prompt: 'v1',
-            };
-            const resAi = await fetch(`${estadoApp.nodeUrl}/v1/resumen-semanal`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payloadAi),
-            }).catch(() => null);
-            if (resAi && resAi.ok) {
-                const dataAi = await resAi.json();
-                dictamenIa = dataAi.resumen_ejecutivo;
+                    unidades_vendidas: 0,
+                    ingresos_totales: '0.00',
+                    ganancia_bruta: '0.00',
+                    margen_bruto_pct: p.margen_bruto !== null && p.margen_bruto !== undefined
+                        ? (Number(p.margen_bruto) * 100).toFixed(2)
+                        : '0.00',
+                }));
+
+            if (productosPayload.length > 0 && estadoApp.tokenJwt) {
+                const payloadAi = {
+                    fecha_desde: fechaDesde,
+                    fecha_hasta: fechaHasta,
+                    total_ventas: String(Number(gananciaData?.ingresos_totales || 0).toFixed(2)),
+                    ganancia_bruta_total: String(Number(gananciaData?.ganancia_bruta_diaria || 0).toFixed(2)),
+                    cantidad_tickets: Number(gananciaData?.cantidad_tickets || 0),
+                    productos: productosPayload,
+                    alertas_insumos: insumosCriticos.map(
+                        (i) => `Insumo ${i.nombre}: costo unitario $${i.costo_unitario} por ${i.unidad_base}`
+                    ),
+                    version_prompt: 'v1',
+                };
+                const resAi = await fetch(`${estadoApp.nodeUrl}/v1/resumen-semanal`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify(payloadAi),
+                }).catch(() => null);
+                if (resAi && resAi.ok) {
+                    const dataAi = await resAi.json();
+                    dictamenIa = dataAi.resumen_ejecutivo;
+                }
             }
         } catch {
             // Fallback determinista inmediato
@@ -2078,7 +2125,7 @@ const auditarCierreCajaIA = async () => {
 
     try {
         let turnos = estadoApp.turnosHistorial || [];
-        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
+        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -2102,7 +2149,7 @@ const auditarCierreCajaIA = async () => {
 
         let movimientos = [];
         try {
-            const resMovs = await fetch(`${estadoApp.djangoUrl}/api/caja/movimientos/?turno_caja=${turnoAuditado.id}`, {
+            const resMovs = await fetch(`${estadoApp.djangoUrl}/api/caja/movimientos/?turno_caja=${turnoAuditado.id}&limite=100`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -2118,7 +2165,7 @@ const auditarCierreCajaIA = async () => {
 
         let ventasTurno = [];
         try {
-            const resVentas = await fetch(`${estadoApp.djangoUrl}/api/ventas/?turno_caja=${turnoAuditado.id}`, {
+            const resVentas = await fetch(`${estadoApp.djangoUrl}/api/ventas/?turno_caja=${turnoAuditado.id}&limite=100`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -2194,7 +2241,7 @@ const auditarCierreCajaIA = async () => {
 // ============================================================
 export const cargarPersonal = async () => {
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/usuarios/`, {
+        const res = await fetch(`${estadoApp.djangoUrl}/api/usuarios/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',

@@ -3,6 +3,7 @@
 import json
 import re
 from abc import ABC, abstractmethod
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Optional
 
 import httpx
@@ -206,6 +207,12 @@ def parsear_lista_precios_heuristica(
         if m_prov and len(m_prov.group(1).strip()) > 2:
             proveedor = m_prov.group(1).strip()
 
+    def a_decimal(texto: str) -> Decimal:
+        try:
+            return Decimal(str(texto))
+        except (InvalidOperation, ValueError):
+            return Decimal("0.00")
+
     def normalizar_monto(s: str) -> str:
         s = s.replace("$", "").strip()
         if "." in s and "," in s:
@@ -215,8 +222,9 @@ def parsear_lista_precios_heuristica(
         elif "," in s:
             s = s.replace(",", ".")
         try:
-            return f"{float(s):.2f}"
-        except Exception:
+            monto = Decimal(s).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            return f"{monto:.2f}"
+        except (InvalidOperation, ValueError):
             return "0.00"
 
     for linea in lineas:
@@ -235,9 +243,12 @@ def parsear_lista_precios_heuristica(
             precio_csv = normalizar_monto(partes_csv[3])
             alicuota_csv = normalizar_monto(partes_csv[4]) if len(partes_csv) >= 5 else "21.00"
             envio_csv = normalizar_monto(partes_csv[5]) if len(partes_csv) >= 6 else "0.00"
-            if nombre_csv and float(precio_csv) > 0:
-                if float(envio_csv) > 0:
-                    envio = f"{float(envio) + float(envio_csv):.2f}"
+            if nombre_csv and a_decimal(precio_csv) > Decimal("0"):
+                if a_decimal(envio_csv) > Decimal("0"):
+                    envio_acumulado = (a_decimal(envio) + a_decimal(envio_csv)).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
+                    envio = f"{envio_acumulado:.2f}"
                 items.append(
                     {
                         "nombre_insumo": nombre_csv,
@@ -245,7 +256,9 @@ def parsear_lista_precios_heuristica(
                         "unidad": unidad_csv,
                         "precio_total": precio_csv,
                         "iva_incluido": True,
-                        "alicuota": alicuota_csv if float(alicuota_csv) > 0 else "21.00",
+                        "alicuota": alicuota_csv
+                        if a_decimal(alicuota_csv) > Decimal("0")
+                        else "21.00",
                         "confianza": "0.99",
                         "texto_original": linea,
                     }
@@ -263,7 +276,7 @@ def parsear_lista_precios_heuristica(
             continue
 
         precio_str = normalizar_monto(m_precio.group(1))
-        if float(precio_str) <= 0:
+        if a_decimal(precio_str) <= Decimal("0"):
             continue
 
         sub = linea[: m_precio.start()].strip(" :-*\t")
@@ -340,6 +353,7 @@ def parsear_lista_precios_heuristica(
         "moneda": "ARS",
         "items": items,
         "advertencias": advertencias,
+        "contingencia": True,
     }
 
 
@@ -375,6 +389,7 @@ def fallback_determinista_demostracion(datos_usuario: str) -> dict[str, Any]:
             "alertas_costos": [
                 "Revisar precio de reposición de leche y descartables en próximo pedido mayorista."
             ],
+            "contingencia": True,
         }
 
     proveedor = None

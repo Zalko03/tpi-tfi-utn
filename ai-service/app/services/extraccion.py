@@ -105,6 +105,7 @@ async def extraer_precios_de_lista(
                 timeout=timeout,
             )
             salida_validada = SalidaIAExtraccionPrecios.model_validate(salida_cruda)
+            es_contingencia = bool(salida_cruda.get("contingencia", False))
             latencia_ms = int((time.perf_counter() - inicio) * 1000)
 
             return RespuestaExtraccionPrecios(
@@ -116,10 +117,14 @@ async def extraer_precios_de_lista(
                 items=salida_validada.items,
                 advertencias=salida_validada.advertencias,
                 version_prompt=solicitud.version_prompt,
-                proveedor_ia=nombre_proveedor,
+                proveedor_ia="contingencia" if es_contingencia else nombre_proveedor,
                 latencia_ms=max(0, latencia_ms),
-                contingencia=False,
-                mensaje_contingencia=None,
+                contingencia=es_contingencia,
+                mensaje_contingencia=(
+                    "Extracción procesada mediante heurística local de contingencia."
+                    if es_contingencia
+                    else None
+                ),
             )
         except asyncio.TimeoutError:
             ultimo_error = (

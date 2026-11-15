@@ -426,3 +426,45 @@ class TestUnitServiciosConContingencia:
         assert respuesta.mensaje_contingencia is not None
         assert "Latte Vainilla" in respuesta.productos_destacados
         assert "Suba en jarabe de vainilla" in respuesta.alertas_costos
+
+    async def test_fallback_heuristico_groq_sin_api_key_marca_contingencia_y_usa_decimal(self):
+        """Sin GROQ_API_KEY, el fallback heurístico marca contingencia=True y conserva precisión Decimal."""
+        from app.services.proveedor_ia import GroqAdapter, parsear_lista_precios_heuristica
+
+        resultado_csv = parsear_lista_precios_heuristica(
+            texto="Café en grano;2;kg;19999.99;21;100.10\nAzúcar;1;kg;1500.50;10.5;50.25",
+            proveedor_informado="Tostadero Demo",
+        )
+        assert resultado_csv["contingencia"] is True
+        assert resultado_csv["envio_detectado"] == "150.35"
+        assert resultado_csv["items"][0]["precio_total"] == "19999.99"
+
+        adaptador = GroqAdapter(api_key="", fallback_demo=True)
+        solicitud = SolicitudExtraccionPrecios(
+            texto_lista="Café en grano 1 kg $25000",
+            proveedor_nombre="Tostadero Demo",
+        )
+        respuesta = await extraer_precios_de_lista(solicitud, adaptador=adaptador)
+        assert respuesta.contingencia is True
+        assert respuesta.proveedor_ia == "contingencia"
+        assert len(respuesta.items) == 1
+
+        solicitud_resumen = SolicitudResumenSemanal(
+            fecha_desde="2026-10-20",
+            fecha_hasta="2026-10-27",
+            total_ventas="125000.00",
+            ganancia_bruta_total="75000.00",
+            cantidad_tickets=45,
+            productos=[
+                ProductoRendimientoEntrada(
+                    nombre="Espresso",
+                    unidades_vendidas=45,
+                    ingresos_totales="125000.00",
+                    ganancia_bruta="75000.00",
+                    margen_bruto_pct="60.00",
+                )
+            ],
+        )
+        respuesta_resumen = await generar_resumen_semanal(solicitud_resumen, adaptador=adaptador)
+        assert respuesta_resumen.contingencia is True
+        assert respuesta_resumen.proveedor_ia == "contingencia"
