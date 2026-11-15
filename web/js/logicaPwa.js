@@ -535,6 +535,23 @@ export const encolarVentaOffline = (ventaPayload, storagePersonalizado = null) =
 };
 
 /**
+ * Elimina una venta específica de la cola offline apenas se confirma su envío exitoso.
+ */
+export const eliminarVentaOffline = (idTemporal, storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    const colaActual = obtenerVentasOffline(storage);
+    const nuevaCola = colaActual.filter((item) => item?.idTemporal !== idTemporal);
+    if (storage) {
+        if (nuevaCola.length === 0) {
+            storage.removeItem(CLAVE_COLA_VENTAS_OFFLINE);
+        } else {
+            storage.setItem(CLAVE_COLA_VENTAS_OFFLINE, JSON.stringify(nuevaCola));
+        }
+    }
+    return nuevaCola;
+};
+
+/**
  * Vacía la cola de ventas offline una vez sincronizadas con el servidor.
  */
 export const limpiarColaOffline = (storagePersonalizado = null) => {

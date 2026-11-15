@@ -8,11 +8,11 @@ import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularResumenCarrito,
+    eliminarVentaOffline,
     encolarVentaOffline,
     extraerItemsDesdeTextoLista,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
-    limpiarColaOffline,
     obtenerContenidoPlantillaCsv,
     obtenerVentasOffline,
     parsearCsvProveedor,
@@ -255,33 +255,23 @@ const asegurarSesionYTurnoParaSincronizacion = async () => {
                 estadoApp.turnoActivo = turnoPropioAbierto;
                 localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnoPropioAbierto));
             } else {
-                const resCrear = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        monto_apertura: '10000.00',
-                        efectivo_inicial: '10000.00',
-                    }),
-                });
-                if (resCrear.ok) {
-                    const nuevoTurno = await resCrear.json();
-                    turnoIdValido = nuevoTurno.id;
-                    estadoApp.turnoActivo = nuevoTurno;
-                    localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(nuevoTurno));
-                }
+                turnoIdValido = null;
             }
         }
     } catch {
-        // Fallback al turno en caché
+        // Fallback al turno abierto en caché únicamente si sigue marcado como ABIERTO
     }
 
-    return turnoIdValido || estadoApp.turnoActivo?.id || 1;
+    return turnoIdValido;
 };
 
+let sincronizandoColaOffline = false;
+
 export const sincronizarVentasPendientes = async () => {
+    if (sincronizandoColaOffline) {
+        return;
+    }
+
     // Si el modo de conexión estaba en "offline" manual/contingencia, intentar reconectar contra el servidor local/activo sin bloquearse por el flag manual
     if (estadoApp.modoConexion === 'offline') {
         const host = window.location.hostname;
@@ -311,73 +301,106 @@ export const sincronizarVentasPendientes = async () => {
         return;
     }
 
-    mostrarToast(`Sincronizando ${cola.length} venta(s) pendiente(s) con el servidor...`, 'info');
-    const turnoIdActivo = await asegurarSesionYTurnoParaSincronizacion();
-    let sincronizadas = 0;
+    sincronizandoColaOffline = true;
+    try {
+        mostrarToast(`Sincronizando ${cola.length} venta(s) pendiente(s) con el servidor...`, 'info');
+        const turnoIdActivo = await asegurarSesionYTurnoParaSincronizacion();
+        if (!turnoIdActivo) {
+            mostrarToast(
+                'No hay un turno de caja abierto para sincronizar la cola offline. Abra un turno primero.',
+                'peligro'
+            );
+            return;
+        }
 
-    for (const itemCola of cola) {
-        const raw = itemCola.payload || {};
-        const itemsRaw = raw.items_entrada || raw.items || [];
-        const medioPago = raw.medio_pago || raw.metodo_pago || 'EFECTIVO';
+        let sincronizadas = 0;
 
-        const itemsMapeados = itemsRaw.map((it) => {
-            const prodId = Number(it.producto || it.producto_id || it.id || 1);
-            const cant = String(it.cantidad || 1);
-            const itemObj = {
-                producto: prodId,
-                producto_id: prodId,
-                cantidad: cant,
-            };
-            if (it.precio_unitario) {
-                itemObj.precio_unitario = String(it.precio_unitario);
-            }
-            return itemObj;
-        });
+        for (const itemCola of cola) {
+            const raw = itemCola.payload || {};
+            const itemsRaw = raw.items_entrada || raw.items || [];
+            const medioPago = raw.medio_pago || raw.metodo_pago || 'EFECTIVO';
 
-        const payloadNormalizado = {
-            turno_caja: turnoIdActivo,
-            medio_pago: String(medioPago).toUpperCase(),
-            origen: raw.origen || 'propio',
-            items: itemsMapeados,
-            items_entrada: itemsMapeados,
-        };
-
-        try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/ventas/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify(payloadNormalizado),
-            });
-            if (res.ok) {
-                sincronizadas += 1;
-            } else {
+            let itemsMapeados;
+            try {
+                itemsMapeados = itemsRaw.map((it) => {
+                    const prodId = Number(it.producto || it.producto_id || it.id);
+                    if (!Number.isInteger(prodId) || prodId <= 0) {
+                        throw new Error('Producto faltante o inválido en una venta de la cola offline.');
+                    }
+                    const cant = String(it.cantidad || 1);
+                    const itemObj = {
+                        producto: prodId,
+                        producto_id: prodId,
+                        cantidad: cant,
+                    };
+                    if (it.precio_unitario && Number(it.precio_unitario) > 0) {
+                        itemObj.precio_unitario = String(it.precio_unitario);
+                    }
+                    return itemObj;
+                });
+            } catch (errItem) {
+                mostrarToast(errItem.message, 'peligro');
                 break;
             }
-        } catch {
-            break;
-        }
-    }
 
-    if (sincronizadas === cola.length) {
-        limpiarColaOffline();
-        if (estadoApp.modoConexion === 'offline') {
-            estadoApp.modoConexion = 'local';
-            localStorage.setItem(CLAVE_MODO_CONEXION, 'local');
+            if (itemsMapeados.length === 0) {
+                mostrarToast('Una venta en cola offline no contiene productos válidos.', 'peligro');
+                break;
+            }
+
+            const payloadNormalizado = {
+                turno_caja: turnoIdActivo,
+                medio_pago: String(medioPago).toUpperCase(),
+                origen: raw.origen || 'propio',
+                items: itemsMapeados,
+                items_entrada: itemsMapeados,
+            };
+
+            try {
+                const res = await fetch(`${estadoApp.djangoUrl}/api/ventas/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify(payloadNormalizado),
+                });
+                if (res.ok) {
+                    sincronizadas += 1;
+                    // Eliminar inmediatamente para evitar cobros duplicados ante un corte a mitad de la cola
+                    eliminarVentaOffline(itemCola.idTemporal);
+                    actualizarIndicadorColaOffline();
+                } else {
+                    break;
+                }
+            } catch {
+                break;
+            }
         }
-        actualizarIndicadorColaOffline();
-        conectarSocketTiempoReal();
-        mostrarToast(`Se sincronizaron ${sincronizadas} venta(s) pendiente(s) con éxito.`, 'exito');
-        await cargarTurnoActivo();
-        await cargarCatalogo();
-        if (estadoApp.usuario?.rol !== 'CAJERO') {
-            await cargarFinanzas();
+
+        const restantes = obtenerVentasOffline();
+        if (restantes.length === 0) {
+            if (estadoApp.modoConexion === 'offline') {
+                estadoApp.modoConexion = 'local';
+                localStorage.setItem(CLAVE_MODO_CONEXION, 'local');
+            }
+            actualizarIndicadorColaOffline();
+            conectarSocketTiempoReal();
+            mostrarToast(`Se sincronizaron ${sincronizadas} venta(s) pendiente(s) con éxito.`, 'exito');
+            await cargarTurnoActivo();
+            await cargarCatalogo();
+            if (estadoApp.usuario?.rol !== 'CAJERO') {
+                await cargarFinanzas();
+            }
+        } else {
+            actualizarIndicadorColaOffline();
+            mostrarToast(
+                `Se sincronizaron ${sincronizadas} venta(s). Quedan ${restantes.length} pendiente(s) en cola.`,
+                'advertencia'
+            );
         }
-    } else {
-        actualizarIndicadorColaOffline();
-        mostrarToast('El servidor aún no está disponible para vaciar toda la cola.', 'advertencia');
+    } finally {
+        sincronizandoColaOffline = false;
     }
 };
 
@@ -883,16 +906,32 @@ const cobrarTicketVenta = async () => {
         return;
     }
 
-    const turnoId = estadoApp.turnoActivo?.id || 1;
+    const turnoId = estadoApp.turnoActivo?.estado === 'ABIERTO' ? estadoApp.turnoActivo.id : null;
+    if (!turnoId) {
+        mostrarToast('No hay un turno de caja abierto. Debe abrir un turno antes de cobrar.', 'peligro');
+        return;
+    }
+
     const metodoRadio = document.querySelector('input[name="medio_pago_radio"]:checked');
     const metodoPago = metodoRadio ? metodoRadio.value : 'EFECTIVO';
 
-    const itemsMapeados = resumen.itemsPayload.map((it) => ({
-        producto_id: Number(it.producto || it.producto_id),
-        producto: Number(it.producto || it.producto_id),
-        cantidad: String(it.cantidad),
-        precio_unitario: String(it.precioUnitarioDecimal || '0.00'),
-    }));
+    const itemsMapeados = [];
+    for (const it of estadoApp.carrito) {
+        const prodId = Number(it.productoId || it.producto || it.producto_id);
+        if (!Number.isInteger(prodId) || prodId <= 0) {
+            mostrarToast('Error: uno de los ítems del ticket no tiene un producto válido.', 'peligro');
+            return;
+        }
+        const itemPayload = {
+            producto_id: prodId,
+            producto: prodId,
+            cantidad: String(it.cantidad),
+        };
+        if (it.precioUnitarioDecimal && Number(it.precioUnitarioDecimal) > 0) {
+            itemPayload.precio_unitario = String(it.precioUnitarioDecimal);
+        }
+        itemsMapeados.push(itemPayload);
+    }
 
     const payload = {
         turno_caja: turnoId,
@@ -948,7 +987,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
     if ($('ticket-termico-id')) $('ticket-termico-id').textContent = idFormateado;
     if ($('ticket-termico-fecha')) $('ticket-termico-fecha').textContent = new Date().toLocaleString('es-AR');
     if ($('ticket-termico-cajero')) $('ticket-termico-cajero').textContent = estadoApp.usuario?.username || 'cajero_demo';
-    if ($('ticket-termico-turno')) $('ticket-termico-turno').textContent = `#${datosVenta.turno_caja || 1}`;
+    if ($('ticket-termico-turno')) $('ticket-termico-turno').textContent = datosVenta.turno_caja ? `#${datosVenta.turno_caja}` : '-';
 
     const leyendaEl = $('ticket-termico-leyenda');
     if (leyendaEl) {
@@ -2492,7 +2531,11 @@ const inicializarEventosDOM = () => {
         const tipo = $('select-movimiento-tipo').value;
         const monto = $('input-movimiento-monto').value;
         const motivo = $('input-movimiento-motivo').value;
-        const turnoId = estadoApp.turnoActivo?.id || 1;
+        const turnoId = estadoApp.turnoActivo?.estado === 'ABIERTO' ? estadoApp.turnoActivo.id : null;
+        if (!turnoId) {
+            mostrarToast('No hay un turno de caja abierto para registrar movimientos.', 'peligro');
+            return;
+        }
 
         try {
             const res = await fetch(`${estadoApp.djangoUrl}/api/caja/movimientos/`, {

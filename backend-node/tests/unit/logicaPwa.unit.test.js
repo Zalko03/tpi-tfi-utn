@@ -3,6 +3,7 @@ import {
     buscarProductoPorCodigoOTexto,
     calcularResumenCarrito,
     convertirMontoACentavos,
+    eliminarVentaOffline,
     encolarVentaOffline,
     extraerItemsDesdeTextoLista,
     formatearCentavosADecimal,
@@ -213,6 +214,21 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(pendientes[1].payload.metodo_pago).toBe('TARJETA');
 
             limpiarColaOffline(storage);
+            expect(obtenerVentasOffline(storage)).toEqual([]);
+        });
+
+        it('elimina ventas individuales confirmadas para evitar duplicados si se corta la sincronización', () => {
+            const storage = crearStorageMock();
+            const r1 = encolarVentaOffline({ turno_caja: 2, items: [{ producto: 10, cantidad: 1 }] }, storage);
+            const r2 = encolarVentaOffline({ turno_caja: 2, items: [{ producto: 11, cantidad: 2 }] }, storage);
+
+            const restantes = eliminarVentaOffline(r1.ventaEncolada.idTemporal, storage);
+            expect(restantes).toHaveLength(1);
+            expect(restantes[0].idTemporal).toBe(r2.ventaEncolada.idTemporal);
+            expect(obtenerVentasOffline(storage)).toHaveLength(1);
+
+            const vacia = eliminarVentaOffline(r2.ventaEncolada.idTemporal, storage);
+            expect(vacia).toEqual([]);
             expect(obtenerVentasOffline(storage)).toEqual([]);
         });
     });

@@ -46,7 +46,14 @@ def registrar_venta(
             raise ValueError("La cantidad a vender debe ser mayor a cero.")
 
         producto = Producto.objects.select_for_update().get(id=producto_id, estado_activo=True)
-        precio_unitario = Decimal(str(item.get("precio_unitario", producto.precio_venta)))
+        precio_raw = item.get("precio_unitario")
+        if precio_raw in (None, ""):
+            precio_unitario = producto.precio_venta
+        else:
+            precio_candidato = Decimal(str(precio_raw))
+            precio_unitario = (
+                producto.precio_venta if precio_candidato <= Decimal("0") else precio_candidato
+            )
         costo_snapshot = producto.costo_total_calculado
 
         VentaItem.objects.create(

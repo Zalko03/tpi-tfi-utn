@@ -56,3 +56,25 @@ class TestVentasServices:
     def test_error_venta_sin_items(self):
         with pytest.raises(ValueError, match="al menos un producto"):
             registrar_venta(items_data=[])
+
+    def test_venta_usa_precio_producto_si_precio_unitario_es_cero_o_none(self):
+        """Si precio_unitario llega en 0 o None, debe tomar producto.precio_venta."""
+        turno = TurnoCaja.objects.create(efectivo_inicial=Decimal("5000.00"))
+        producto = Producto.objects.create(
+            nombre="Flat White",
+            precio_venta=Decimal("3800.00"),
+            costo_total_calculado=Decimal("1200.0000"),
+        )
+
+        venta = registrar_venta(
+            items_data=[
+                {"producto_id": producto.id, "cantidad": Decimal("1"), "precio_unitario": "0.00"},
+                {"producto_id": producto.id, "cantidad": Decimal("2"), "precio_unitario": None},
+            ],
+            medio_pago="EFECTIVO",
+            turno_caja=turno,
+        )
+
+        assert venta.total == Decimal("11400.00")
+        precios = [item.precio_unitario for item in venta.items.all()]
+        assert precios == [Decimal("3800.00"), Decimal("3800.00")]
