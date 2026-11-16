@@ -21,7 +21,13 @@ const checksImportacionObligatorios = [
         .withMessage('textoLista debe ser una cadena de texto')
         .trim()
         .isLength({ min: 3, max: 15000 })
-        .withMessage('textoLista debe tener entre 3 y 15000 caracteres'),
+        .withMessage('textoLista debe tener entre 3 y 15000 caracteres')
+        .custom((valor) => {
+            if (String(valor || '').trim().startsWith('%PDF-')) {
+                throw new Error('textoLista contiene un PDF binario sin extraer texto');
+            }
+            return true;
+        }),
     check('proveedorNombre')
         .optional({ values: 'null' })
         .isString()
@@ -33,6 +39,10 @@ const checksImportacionObligatorios = [
         .optional()
         .matches(/^v\d+$/)
         .withMessage('versionPrompt debe tener formato v1, v2, etc.'),
+    check('origenArchivo')
+        .optional({ values: 'null' })
+        .isIn(['texto', 'csv', 'pdf'])
+        .withMessage('origenArchivo debe ser texto, csv o pdf'),
     validarCampos,
 ];
 

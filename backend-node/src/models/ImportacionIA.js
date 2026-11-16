@@ -73,6 +73,11 @@ const importacionIASchema = new mongoose.Schema(
                 default: null,
                 trim: true,
             },
+            origenArchivo: {
+                type: String,
+                enum: ['texto', 'csv', 'pdf'],
+                default: 'texto',
+            },
         },
         salida: {
             proveedorDetectado: {

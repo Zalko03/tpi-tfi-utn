@@ -48,6 +48,11 @@ class SolicitudExtraccionPrecios(BaseModel):
         pattern=r"^v\d+$",
         description="Versión del prompt a utilizar (por defecto 'v1').",
     )
+    origen_archivo: Optional[str] = Field(
+        default=None,
+        max_length=20,
+        description="Origen opcional del contenido ('texto', 'csv', 'pdf').",
+    )
 
     @field_validator("texto_lista")
     @classmethod
@@ -55,6 +60,8 @@ class SolicitudExtraccionPrecios(BaseModel):
         limpio = valor.strip()
         if not limpio:
             raise ValueError("El texto de la lista de precios no puede estar vacío.")
+        if limpio.startswith("%PDF-"):
+            raise ValueError("El texto recibido corresponde a un PDF binario sin extraer texto.")
         return limpio
 
     model_config = ConfigDict(

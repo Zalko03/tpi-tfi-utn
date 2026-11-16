@@ -1,3 +1,6 @@
+import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { jest } from '@jest/globals';
 import {
     agregarProductoAlCarrito,
@@ -9,12 +12,15 @@ import {
     ejecutarSincronizacionConLock,
     eliminarVentaOffline,
     encolarVentaOffline,
+    esArchivoPdf,
     escaparHtml,
     estaFechaEnRango,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
     evaluarTextoComoCsvDirecto,
+    evaluarTextoExtraidoPdf,
     extraerItemsDesdeTextoLista,
+    extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
@@ -22,11 +28,13 @@ import {
     generarIdOperacion,
     limpiarColaOffline,
     MENSAJE_IA_NO_DISPONIBLE,
+    MENSAJE_PDF_ESCANEADO,
     obtenerContenidoPlantillaCsv,
     obtenerVentasOffline,
     obtenerVentasRechazadasOffline,
     parsearCsvProveedor,
     procesarColaVentasOffline,
+    reconstruirLineasDeItemsPdf,
     unificarTrazabilidadRegistros,
     validarRangoFechas,
 } from '../../../web/js/logicaPwa.js';
@@ -666,6 +674,117 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             const evalTexto = evaluarTextoComoCsvDirecto(textoLibre);
             expect(evalTexto.compatible).toBe(false);
             expect(evalTexto.resultado.items).toEqual([]);
+        });
+    });
+
+    describe('Extracción de texto de archivos .pdf con pdf.js local (Offline-First)', () => {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const requireLocal = createRequire(import.meta.url);
+        const pdfjsLocal = requireLocal(
+            path.resolve(__dirname, '../../../web/vendor/pdfjs/pdf.min.js')
+        );
+        pdfjsLocal.GlobalWorkerOptions.workerSrc = path.resolve(
+            __dirname,
+            '../../../web/vendor/pdfjs/pdf.worker.min.js'
+        );
+
+        const crearPdfRealConLineas = (lineas = []) => {
+            const ops = ['BT', '/F1 12 Tf'];
+            let y = 760;
+            for (const linea of lineas) {
+                const escapada = String(linea)
+                    .replace(/\\/g, '\\\\')
+                    .replace(/\(/g, '\\(')
+                    .replace(/\)/g, '\\)');
+                ops.push(`1 0 0 1 72 ${y} Tm (${escapada}) Tj`);
+                y -= 18;
+            }
+            ops.push('ET');
+            const stream = ops.join('\n');
+            const objetos = [
+                '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+                '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+                '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+                `4 0 obj\n<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream\nendobj\n`,
+                '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+            ];
+            let pdf = '%PDF-1.4\n';
+            const offsets = [0];
+            for (const obj of objetos) {
+                offsets.push(Buffer.byteLength(pdf, 'latin1'));
+                pdf += obj;
+            }
+            const xrefPos = Buffer.byteLength(pdf, 'latin1');
+            pdf += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n`;
+            for (let i = 1; i < offsets.length; i++) {
+                pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+            }
+            pdf += `trailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;
+            return new Uint8Array(Buffer.from(pdf, 'latin1'));
+        };
+
+        it('detecta archivos PDF por extensión o MIME type y reconstruye renglones por coordenada Y', () => {
+            expect(esArchivoPdf({ name: 'lista_precios.PDF', type: '' })).toBe(true);
+            expect(esArchivoPdf({ name: 'archivo', type: 'application/pdf' })).toBe(true);
+            expect(esArchivoPdf({ name: 'lista.csv', type: 'text/csv' })).toBe(false);
+
+            const lineas = reconstruirLineasDeItemsPdf([
+                { str: 'Cafe Tostado', transform: [1, 0, 0, 1, 72, 760], width: 65 },
+                { str: '5 kg', transform: [1, 0, 0, 1, 200, 760], width: 25 },
+                { str: '$115000', transform: [1, 0, 0, 1, 300, 760], width: 45 },
+                { str: 'Leche Entera', transform: [1, 0, 0, 1, 72, 740], width: 65 },
+                { str: '12 l', transform: [1, 0, 0, 1, 200, 740], width: 20 },
+                { str: '$16200', transform: [1, 0, 0, 1, 300, 740], width: 40 },
+            ]);
+            expect(lineas).toBe('Cafe Tostado 5 kg $115000\nLeche Entera 12 l $16200');
+        });
+
+        it('extrae texto real distinto de dos PDFs reales usando pdf.js local y rechaza PDF escaneado sin texto', async () => {
+            const pdf1 = crearPdfRealConLineas([
+                'Distribuidora Cafe Litoral',
+                'Cafe Tostado 5 kg: $115000',
+                'Leche Entera 12 l: $16200',
+            ]);
+            const pdf2 = crearPdfRealConLineas([
+                'Molino Central SRL',
+                'Azucar Organica 10 kg: $14500',
+                'Cacao Amargo 2 kg: $19400',
+                'Harina 0000 25 kg: $22000',
+            ]);
+            const pdfEscaneado = crearPdfRealConLineas([]);
+
+            const res1 = await extraerTextoDePdfBuffer(pdf1.buffer, pdfjsLocal, {
+                disableWorker: true,
+            });
+            const res2 = await extraerTextoDePdfBuffer(pdf2.buffer, pdfjsLocal, {
+                disableWorker: true,
+            });
+            const res3 = await extraerTextoDePdfBuffer(pdfEscaneado.buffer, pdfjsLocal, {
+                disableWorker: true,
+            });
+
+            expect(res1.ok).toBe(true);
+            expect(res1.esEscaneado).toBe(false);
+            expect(res1.texto).not.toContain('%PDF-');
+            expect(res1.texto).toContain('Cafe Tostado 5 kg: $115000');
+            expect(res1.texto).toContain('Leche Entera 12 l: $16200');
+
+            expect(res2.ok).toBe(true);
+            expect(res2.esEscaneado).toBe(false);
+            expect(res2.texto).not.toContain('%PDF-');
+            expect(res2.texto).toContain('Azucar Organica 10 kg: $14500');
+            expect(res2.texto).toContain('Cacao Amargo 2 kg: $19400');
+            expect(res2.texto).toContain('Harina 0000 25 kg: $22000');
+            expect(res1.texto).not.toBe(res2.texto);
+
+            expect(res3.ok).toBe(false);
+            expect(res3.esEscaneado).toBe(true);
+            expect(res3.texto).toBe('');
+            expect(res3.mensajeError).toBe(MENSAJE_PDF_ESCANEADO);
+
+            const evalBinario = evaluarTextoExtraidoPdf('%PDF-1.4\n1 0 obj');
+            expect(evalBinario.valido).toBe(false);
         });
     });
 });

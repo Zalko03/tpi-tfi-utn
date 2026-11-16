@@ -1393,3 +1393,175 @@ export const evaluarEstadoResumenIA = (respuestaAi = null, errorRed = null) => {
     };
 };
 
+export const MENSAJE_PDF_ESCANEADO =
+    'El PDF parece ser una imagen escaneada sin texto seleccionable. Convertilo a texto/CSV o usá un PDF con texto.';
+
+/**
+ * Determina si un archivo seleccionado corresponde a un documento PDF por extensión o MIME type.
+ */
+export const esArchivoPdf = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    return tipo === 'application/pdf' || nombre.endsWith('.pdf');
+};
+
+/**
+ * Reconstruye líneas legibles a partir de los items devueltos por pdf.js `page.getTextContent()`,
+ * agrupando fragmentos por coordenada Y y ordenándolos por coordenada X para preservar
+ * la estructura de renglones (`insumo - precio - unidad`).
+ */
+export const reconstruirLineasDeItemsPdf = (items = []) => {
+    if (!Array.isArray(items) || items.length === 0) {
+        return '';
+    }
+
+    const filas = [];
+    const TOLERANCIA_Y = 2.5;
+
+    for (const item of items) {
+        if (!item || typeof item.str !== 'string') continue;
+        const textoCrudo = item.str;
+        if (!textoCrudo.trim()) continue;
+
+        const x = Array.isArray(item.transform) ? Number(item.transform[4] ?? 0) : 0;
+        const y = Array.isArray(item.transform) ? Number(item.transform[5] ?? 0) : 0;
+        const width = Number(item.width ?? 0);
+
+        let fila = filas.find((f) => Math.abs(f.y - y) <= TOLERANCIA_Y);
+        if (!fila) {
+            fila = { y, segmentos: [] };
+            filas.push(fila);
+        }
+        fila.segmentos.push({ x, width, str: textoCrudo });
+    }
+
+    filas.sort((a, b) => b.y - a.y);
+
+    const lineas = [];
+    for (const fila of filas) {
+        fila.segmentos.sort((a, b) => a.x - b.x);
+        let linea = '';
+        let prevEndX = null;
+
+        for (const seg of fila.segmentos) {
+            const textoSeg = seg.str;
+            if (!linea) {
+                linea = textoSeg;
+            } else {
+                const gap = prevEndX !== null ? seg.x - prevEndX : 10;
+                const necesitaEspacio =
+                    gap >= 1.5 && !linea.endsWith(' ') && !textoSeg.startsWith(' ');
+                linea += (necesitaEspacio ? ' ' : '') + textoSeg;
+            }
+            prevEndX = seg.x + (Number.isFinite(seg.width) ? seg.width : 0);
+        }
+
+        const lineaLimpia = linea.replace(/[ \t]+/g, ' ').trim();
+        if (lineaLimpia) {
+            lineas.push(lineaLimpia);
+        }
+    }
+
+    return lineas.join('\n');
+};
+
+/**
+ * Evalúa si el texto extraído de un PDF contiene texto seleccionable real
+ * o corresponde a un PDF escaneado / binario sin texto.
+ */
+export const evaluarTextoExtraidoPdf = (textoCrudo = '') => {
+    const texto = String(textoCrudo || '').trim();
+    if (texto.startsWith('%PDF-')) {
+        return {
+            valido: false,
+            esEscaneado: false,
+            texto: '',
+            mensajeError:
+                'No se pudo leer el contenido binario del PDF. Usá la extracción con pdf.js local.',
+        };
+    }
+
+    const caracteresUtiles = texto.replace(/[\s\r\n]+/g, '');
+    if (caracteresUtiles.length < 6) {
+        return {
+            valido: false,
+            esEscaneado: true,
+            texto: '',
+            mensajeError: MENSAJE_PDF_ESCANEADO,
+        };
+    }
+
+    return {
+        valido: true,
+        esEscaneado: false,
+        texto,
+        mensajeError: null,
+    };
+};
+
+/**
+ * Lee un ArrayBuffer / Uint8Array de PDF página por página usando pdf.js local
+ * y devuelve el texto extraído preservando renglones, o un aviso explícito si es un PDF escaneado.
+ */
+export const extraerTextoDePdfBuffer = async (
+    bufferPdf,
+    pdfjsLibRef = null,
+    opciones = {}
+) => {
+    const pdfjs =
+        pdfjsLibRef ||
+        (typeof globalThis !== 'undefined' ? globalThis.pdfjsLib : null);
+
+    if (!pdfjs || typeof pdfjs.getDocument !== 'function') {
+        throw new Error('La librería local pdf.js no está disponible para procesar archivos PDF.');
+    }
+
+    const datos =
+        bufferPdf instanceof Uint8Array
+            ? bufferPdf
+            : bufferPdf instanceof ArrayBuffer
+              ? new Uint8Array(bufferPdf)
+              : new Uint8Array(bufferPdf?.buffer || bufferPdf);
+
+    const disableWorker =
+        opciones.disableWorker !== undefined
+            ? opciones.disableWorker
+            : typeof Worker === 'undefined';
+
+    const tareaCarga = pdfjs.getDocument({
+        data: datos,
+        verbosity: 0,
+        disableWorker,
+        ...opciones,
+    });
+
+    const pdfDoc = await tareaCarga.promise;
+    try {
+        const paginasTexto = [];
+        for (let numPagina = 1; numPagina <= pdfDoc.numPages; numPagina++) {
+            const pagina = await pdfDoc.getPage(numPagina);
+            const contenido = await pagina.getTextContent();
+            const textoPagina = reconstruirLineasDeItemsPdf(contenido?.items || []);
+            if (textoPagina) {
+                paginasTexto.push(textoPagina);
+            }
+        }
+
+        const textoUnido = paginasTexto.join('\n').trim();
+        const evaluacion = evaluarTextoExtraidoPdf(textoUnido);
+        return {
+            ok: evaluacion.valido,
+            esEscaneado: evaluacion.esEscaneado,
+            mensajeError: evaluacion.mensajeError,
+            texto: evaluacion.texto,
+            paginas: pdfDoc.numPages,
+            lineas: evaluacion.texto ? evaluacion.texto.split('\n').length : 0,
+        };
+    } finally {
+        if (typeof pdfDoc?.destroy === 'function') {
+            await pdfDoc.destroy().catch(() => {});
+        }
+    }
+};
+

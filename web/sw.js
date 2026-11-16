@@ -6,12 +6,16 @@ const RECURSOS_CASCARA = [
     '/app/css/estilos.css',
     '/app/js/logicaPwa.js',
     '/app/js/app.js',
+    '/app/vendor/pdfjs/pdf.min.js',
+    '/app/vendor/pdfjs/pdf.worker.min.js',
     '/',
     '/index.html',
     '/manifest.webmanifest',
     '/css/estilos.css',
     '/js/logicaPwa.js',
     '/js/app.js',
+    '/vendor/pdfjs/pdf.min.js',
+    '/vendor/pdfjs/pdf.worker.min.js',
 ];
 
 self.addEventListener('install', (evento) => {

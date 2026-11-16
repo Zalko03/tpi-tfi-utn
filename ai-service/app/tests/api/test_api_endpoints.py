@@ -117,6 +117,19 @@ class TestApiEndpointsAIService:
         assert cuerpo["mensaje"] == "Datos de entrada inválidos"
         assert "texto_lista" in cuerpo["detalles"]
 
+    def test_post_extraer_precios_rechaza_pdf_binario_sin_extraer_400(self):
+        respuesta = cliente.post(
+            "/v1/extraer-precios",
+            json={
+                "texto_lista": "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>",
+                "origen_archivo": "pdf",
+            },
+        )
+        assert respuesta.status_code == 400
+        cuerpo = respuesta.json()
+        assert cuerpo["mensaje"] == "Datos de entrada inválidos"
+        assert "texto_lista" in cuerpo["detalles"]
+
     def test_post_resumen_semanal_exitoso(self):
         adaptador_mock = AdaptadorMockExitoso(
             respuesta={

@@ -11,7 +11,7 @@ import { guardarSnapshot } from './snapshotCosteo.service.js';
  */
 export const procesarImportacionEnSegundoPlano = async (
     importacionId,
-    { textoLista, proveedorNombre = null, versionPrompt = 'v1' }
+    { textoLista, proveedorNombre = null, versionPrompt = 'v1', origenArchivo = 'texto' }
 ) => {
     try {
         await importacionRepo.actualizarImportacionPorId(importacionId, {
@@ -22,6 +22,7 @@ export const procesarImportacionEnSegundoPlano = async (
             textoLista,
             proveedorNombre,
             versionPrompt,
+            origenArchivo,
         });
 
         const esContingencia =
@@ -106,6 +107,7 @@ export const iniciarImportacionPrecios = async ({
     textoLista,
     proveedorNombre = null,
     versionPrompt = 'v1',
+    origenArchivo = 'texto',
 }) => {
     const textoLimpio = typeof textoLista === 'string' ? textoLista.trim() : '';
     if (!usuarioId || !textoLimpio) {
@@ -114,9 +116,14 @@ export const iniciarImportacionPrecios = async ({
         throw error;
     }
 
+    const origenLimpio = ['texto', 'csv', 'pdf'].includes(String(origenArchivo || '').toLowerCase())
+        ? String(origenArchivo).toLowerCase()
+        : 'texto';
+
     const datosEntrada = {
         textoLista: textoLimpio,
         proveedorNombre: proveedorNombre ? String(proveedorNombre).trim() : null,
+        origenArchivo: origenLimpio,
     };
     const versionLimpia = versionPrompt ? String(versionPrompt).trim() : 'v1';
 
@@ -133,6 +140,7 @@ export const iniciarImportacionPrecios = async ({
             textoLista: datosEntrada.textoLista,
             proveedorNombre: datosEntrada.proveedorNombre,
             versionPrompt: versionLimpia,
+            origenArchivo: origenLimpio,
         }).catch(() => {
             // El error ya es capturado y persistido dentro de procesarImportacionEnSegundoPlano
         });

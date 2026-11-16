@@ -543,11 +543,11 @@
                                 </div>
 
                                 <div id="zona-drop-csv" class="zona-drop-csv">
-                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt" class="sr-only" />
+                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt,.pdf" class="sr-only" />
                                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
                                     <div>
-                                        <strong>Arrastre aquí su archivo .CSV o .TXT de proveedor</strong>
-                                        <p class="text-muted">o haga clic para seleccionar desde su equipo (parseo directo local sin IA · delimitador <code>,</code>, <code>;</code> o tab)</p>
+                                        <strong>Arrastre aquí su archivo .CSV, .TXT o .PDF de proveedor</strong>
+                                        <p class="text-muted">o haga clic para seleccionar desde su equipo (CSV directo sin IA o extracción local de texto PDF · delimitador <code>,</code>, <code>;</code> o tab)</p>
                                     </div>
                                 </div>
 
@@ -605,13 +605,20 @@
                                     </div>
 
                                     <div class="campo-grupo">
-                                        <div class="flex-justify-between">
-                                            <label for="textarea-lista-ia">Texto de la Lista de Precios</label>
-                                            <button type="button" id="btn-ejemplo-proveedor" class="btn-enlace-magico">
-                                                <span>Cargar Ejemplo de Proveedor</span>
-                                            </button>
+                                        <div class="flex-justify-between" style="gap: 0.65rem; flex-wrap: wrap;">
+                                            <label for="textarea-lista-ia">Texto de la Lista de Precios o PDF</label>
+                                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                                                <input type="file" id="archivo-lista-ia" accept=".pdf,.txt,.csv" class="sr-only" />
+                                                <button type="button" id="btn-cargar-archivo-ia" class="btn-secundario-comercial" style="padding: 0.35rem 0.75rem; font-size: 0.82rem;">
+                                                    <span>Subir Archivo (.PDF / .TXT / .CSV)</span>
+                                                </button>
+                                                <button type="button" id="btn-ejemplo-proveedor" class="btn-enlace-magico">
+                                                    <span>Cargar Ejemplo de Proveedor</span>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <textarea id="textarea-lista-ia" rows="5" placeholder="Pegue aquí el texto recibido por WhatsApp o escaneo..." required>Café tostado en grano 1 kg: $24500
+                                        <div id="estado-archivo-lista-ia" class="alerta-archivo-pdf" role="status" style="display: none;"></div>
+                                        <textarea id="textarea-lista-ia" rows="5" placeholder="Pegue aquí el texto recibido por WhatsApp o cargue un PDF con texto seleccionable..." required>Café tostado en grano 1 kg: $24500
 Leche entera 12 l: $15600
 Envío: $2000</textarea>
                                     </div>
@@ -1372,7 +1379,8 @@ Envío: $2000</textarea>
         <button id="btn-unirse-turno" type="button">Unirse a Turno</button>
     </div>
 
-    <!-- Scripts de Socket.IO y Aplicación -->
+    <!-- Scripts locales (Offline-First): PDF.js, Socket.IO y Aplicación -->
+    <script src="/app/vendor/pdfjs/pdf.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="/app/js/app.js"></script>
 </body>

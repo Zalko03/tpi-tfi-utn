@@ -11,10 +11,12 @@ import {
     construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
     encolarVentaOffline,
+    esArchivoPdf,
     escaparHtml,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
     evaluarTextoComoCsvDirecto,
+    extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
@@ -120,6 +122,7 @@ export const estadoApp = {
     importacionActual: null,
     csvParseadoActual: null,
     csvContingenciaFallback: null,
+    ultimoOrigenArchivo: 'texto',
     insumos: [],
     proveedores: [],
     turnosHistorial: [],
@@ -1316,30 +1319,126 @@ const descargarPlantillaCsvModelo = () => {
     mostrarToast('Plantilla plantilla_lista_proveedor.csv descargada.', 'info');
 };
 
+const configurarPdfJsLocal = () => {
+    const pdfjsLib = typeof window !== 'undefined' ? window.pdfjsLib : null;
+    if (!pdfjsLib || !pdfjsLib.GlobalWorkerOptions) return null;
+    const baseApp =
+        typeof window !== 'undefined' && window.location.pathname.startsWith('/app')
+            ? '/app'
+            : '';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `${baseApp}/vendor/pdfjs/pdf.worker.min.js`;
+    return pdfjsLib;
+};
+
+const leerArchivoComoArrayBuffer = (archivo) => {
+    if (typeof archivo?.arrayBuffer === 'function') {
+        return archivo.arrayBuffer();
+    }
+    return new Promise((resolve, reject) => {
+        const lector = new FileReader();
+        lector.onload = (ev) => resolve(ev.target?.result);
+        lector.onerror = () => reject(new Error('No se pudo leer el archivo PDF como ArrayBuffer.'));
+        lector.readAsArrayBuffer(archivo);
+    });
+};
+
+const mostrarEstadoArchivoPdf = (mensaje, tipo = 'info') => {
+    const el = $('estado-archivo-lista-ia');
+    if (!el) return;
+    if (!mensaje) {
+        el.style.display = 'none';
+        el.textContent = '';
+        el.className = 'alerta-archivo-pdf';
+        return;
+    }
+    el.style.display = 'block';
+    el.className = `alerta-archivo-pdf ${tipo}`;
+    el.textContent = mensaje;
+};
+
+const procesarArchivoPdfSeleccionado = async (archivo) => {
+    if (!archivo) return;
+    mostrarEstadoArchivoPdf(`Extrayendo texto de "${archivo.name}" con pdf.js local...`, 'info');
+    try {
+        const pdfjsLib = configurarPdfJsLocal();
+        const buffer = await leerArchivoComoArrayBuffer(archivo);
+        const resultado = await extraerTextoDePdfBuffer(buffer, pdfjsLib);
+
+        if (!resultado.ok || resultado.esEscaneado) {
+            estadoApp.ultimoOrigenArchivo = 'texto';
+            if ($('textarea-lista-ia')) {
+                $('textarea-lista-ia').value = '';
+            }
+            const aviso = resultado.mensajeError || 'El PDF parece ser una imagen escaneada sin texto seleccionable. Convertilo a texto/CSV o usá un PDF con texto.';
+            mostrarEstadoArchivoPdf(aviso, 'advertencia');
+            mostrarToast(aviso, 'advertencia');
+            return;
+        }
+
+        estadoApp.ultimoOrigenArchivo = 'pdf';
+        if ($('textarea-lista-ia')) {
+            $('textarea-lista-ia').value = resultado.texto;
+        }
+        const evalCsv = evaluarTextoComoCsvDirecto(resultado.texto);
+        if (evalCsv.compatible) {
+            aplicarCsvParseadoEnPreview(evalCsv.resultado, 'pdf');
+        } else {
+            estadoApp.csvContingenciaFallback = null;
+        }
+        mostrarEstadoArchivoPdf(
+            `PDF "${archivo.name}" procesado localmente (${resultado.paginas} página(s), ${resultado.lineas} líneas extraídas). Listo para analizar con IA.`,
+            'info'
+        );
+        mostrarToast(
+            `Texto extraído del PDF (${resultado.lineas} renglones listos para analizar).`,
+            'exito'
+        );
+    } catch (err) {
+        const msg = err?.message || 'Error al procesar el archivo PDF localmente.';
+        mostrarEstadoArchivoPdf(msg, 'advertencia');
+        mostrarToast(msg, 'peligro');
+    }
+};
+
 const aplicarCsvParseadoEnPreview = (resultado, origenEtiqueta = 'archivo CSV') => {
     estadoApp.csvParseadoActual = resultado;
     estadoApp.csvContingenciaFallback = resultado;
+    estadoApp.ultimoOrigenArchivo = origenEtiqueta === 'pdf' ? 'pdf' : 'csv';
     renderizarPreviewCsv(resultado);
     if ($('textarea-lista-ia') && resultado.textoParaIa && origenEtiqueta === 'archivo CSV') {
         $('textarea-lista-ia').value = resultado.textoParaIa;
     }
 };
 
-const procesarArchivoCsvSeleccionado = (archivo) => {
+const procesarArchivoImportacionSeleccionado = async (archivo, origenSelector = 'csv') => {
     if (!archivo) return;
+    if (esArchivoPdf(archivo)) {
+        await procesarArchivoPdfSeleccionado(archivo);
+        return;
+    }
+
+    mostrarEstadoArchivoPdf('', 'info');
     const lector = new FileReader();
     lector.onload = (evento) => {
         const texto = String(evento.target?.result || '');
         const resultado = parsearCsvProveedor(texto);
-        if (resultado.items.length === 0) {
-            mostrarToast('El archivo no contiene filas válidas de insumos y precios.', 'advertencia');
+        if (resultado.items.length > 0) {
+            aplicarCsvParseadoEnPreview(resultado, 'archivo CSV');
+            mostrarToast(
+                `CSV parseado directamente (sin IA): ${resultado.items.length} ítems listos en Previsualización de CSV.`,
+                'exito'
+            );
             return;
         }
-        aplicarCsvParseadoEnPreview(resultado, 'archivo CSV');
-        mostrarToast(
-            `CSV parseado directamente (sin IA): ${resultado.items.length} ítems listos en Previsualización de CSV.`,
-            'exito'
-        );
+        if (origenSelector === 'ia' && texto.trim().length > 0) {
+            estadoApp.ultimoOrigenArchivo = 'texto';
+            if ($('textarea-lista-ia')) {
+                $('textarea-lista-ia').value = texto.trim();
+            }
+            mostrarToast(`Archivo de texto "${archivo.name}" cargado en el editor.`, 'info');
+            return;
+        }
+        mostrarToast('El archivo no contiene filas válidas de insumos y precios.', 'advertencia');
     };
     lector.readAsText(archivo, 'utf-8');
 };
@@ -3158,12 +3257,21 @@ const inicializarEventosDOM = () => {
         e.preventDefault();
         zonaDrop.classList.remove('drag-activo');
         const archivo = e.dataTransfer?.files?.[0];
-        if (archivo) procesarArchivoCsvSeleccionado(archivo);
+        if (archivo) procesarArchivoImportacionSeleccionado(archivo, 'csv');
     });
 
     inputArchivoCsv?.addEventListener('change', (e) => {
         const archivo = e.target.files?.[0];
-        if (archivo) procesarArchivoCsvSeleccionado(archivo);
+        if (archivo) procesarArchivoImportacionSeleccionado(archivo, 'csv');
+    });
+
+    const inputArchivoIa = $('archivo-lista-ia');
+    $('btn-cargar-archivo-ia')?.addEventListener('click', () => {
+        inputArchivoIa?.click();
+    });
+    inputArchivoIa?.addEventListener('change', (e) => {
+        const archivo = e.target.files?.[0];
+        if (archivo) procesarArchivoImportacionSeleccionado(archivo, 'ia');
     });
 
     $('btn-csv-circuito-ia')?.addEventListener('click', enviarCsvAlCircuitoAprobacion);
@@ -3188,6 +3296,12 @@ Flete y entrega a local: $4500`;
         e.preventDefault();
         const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Mayorista Café del Litoral';
         const textoLista = $('textarea-lista-ia')?.value.trim() || '';
+        if (textoLista.startsWith('%PDF-')) {
+            const aviso = 'No se puede enviar contenido binario de PDF sin extraer texto. Seleccioná el archivo .pdf con el cargador local.';
+            mostrarEstadoArchivoPdf(aviso, 'advertencia');
+            mostrarToast(aviso, 'advertencia');
+            return;
+        }
         const evalCsv = evaluarTextoComoCsvDirecto(textoLista);
         if (evalCsv.compatible) {
             estadoApp.csvContingenciaFallback = evalCsv.resultado;
@@ -3203,7 +3317,7 @@ Flete y entrega a local: $4500`;
         renderizarPropuestaIAComercial({
             _id: null,
             estado: 'PROCESANDO',
-            entrada: { proveedorNombre, textoLista },
+            entrada: { proveedorNombre, textoLista, origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto' },
             salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
         });
 
@@ -3218,6 +3332,7 @@ Flete y entrega a local: $4500`;
                     proveedorNombre,
                     textoLista,
                     versionPrompt: 'v1',
+                    origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto',
                 }),
             });
             const data = await res.json().catch(() => ({}));

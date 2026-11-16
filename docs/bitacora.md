@@ -1287,5 +1287,33 @@ Cómo probarlo:
 - `cd backend-node && npm test`
 - `.venv/bin/ruff check ai-service/ && .venv/bin/ruff format --check ai-service/ && cd backend-node && npm run lint`
 ---
+Fecha: 2026-11-16
+Tarea: Importación directa CSV sin IA (`GROQ_API_KEY=""`) y soporte Offline-First de `.pdf` con `pdf.js` local (Punto 3)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Etapa A — Importación directa CSV sin IA:**
+  - En `web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js` y `web/js/app.js`: se etiquetó explícitamente el flujo como **"Importación Directa CSV (sin IA)"** y **"Previsualización de CSV"** (`#btn-csv-confirmar-directo`, `#btn-csv-desde-texto`), se añadió `evaluarTextoComoCsvDirecto` con soporte de `,`, `;` y tabulación, y se incorporó el botón directo `#btn-contingencia-usar-csv-directo` dentro de `#ia-alerta-contingencia` cuando el texto o planilla en contingencia es CSV compatible, confirmando directo contra `POST /api/compras/confirmar-importacion/` en Django sin depender de `GROQ_API_KEY`.
+  - Pruebas explícitas con `GROQ_API_KEY=""` en `ai-service/app/tests/api/test_api_endpoints.py`, `backend-django/apps/insumos/tests/api/test_api_confirmar_importacion.py`, `backend-node/tests/unit/logicaPwa.unit.test.js` y `backend-node/tests/integration/clientePwa.integration.test.js`.
+- **Etapa B (Punto 3) — Soporte `.pdf` con `pdf.js` local Offline-First:**
+  - Se incorporaron `web/vendor/pdfjs/pdf.min.js` y `web/vendor/pdfjs/pdf.worker.min.js` (`pdfjs-dist@3.11.174`) sin CDN externos, registrados en `web/sw.js` (`RECURSOS_CASCARA`) y copiados en `web/Dockerfile`.
+  - En `web/js/logicaPwa.js` y `web/js/app.js`: se lee `.pdf` como `ArrayBuffer` (nunca `FileReader.readAsText`), se extrae el texto página por página reconstruyendo renglones por coordenadas X/Y (`reconstruirLineasDeItemsPdf`, `extraerTextoDePdfBuffer`), y se detectan PDFs escaneados sin texto mostrando `"El PDF parece ser una imagen escaneada sin texto seleccionable. Convertilo a texto/CSV o usá un PDF con texto."`.
+  - En `backend-node` (`importacionIA.routes.js`, `importacionIA.controller.js`, `importacionIA.model`, `importacionIA.service.js`, `ai.client.js`) y `ai-service/app/schemas/extraccion.py`: se agregó soporte opcional de `origenArchivo` / `origen_archivo` y rechazo HTTP 400 si llega binario `%PDF-` sin extraer.
+  - Verificación automatizada con dos PDFs reales distintos y un tercer PDF escaneado sin texto en `logicaPwa.unit.test.js` e `importacionIA.integration.test.js`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/` carga `pdf.js` local (`/app/vendor/pdfjs/`) cacheado en `web/sw.js` y envía `origenArchivo` opcional a `POST /api/importaciones` (`backend-node` -> `ai-service`).
+Archivos tocados:
+- `web/vendor/pdfjs/pdf.min.js`, `web/vendor/pdfjs/pdf.worker.min.js`, `web/sw.js`, `web/Dockerfile`
+- `web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`
+- `backend-node/src/{routes/importacionIA.routes.js,controllers/importacionIA.controller.js,models/ImportacionIA.js,services/importacionIA.service.js,clients/ai.client.js}`
+- `ai-service/app/schemas/extraccion.py`
+- `backend-node/tests/{unit/logicaPwa.unit.test.js,integration/clientePwa.integration.test.js,integration/importacionIA.integration.test.js}`
+- `ai-service/app/tests/api/test_api_endpoints.py`, `backend-django/apps/insumos/tests/api/test_api_confirmar_importacion.py`
+- `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+---
 
 
