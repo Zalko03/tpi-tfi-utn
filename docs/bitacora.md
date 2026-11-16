@@ -1315,5 +1315,21 @@ Cómo probarlo:
 - `ai-service/.venv/bin/pytest ai-service/`
 - `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
 ---
+Fecha: 2026-11-16
+Tarea: Actualización de etiquetas visibles en Costeo de Recetas y Reportes (`web/index.html`)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- En `web/index.html` se actualizaron únicamente textos visibles (sin modificar lógica, clases, IDs ni atributos) para mayor claridad financiera:
+  - `"Código EAN-13"` → `"Código de barras"`
+  - `"Ganancia Neta ($)"` → `"Ganancia por unidad ($)"`
+  - `"Margen de Rentabilidad (%)"` → `"Margen bruto (%)"`
+  - `"Ganancia Neta Real de Bolsillo"` → `"Ganancia bruta del período"`
+- Se verificó con búsqueda global que ningún test ni documentación técnica activa referenciara las etiquetas anteriores en la interfaz.
+Archivos tocados:
+- `web/index.html`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test` (24 suites, 158 tests en verde).
+---
 
 
