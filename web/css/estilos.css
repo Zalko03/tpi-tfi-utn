@@ -3055,3 +3055,70 @@ textarea:focus {
     pointer-events: none;
 }
 
+.panel-cabecera-acciones {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.receta-acciones-fila {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.receta-agregar-insumo-form {
+    margin-top: 1.15rem;
+    padding-top: 1.15rem;
+    border-top: 1px solid var(--color-borde-suave);
+}
+
+.receta-agregar-insumo-campos {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1.2fr auto;
+    gap: 0.85rem;
+    align-items: end;
+}
+
+.receta-agregar-insumo-submit {
+    display: flex;
+    align-items: flex-end;
+}
+
+.receta-cantidad-inline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+.input-receta-cantidad {
+    width: 92px;
+    padding: 0.32rem 0.5rem;
+    border: 1px solid var(--color-borde-suave);
+    border-radius: var(--radio-sm);
+    font-size: 0.85rem;
+    text-align: right;
+    background: var(--color-blanco);
+    color: var(--texto-color);
+}
+
+.btn-quitar-receta-item {
+    color: var(--color-peligro);
+    border-color: #FECACA;
+}
+
+.btn-quitar-receta-item:hover {
+    background: #FEF2F2;
+    border-color: var(--color-peligro);
+}
+
+@media (max-width: 768px) {
+    .receta-agregar-insumo-campos {
+        grid-template-columns: 1fr;
+    }
+}
+

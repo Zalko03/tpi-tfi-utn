@@ -22,6 +22,48 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-16
+Tarea: Corrección de `RecetaItemSerializer` (`producto`) y gestión de carta/recetas por permisos en "Recetas & Rentabilidad"
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Backend Django (`backend-django/apps/recetas/`):**
+  - En `serializers.py`: se agregó `"producto"` a `RecetaItemSerializer.Meta.fields` y se implementó `validate()` para rechazar con HTTP 400 cualquier actualización (`self.instance`) que intente cambiar el `producto` de un ítem existente.
+  - En `tests/api/test_api_recetas.py`: se agregaron pruebas API verificando creación de `RecetaItem` con `recetas.crear` y recálculo automático del producto, rechazo HTTP 400 al intentar cambiar `producto` vía `PATCH`, actualización de cantidad con recálculo y rechazo HTTP 403 sin `recetas.crear`.
+- **Frontend PWA (`web/`):**
+  - En `web/js/logicaPwa.js`: se agregaron los helpers puros `usuarioTienePermiso`, `obtenerUnidadesCompatiblesReceta`, `calcularFactorConversionReceta` y `extraerMensajeErrorApi`.
+  - En `web/index.html`, `web/css/estilos.css` y `web/js/app.js`: se incorporó en **Recetas & Rentabilidad** la gestión de la carta controlada por permisos granulares (`recetas.crear`, `recetas.editar`, `recetas.eliminar`):
+    - Botón **+ Nuevo producto** y modal (`#modal-nuevo-producto`) con nombre, código de barras opcional (`null` si está vacío), precio de venta, minutos de mano de obra y costo hora (`POST /api/productos/`).
+    - En el desglose de receta: formulario para agregar insumo (`POST /api/recetas-items/`), edición inline de cantidad (`PATCH /api/recetas-items/{id}/`) y botón para quitar insumo (`DELETE /api/recetas-items/{id}/`), refrescando la tabla y el desglose tras cada operación.
+    - Modal para editar el precio de venta de un producto (`PATCH /api/productos/{id}/`), sin borrado de productos.
+    - Todo texto proveniente de la base se renderiza escapado con `escaparHtml` o `textContent`.
+- **Documentación e integridad (`web/vendor/mammoth/README.md`, `docs/CONNECTIONS.md`, `docs/bitacora.md`):**
+  - Se incluyó en el commit la corrección del hash SHA-256 en `web/vendor/mammoth/README.md` y se actualizó `docs/CONNECTIONS.md` con `/api/productos/` y `/api/recetas-items/`.
+- **Tests PWA (`backend-node/tests/`):**
+  - Ampliación de `logicaPwa.unit.test.js` y `clientePwa.integration.test.js` cubriendo los helpers de permisos/unidades/errores y los nuevos elementos de interfaz.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Cliente Mínimo PWA (`web/`) ↔ `backend-django` (`/api/productos/`, `/api/recetas-items/`).
+Problemas y decisiones técnicas:
+- Se envía `codigo_barras: null` cuando el campo opcional queda vacío para no colisionar con la restricción `unique=True` de `Producto.codigo_barras`.
+- En `RecetaItemSerializer.validate`, bloquear cambios de `producto` preserva la integridad de los ítems existentes sin impedir actualizaciones parciales de `cantidad` o `unidad`.
+Archivos tocados:
+- `backend-django/apps/recetas/serializers.py`
+- `backend-django/apps/recetas/tests/api/__init__.py`
+- `backend-django/apps/recetas/tests/api/test_api_recetas.py`
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `web/vendor/mammoth/README.md`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/` (400 tests en verde)
+- `cd backend-node && npm test && npm run lint` (24 suites, 167 tests en verde)
+- `.venv/bin/ruff check backend-django/apps/recetas/ && .venv/bin/ruff format --check backend-django/apps/recetas/`
+
+---
+Fecha: 2026-11-16
 Tarea: Preservación de números formateados en Excel (`rawNumbers: true`), test real con SheetJS v0.20.3 y verificación SHA-256 de Mammoth
 Rama: feature/reportes-filtro-fechas
 Cambios realizados:

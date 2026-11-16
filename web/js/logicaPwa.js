@@ -1822,3 +1822,109 @@ export const extraerTextoDeDocxBuffer = async (bufferDocx, mammothRef = null) =>
     };
 };
 
+const UNIDADES_POR_BASE_RECETA = {
+    g: [
+        { valor: 'g', etiqueta: 'g (Gramos)' },
+        { valor: 'kg', etiqueta: 'kg (Kilogramos)' },
+        { valor: 'mg', etiqueta: 'mg (Miligramos)' },
+    ],
+    ml: [
+        { valor: 'ml', etiqueta: 'ml (Mililitros)' },
+        { valor: 'l', etiqueta: 'l (Litros)' },
+        { valor: 'cc', etiqueta: 'cc (Centímetros cúbicos)' },
+    ],
+    un: [
+        { valor: 'un', etiqueta: 'un (Unidades)' },
+        { valor: 'docena', etiqueta: 'docena (12 un)' },
+    ],
+};
+
+const FACTORES_CONVERSION_RECETA = {
+    'g->g': 1,
+    'kg->g': 1000,
+    'kilo->g': 1000,
+    'mg->g': 0.001,
+    'ml->ml': 1,
+    'cc->ml': 1,
+    'l->ml': 1000,
+    'lt->ml': 1000,
+    'litro->ml': 1000,
+    'un->un': 1,
+    'u->un': 1,
+    'unidad->un': 1,
+    'docena->un': 12,
+};
+
+/**
+ * Verifica si el usuario autenticado posee un permiso granular activo.
+ */
+export const usuarioTienePermiso = (usuario, clavePermiso) => {
+    if (!usuario || !clavePermiso) {
+        return false;
+    }
+    const permisos = usuario.permisos;
+    if (Array.isArray(permisos)) {
+        if (permisos.includes(clavePermiso)) {
+            return true;
+        }
+        // Superusuario sin PerfilUsuario emite rol DUENIO con lista de permisos vacía en JWT
+        if (String(usuario.rol || '').toUpperCase() === 'DUENIO' && permisos.length === 0) {
+            return true;
+        }
+        return false;
+    }
+    if (permisos && typeof permisos === 'object') {
+        return Boolean(permisos[clavePermiso]);
+    }
+    return String(usuario.rol || '').toUpperCase() === 'DUENIO';
+};
+
+/**
+ * Devuelve las unidades compatibles con la unidad base de un insumo ('g', 'ml', 'un').
+ */
+export const obtenerUnidadesCompatiblesReceta = (unidadBase = '') => {
+    const base = String(unidadBase || '').trim().toLowerCase();
+    if (UNIDADES_POR_BASE_RECETA[base]) {
+        return UNIDADES_POR_BASE_RECETA[base];
+    }
+    return [
+        ...UNIDADES_POR_BASE_RECETA.g,
+        ...UNIDADES_POR_BASE_RECETA.ml,
+        ...UNIDADES_POR_BASE_RECETA.un,
+    ];
+};
+
+/**
+ * Factor multiplicador para convertir una cantidad de receta a la unidad base del insumo.
+ */
+export const calcularFactorConversionReceta = (unidadOrigen = '', unidadBase = '') => {
+    const origen = String(unidadOrigen || '').trim().toLowerCase();
+    const base = String(unidadBase || '').trim().toLowerCase();
+    if (!origen || !base || origen === base) return 1;
+    return FACTORES_CONVERSION_RECETA[`${origen}->${base}`] ?? 1;
+};
+
+/**
+ * Extrae el mensaje legible desde una respuesta de error estándar { mensaje, detalles }.
+ */
+export const extraerMensajeErrorApi = (
+    data,
+    fallback = 'No se pudo completar la operación.'
+) => {
+    if (!data || typeof data !== 'object') return fallback;
+    let detalleMsg = '';
+    if (Array.isArray(data.detalles) && data.detalles.length > 0) {
+        detalleMsg = String(data.detalles[0]);
+    } else if (data.detalles && typeof data.detalles === 'object') {
+        const primerValor = Object.values(data.detalles)[0];
+        if (Array.isArray(primerValor) && primerValor.length > 0) {
+            detalleMsg = String(primerValor[0]);
+        } else if (typeof primerValor === 'string') {
+            detalleMsg = primerValor;
+        }
+    } else if (typeof data.detalles === 'string' && data.detalles.trim()) {
+        detalleMsg = data.detalles;
+    }
+    return detalleMsg || data.mensaje || data.detail || fallback;
+};
+

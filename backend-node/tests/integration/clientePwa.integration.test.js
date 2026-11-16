@@ -18,6 +18,10 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('Previsualización de CSV');
         expect(res.text).toContain('btn-csv-confirmar-directo');
         expect(res.text).toContain('btn-csv-desde-texto');
+        expect(res.text).toContain('btn-modal-nuevo-producto');
+        expect(res.text).toContain('modal-nuevo-producto');
+        expect(res.text).toContain('modal-editar-precio-producto');
+        expect(res.text).toContain('form-agregar-receta-item');
         expect(res.text).toContain('archivo-lista-ia');
         expect(res.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(res.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');
@@ -86,6 +90,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(resAppJs.text).toContain('extraerTextoDePdfBuffer');
         expect(resAppJs.text).toContain('btn-contingencia-usar-csv-directo');
         expect(resAppJs.text).toContain('/api/compras/confirmar-importacion/');
+        expect(resAppJs.text).toContain('/api/productos/');
+        expect(resAppJs.text).toContain('/api/recetas-items/');
+        expect(resAppJs.text).toContain('usuarioTienePermiso');
         expect(resAppJs.text).not.toContain('extraerItemsDesdeTextoLista');
 
         expect(resLogicaJs.status).toBe(200);

@@ -7,6 +7,7 @@
 import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
+    calcularFactorConversionReceta,
     calcularResumenCarrito,
     construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
@@ -21,6 +22,7 @@ import {
     evaluarEstadoResumenIA,
     evaluarTextoComoCsvDirecto,
     extraerCsvDeExcelBuffer,
+    extraerMensajeErrorApi,
     extraerTextoDeDocxBuffer,
     extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
@@ -31,10 +33,12 @@ import {
     MENSAJE_DOC_ANTIGUO,
     MENSAJE_IA_NO_DISPONIBLE,
     obtenerContenidoPlantillaCsv,
+    obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     parsearCsvProveedor,
     procesarColaVentasOffline,
     unificarTrazabilidadRegistros,
+    usuarioTienePermiso,
     validarRangoFechas,
     validarTamanoArchivoImportacion,
 } from './logicaPwa.js';
@@ -135,6 +139,7 @@ export const estadoApp = {
     proveedores: [],
     turnosHistorial: [],
     usuariosEquipo: [],
+    productoDesgloseId: null,
     filtroCategoriaActual: 'todos',
     trazabilidad: {
         registros: [],
@@ -518,6 +523,8 @@ const configurarVisibilidadPorRol = (rol) => {
     if ($('finanzas-bloqueo-cajero')) {
         $('finanzas-bloqueo-cajero').style.display = esCajero ? 'block' : 'none';
     }
+
+    actualizarVisibilidadGestionRecetas();
 };
 
 const intentarReanudarSesionOffline = (usernameSolicitado = '') => {
@@ -639,6 +646,8 @@ const ejecutarLogin = async (username, password, tokenManual = '') => {
 const cerrarSesion = () => {
     estadoApp.tokenJwt = '';
     estadoApp.usuario = null;
+    estadoApp.productoDesgloseId = null;
+    if ($('panel-desglose-receta')) $('panel-desglose-receta').style.display = 'none';
     sessionStorage.removeItem('cafe_jwt');
     sessionStorage.removeItem('cafe_user');
     sessionStorage.removeItem('cafe_pwd');
@@ -796,6 +805,14 @@ export const cargarCatalogo = async () => {
     }
     renderizarCatalogoPOS();
     renderizarTablaRecetas();
+    if (estadoApp.productoDesgloseId !== null && $('panel-desglose-receta')?.style.display !== 'none') {
+        const productoActual = estadoApp.catalogo.find(
+            (p) => Number(p.id) === Number(estadoApp.productoDesgloseId)
+        );
+        if (productoActual) {
+            mostrarDesgloseReceta(productoActual);
+        }
+    }
 };
 
 const renderizarCatalogoPOS = () => {
@@ -1344,15 +1361,21 @@ const renderizarTablaInsumos = () => {
 };
 
 const poblarSelectoresInsumos = () => {
-    const sel = $('select-compra-insumo');
-    if (!sel) return;
-    sel.innerHTML = '';
-    for (const ins of estadoApp.insumos) {
-        const opt = document.createElement('option');
-        opt.value = ins.id;
-        opt.textContent = `${ins.nombre} (Unidad base: ${ins.unidad_base})`;
-        sel.appendChild(opt);
+    const selectores = [$('select-compra-insumo'), $('select-receta-insumo')].filter(Boolean);
+    for (const sel of selectores) {
+        const valorPrevio = sel.value;
+        sel.innerHTML = '';
+        for (const ins of estadoApp.insumos) {
+            const opt = document.createElement('option');
+            opt.value = ins.id;
+            opt.textContent = `${ins.nombre} (Unidad base: ${ins.unidad_base})`;
+            sel.appendChild(opt);
+        }
+        if (valorPrevio && Array.from(sel.options).some((o) => o.value === valorPrevio)) {
+            sel.value = valorPrevio;
+        }
     }
+    actualizarSelectUnidadReceta();
 };
 
 const poblarSelectoresProveedores = () => {
@@ -2140,12 +2163,56 @@ const renderizarPropuestaIAComercial = (doc) => {
 // ============================================================
 // MÓDULO 4: INGENIERÍA DE RECETAS Y RENTABILIDAD
 // ============================================================
+const actualizarVisibilidadGestionRecetas = () => {
+    const btnNuevo = $('btn-modal-nuevo-producto');
+    if (btnNuevo) {
+        btnNuevo.style.display = usuarioTienePermiso(estadoApp.usuario, 'recetas.crear') ? '' : 'none';
+    }
+};
+
+const actualizarSelectUnidadReceta = () => {
+    const selInsumo = $('select-receta-insumo');
+    const selUnidad = $('select-receta-unidad');
+    if (!selUnidad) return;
+
+    const insumoId = selInsumo ? Number(selInsumo.value) : null;
+    const insumoSel = estadoApp.insumos.find((i) => Number(i.id) === insumoId);
+    const opciones = obtenerUnidadesCompatiblesReceta(insumoSel?.unidad_base || '');
+
+    selUnidad.innerHTML = '';
+    for (const op of opciones) {
+        const opt = document.createElement('option');
+        opt.value = op.valor;
+        opt.textContent = op.etiqueta;
+        selUnidad.appendChild(opt);
+    }
+    if (insumoSel?.unidad_base) {
+        selUnidad.value = insumoSel.unidad_base;
+    }
+};
+
+const abrirModalEditarPrecioProducto = (producto) => {
+    const modal = $('modal-editar-precio-producto');
+    if (!modal || !producto) return;
+    if ($('input-editar-precio-id')) $('input-editar-precio-id').value = String(producto.id);
+    if ($('editar-precio-producto-nombre')) {
+        $('editar-precio-producto-nombre').textContent = producto.nombre || '';
+    }
+    if ($('input-editar-precio-venta')) {
+        $('input-editar-precio-venta').value = producto.precio_venta ?? '';
+    }
+    modal.style.display = 'flex';
+};
+
 const renderizarTablaRecetas = () => {
+    actualizarVisibilidadGestionRecetas();
+
     const tbody = $('tabla-recetas-productos-body');
     if (!tbody) return;
     tbody.innerHTML = '';
 
     const esCajero = estadoApp.usuario?.rol === 'CAJERO';
+    const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'recetas.editar');
 
     for (const p of estadoApp.catalogo) {
         const tr = document.createElement('tr');
@@ -2186,6 +2253,10 @@ const renderizarTablaRecetas = () => {
             `;
         }
 
+        const btnEditarPrecioHtml = puedeEditar
+            ? `<button type="button" class="btn-refrescar-mini btn-editar-precio-producto" data-id="${escaparHtml(p.id)}" title="Editar precio de venta">Editar precio</button>`
+            : '';
+
         tr.innerHTML = `
             <td class="col-texto">
                 <div style="display: flex; align-items: center; gap: 0.65rem;">
@@ -2199,10 +2270,13 @@ const renderizarTablaRecetas = () => {
             <td class="col-numero text-exito">${!esCajero && ganancia !== null ? formatearMoneda(ganancia) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-texto">${margenBarraHtml}</td>
             <td class="col-centro">
-                <button type="button" class="btn-refrescar-mini btn-recalcular-producto" data-id="${p.id}" title="Recalcular Costo" style="display: inline-flex; align-items: center; gap: 0.35rem;">
-                    ${SVG_ICONOS.refrescar}
-                    <span>Recalcular</span>
-                </button>
+                <div class="receta-acciones-fila">
+                    <button type="button" class="btn-refrescar-mini btn-recalcular-producto" data-id="${escaparHtml(p.id)}" title="Recalcular Costo" style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                        ${SVG_ICONOS.refrescar}
+                        <span>Recalcular</span>
+                    </button>
+                    ${btnEditarPrecioHtml}
+                </div>
             </td>
         `;
 
@@ -2216,7 +2290,59 @@ const renderizarTablaRecetas = () => {
             await recalcularProducto(p.id);
         });
 
+        tr.querySelector('.btn-editar-precio-producto')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            abrirModalEditarPrecioProducto(p);
+        });
+
         tbody.appendChild(tr);
+    }
+};
+
+const actualizarCantidadRecetaItem = async (itemId, nuevaCantidad) => {
+    const cantidadNum = Number(nuevaCantidad);
+    if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) {
+        mostrarToast('Ingresá una cantidad mayor a cero.', 'advertencia');
+        return;
+    }
+    try {
+        const res = await fetch(`${estadoApp.djangoUrl}/api/recetas-items/${itemId}/`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ cantidad: String(nuevaCantidad) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            mostrarToast('Cantidad actualizada y costo recalculado.', 'exito');
+            await cargarCatalogo();
+        } else {
+            mostrarToast(extraerMensajeErrorApi(data, 'Error al actualizar cantidad del insumo.'), 'peligro');
+        }
+    } catch (err) {
+        mostrarToast(`Error: ${err.message}`, 'peligro');
+    }
+};
+
+const eliminarRecetaItem = async (itemId) => {
+    try {
+        const res = await fetch(`${estadoApp.djangoUrl}/api/recetas-items/${itemId}/`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+            },
+        });
+        if (res.ok) {
+            mostrarToast('Insumo quitado de la receta y costo recalculado.', 'exito');
+            await cargarCatalogo();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            mostrarToast(extraerMensajeErrorApi(data, 'Error al quitar el insumo de la receta.'), 'peligro');
+        }
+    } catch (err) {
+        mostrarToast(`Error: ${err.message}`, 'peligro');
     }
 };
 
@@ -2224,17 +2350,37 @@ const mostrarDesgloseReceta = (producto) => {
     const panel = $('panel-desglose-receta');
     const titulo = $('receta-detalle-nombre');
     const tbody = $('tabla-receta-items-body');
+    const thAcciones = $('th-receta-item-acciones');
+    const formAgregar = $('form-agregar-receta-item');
     if (!panel || !titulo || !tbody) return;
 
+    estadoApp.productoDesgloseId = producto.id;
     panel.style.display = 'block';
     titulo.textContent = `Desglose de Receta: ${producto.nombre}`;
     tbody.innerHTML = '';
+
+    const puedeCrear = usuarioTienePermiso(estadoApp.usuario, 'recetas.crear');
+    const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'recetas.editar');
+    const puedeEliminar = usuarioTienePermiso(estadoApp.usuario, 'recetas.eliminar');
+    const mostrarAcciones = puedeEditar || puedeEliminar;
+
+    if (thAcciones) thAcciones.style.display = mostrarAcciones ? '' : 'none';
+    if (formAgregar) {
+        formAgregar.style.display = puedeCrear ? 'block' : 'none';
+        if (puedeCrear) {
+            if (estadoApp.insumos.length === 0 && estadoApp.tokenJwt) {
+                cargarInsumos();
+            } else {
+                poblarSelectoresInsumos();
+            }
+        }
+    }
 
     const items = Array.isArray(producto.receta_items) ? producto.receta_items : [];
     if (items.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="4" class="col-centro text-muted py-4">Este producto utiliza el costo directo de carta sin sub-ítems detallados.</td>
+                <td colspan="${mostrarAcciones ? 5 : 4}" class="col-centro text-muted py-4">Este producto utiliza el costo directo de carta sin sub-ítems detallados.</td>
             </tr>
         `;
         return;
@@ -2243,18 +2389,52 @@ const mostrarDesgloseReceta = (producto) => {
     const esCajero = estadoApp.usuario?.rol === 'CAJERO';
     for (const item of items) {
         const cant = Number(item.cantidad || 0);
+        const unidadItem = item.unidad || item.insumo_unidad_base || 'un';
+        const unidadBase = item.insumo_unidad_base || unidadItem;
         const costoUnit = item.insumo_costo_unitario !== null && item.insumo_costo_unitario !== undefined
             ? Number(item.insumo_costo_unitario)
             : null;
-        const subtotal = costoUnit !== null ? cant * costoUnit : null;
+        const factor = calcularFactorConversionReceta(unidadItem, unidadBase);
+        const subtotal = costoUnit !== null ? cant * factor * costoUnit : null;
 
         const tr = document.createElement('tr');
+        const cantidadHtml = puedeEditar
+            ? `<div class="receta-cantidad-inline">
+                    <input type="number" class="input-receta-cantidad" step="0.0001" min="0.0001" value="${escaparHtml(item.cantidad)}" aria-label="Cantidad de ${escaparHtml(item.insumo_nombre || 'insumo')}" />
+                    <span class="producto-codigo-badge">${escaparHtml(unidadItem)}</span>
+               </div>`
+            : `${cant} <span class="producto-codigo-badge">${escaparHtml(unidadItem)}</span>`;
+
+        const accionesHtml = mostrarAcciones
+            ? `<td class="col-centro">
+                    <div class="receta-acciones-fila">
+                        ${puedeEditar ? `<button type="button" class="btn-refrescar-mini btn-guardar-receta-item" data-id="${escaparHtml(item.id)}">Guardar</button>` : ''}
+                        ${puedeEliminar ? `<button type="button" class="btn-refrescar-mini btn-quitar-receta-item" data-id="${escaparHtml(item.id)}">Quitar</button>` : ''}
+                    </div>
+               </td>`
+            : '';
+
         tr.innerHTML = `
             <td class="col-texto"><strong>${escaparHtml(item.insumo_nombre || `Insumo #${item.insumo}`)}</strong></td>
-            <td class="col-centro">${cant} <span class="producto-codigo-badge">${escaparHtml(item.unidad || item.insumo_unidad_base || 'un')}</span></td>
-            <td class="col-numero">${!esCajero && costoUnit !== null ? `${formatearMoneda(costoUnit)} / ${escaparHtml(item.insumo_unidad_base || item.unidad || 'un')}` : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-centro">${cantidadHtml}</td>
+            <td class="col-numero">${!esCajero && costoUnit !== null ? `${formatearMoneda(costoUnit)} / ${escaparHtml(unidadBase)}` : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero font-bold">${!esCajero && subtotal !== null ? formatearMoneda(subtotal) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            ${accionesHtml}
         `;
+
+        if (puedeEditar) {
+            const btnGuardar = tr.querySelector('.btn-guardar-receta-item');
+            const inputCant = tr.querySelector('.input-receta-cantidad');
+            btnGuardar?.addEventListener('click', async () => {
+                await actualizarCantidadRecetaItem(item.id, inputCant?.value);
+            });
+        }
+        if (puedeEliminar) {
+            tr.querySelector('.btn-quitar-receta-item')?.addEventListener('click', async () => {
+                await eliminarRecetaItem(item.id);
+            });
+        }
+
         tbody.appendChild(tr);
     }
 };
@@ -3638,6 +3818,7 @@ Flete y entrega a local: $4500`;
     });
 
     $('btn-cerrar-desglose')?.addEventListener('click', () => {
+        estadoApp.productoDesgloseId = null;
         if ($('panel-desglose-receta')) $('panel-desglose-receta').style.display = 'none';
     });
 
@@ -3710,8 +3891,133 @@ Flete y entrega a local: $4500`;
         }
     });
 
-    // 18. Recalcular toda la carta
+    // 18. Recalcular toda la carta y Gestión de Productos / Recetas
     $('btn-recalcular-toda-carta')?.addEventListener('click', recalcularTodaLaCarta);
+
+    $('btn-modal-nuevo-producto')?.addEventListener('click', () => {
+        if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.crear')) return;
+        $('form-nuevo-producto')?.reset();
+        if ($('input-nuevo-producto-minutos')) $('input-nuevo-producto-minutos').value = '0.00';
+        if ($('input-nuevo-producto-costo-hora')) $('input-nuevo-producto-costo-hora').value = '2500.00';
+        if ($('modal-nuevo-producto')) $('modal-nuevo-producto').style.display = 'flex';
+    });
+
+    $('form-nuevo-producto')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.crear')) return;
+
+        const nombre = ($('input-nuevo-producto-nombre')?.value || '').trim();
+        const codigoBarras = ($('input-nuevo-producto-codigo')?.value || '').trim();
+        const precioVenta = $('input-nuevo-producto-precio')?.value;
+        const minutosManoObra = $('input-nuevo-producto-minutos')?.value || '0.00';
+        const costoHoraManoObra = $('input-nuevo-producto-costo-hora')?.value || '2500.00';
+
+        if (!nombre) {
+            mostrarToast('Ingresá el nombre del producto.', 'advertencia');
+            return;
+        }
+
+        try {
+            const res = await fetch(`${estadoApp.djangoUrl}/api/productos/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                },
+                body: JSON.stringify({
+                    nombre,
+                    codigo_barras: codigoBarras || null,
+                    precio_venta: precioVenta,
+                    minutos_mano_obra: minutosManoObra,
+                    costo_hora_mano_obra: costoHoraManoObra,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                if ($('modal-nuevo-producto')) $('modal-nuevo-producto').style.display = 'none';
+                $('form-nuevo-producto').reset();
+                mostrarToast(`Producto "${data.nombre || nombre}" agregado a la carta.`, 'exito');
+                await cargarCatalogo();
+            } else {
+                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo crear el producto.'), 'peligro');
+            }
+        } catch (err) {
+            mostrarToast(`Error: ${err.message}`, 'peligro');
+        }
+    });
+
+    $('form-editar-precio-producto')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.editar')) return;
+
+        const productoId = $('input-editar-precio-id')?.value;
+        const precioVenta = $('input-editar-precio-venta')?.value;
+        if (!productoId) return;
+
+        try {
+            const res = await fetch(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                },
+                body: JSON.stringify({ precio_venta: precioVenta }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                if ($('modal-editar-precio-producto')) $('modal-editar-precio-producto').style.display = 'none';
+                mostrarToast('Precio de venta actualizado y margen recalculado.', 'exito');
+                await cargarCatalogo();
+            } else {
+                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo actualizar el precio de venta.'), 'peligro');
+            }
+        } catch (err) {
+            mostrarToast(`Error: ${err.message}`, 'peligro');
+        }
+    });
+
+    $('select-receta-insumo')?.addEventListener('change', actualizarSelectUnidadReceta);
+
+    $('form-agregar-receta-item')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.crear')) return;
+
+        const productoId = estadoApp.productoDesgloseId;
+        const insumoId = $('select-receta-insumo')?.value;
+        const cantidad = $('input-receta-cantidad')?.value;
+        const unidad = $('select-receta-unidad')?.value;
+
+        if (!productoId || !insumoId) {
+            mostrarToast('Seleccioná un producto e insumo válidos.', 'advertencia');
+            return;
+        }
+
+        try {
+            const res = await fetch(`${estadoApp.djangoUrl}/api/recetas-items/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                },
+                body: JSON.stringify({
+                    producto: Number(productoId),
+                    insumo: Number(insumoId),
+                    cantidad,
+                    unidad,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                if ($('input-receta-cantidad')) $('input-receta-cantidad').value = '';
+                mostrarToast('Insumo agregado a la receta y costo recalculado.', 'exito');
+                await cargarCatalogo();
+            } else {
+                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo agregar el insumo a la receta.'), 'peligro');
+            }
+        } catch (err) {
+            mostrarToast(`Error: ${err.message}`, 'peligro');
+        }
+    });
 
     // 19. Simulador de Punto de Equilibrio
     $('form-punto-equilibrio')?.addEventListener('submit', (e) => {

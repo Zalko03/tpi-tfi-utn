@@ -7,6 +7,7 @@ import { jest } from '@jest/globals';
 import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
+    calcularFactorConversionReceta,
     calcularResumenCarrito,
     CLAVE_COLA_VENTAS_RECHAZADAS,
     construirQueryRangoFechas,
@@ -27,6 +28,7 @@ import {
     evaluarTextoExtraidoPdf,
     extraerCsvDeExcelBuffer,
     extraerItemsDesdeTextoLista,
+    extraerMensajeErrorApi,
     extraerTextoDeDocxBuffer,
     extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
@@ -40,6 +42,7 @@ import {
     MENSAJE_IA_NO_DISPONIBLE,
     MENSAJE_PDF_ESCANEADO,
     obtenerContenidoPlantillaCsv,
+    obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     obtenerVentasRechazadasOffline,
     parsearCsvProveedor,
@@ -47,6 +50,7 @@ import {
     reconstruirLineasDeItemsPdf,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
+    usuarioTienePermiso,
     validarRangoFechas,
     validarTamanoArchivoImportacion,
 } from '../../../web/js/logicaPwa.js';
@@ -1007,6 +1011,63 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             await expect(extraerTextoDeDocxBuffer(new ArrayBuffer(0), mammothMock)).rejects.toThrow(
                 'El archivo Word (.docx) está vacío o no contiene datos.'
             );
+        });
+    });
+
+    describe('Gestión de carta y recetas por permisos granulares', () => {
+        it('usuarioTienePermiso evalúa permisos de recetas.crear, recetas.editar y recetas.eliminar', () => {
+            const encargado = {
+                rol: 'ENCARGADO',
+                permisos: ['recetas.ver', 'recetas.crear', 'recetas.editar', 'recetas.ver_costos'],
+            };
+            expect(usuarioTienePermiso(encargado, 'recetas.crear')).toBe(true);
+            expect(usuarioTienePermiso(encargado, 'recetas.editar')).toBe(true);
+            expect(usuarioTienePermiso(encargado, 'recetas.eliminar')).toBe(false);
+
+            const cajero = { rol: 'CAJERO', permisos: ['ventas.cobrar_ticket'] };
+            expect(usuarioTienePermiso(cajero, 'recetas.crear')).toBe(false);
+            expect(usuarioTienePermiso(cajero, 'recetas.editar')).toBe(false);
+            expect(usuarioTienePermiso(cajero, 'recetas.eliminar')).toBe(false);
+
+            const duenioSuperuser = { rol: 'DUENIO', permisos: [] };
+            expect(usuarioTienePermiso(duenioSuperuser, 'recetas.eliminar')).toBe(true);
+
+            expect(usuarioTienePermiso(null, 'recetas.crear')).toBe(false);
+        });
+
+        it('obtenerUnidadesCompatiblesReceta y calcularFactorConversionReceta manejan g/kg, ml/l y un/docena', () => {
+            expect(obtenerUnidadesCompatiblesReceta('g').map((u) => u.valor)).toEqual([
+                'g',
+                'kg',
+                'mg',
+            ]);
+            expect(obtenerUnidadesCompatiblesReceta('ml').map((u) => u.valor)).toEqual([
+                'ml',
+                'l',
+                'cc',
+            ]);
+            expect(obtenerUnidadesCompatiblesReceta('un').map((u) => u.valor)).toEqual([
+                'un',
+                'docena',
+            ]);
+
+            expect(calcularFactorConversionReceta('kg', 'g')).toBe(1000);
+            expect(calcularFactorConversionReceta('l', 'ml')).toBe(1000);
+            expect(calcularFactorConversionReceta('docena', 'un')).toBe(12);
+            expect(calcularFactorConversionReceta('g', 'g')).toBe(1);
+        });
+
+        it('extraerMensajeErrorApi prioriza detalles de validación DRF y cae en mensaje/fallback', () => {
+            expect(
+                extraerMensajeErrorApi({
+                    mensaje: 'Error de validación',
+                    detalles: { producto: ['No se puede cambiar el producto.'] },
+                })
+            ).toBe('No se puede cambiar el producto.');
+            expect(extraerMensajeErrorApi({ mensaje: 'Permiso denegado', detalles: null })).toBe(
+                'Permiso denegado'
+            );
+            expect(extraerMensajeErrorApi(null, 'Fallo genérico')).toBe('Fallo genérico');
         });
     });
 });
