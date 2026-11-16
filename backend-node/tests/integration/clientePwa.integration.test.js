@@ -13,6 +13,7 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('filtro-fecha-desde');
         expect(res.text).toContain('filtro-fecha-hasta');
         expect(res.text).toContain('tabla-trazabilidad-reportes');
+        expect(res.text).toContain('ia-alerta-contingencia');
         expect(res.text).toContain('/app/manifest.webmanifest');
         expect(res.text).toContain('/app/js/app.js');
     });
@@ -48,8 +49,12 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
 
         expect(resAppJs.status).toBe(200);
         expect(resAppJs.text).toContain('conectarSocketTiempoReal');
+        expect(resAppJs.text).toContain('evaluarEstadoImportacionIA');
+        expect(resAppJs.text).toContain('evaluarEstadoResumenIA');
+        expect(resAppJs.text).not.toContain('extraerItemsDesdeTextoLista');
 
         expect(resLogicaJs.status).toBe(200);
         expect(resLogicaJs.text).toContain('convertirMontoACentavos');
+        expect(resLogicaJs.text).toContain('No se pudo usar la IA, revisá la configuración');
     });
 });

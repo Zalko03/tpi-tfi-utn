@@ -17,7 +17,7 @@ from app.services.prompts import cargar_prompt
 from app.services.proveedor_ia import ErrorProveedorIA, ProveedorIA, obtener_proveedor_ia
 
 MENSAJE_CONTINGENCIA_RESUMEN = (
-    "El proveedor de IA no se encuentra disponible en este momento. "
+    "No se pudo usar la IA, revisá la configuración. "
     "Las métricas de ventas y costos siguen operativas en el tablero principal."
 )
 
@@ -122,11 +122,7 @@ async def generar_resumen_semanal(
                 proveedor_ia="contingencia" if es_contingencia else nombre_proveedor,
                 latencia_ms=max(0, latencia_ms),
                 contingencia=es_contingencia,
-                mensaje_contingencia=(
-                    "Resumen generado mediante contingencia heurística sin proveedor LLM activo."
-                    if es_contingencia
-                    else None
-                ),
+                mensaje_contingencia=(MENSAJE_CONTINGENCIA_RESUMEN if es_contingencia else None),
             )
         except asyncio.TimeoutError:
             ultimo_error = (

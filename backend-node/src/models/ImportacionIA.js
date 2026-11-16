@@ -124,6 +124,14 @@ const importacionIASchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        mensajeContingencia: {
+            type: String,
+            default: null,
+        },
+        advertencias: {
+            type: [String],
+            default: [],
+        },
         mensajeError: {
             type: String,
             default: null,

@@ -11,6 +11,8 @@ import {
     encolarVentaOffline,
     escaparHtml,
     estaFechaEnRango,
+    evaluarEstadoImportacionIA,
+    evaluarEstadoResumenIA,
     extraerItemsDesdeTextoLista,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
@@ -18,6 +20,7 @@ import {
     formatearFechaLocalInput,
     generarIdOperacion,
     limpiarColaOffline,
+    MENSAJE_IA_NO_DISPONIBLE,
     obtenerContenidoPlantillaCsv,
     obtenerVentasOffline,
     obtenerVentasRechazadasOffline,
@@ -540,6 +543,96 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             ]);
             expect(resultado.registros[0].tipoEtiqueta).toBe('Cierre de Caja');
             expect(resultado.registros[2].tipoEtiqueta).toBe('Stock · Ingreso');
+        });
+    });
+
+    describe('Detección explícita de contingencia IA en Importaciones y Consultor IA', () => {
+        it('evaluarEstadoImportacionIA muestra "No se pudo usar la IA, revisá la configuración" y bloquea aprobación en contingencia', () => {
+            const evalContingencia = evaluarEstadoImportacionIA({
+                _id: '507f1f77bcf86cd799439011',
+                estado: 'CONTINGENCIA',
+                contingencia: true,
+                proveedorIa: 'contingencia',
+                mensajeContingencia: 'GROQ_API_KEY no configurada',
+                advertencias: ['GROQ_API_KEY no está configurada en el entorno.'],
+                salida: { items: [{ nombreInsumo: 'Café falso' }] },
+            });
+
+            expect(evalContingencia.estadoVisual).toBe('contingencia');
+            expect(evalContingencia.esContingencia).toBe(true);
+            expect(evalContingencia.mensajePrincipal).toBe('No se pudo usar la IA, revisá la configuración');
+            expect(evalContingencia.detalleTecnico).toContain('GROQ_API_KEY');
+            expect(evalContingencia.advertencias).toContain('GROQ_API_KEY no está configurada en el entorno.');
+            expect(evalContingencia.sugerenciaAlternativa).toContain('CSV');
+            expect(evalContingencia.puedeAprobar).toBe(false);
+
+            const evalProveedorContingencia = evaluarEstadoImportacionIA({
+                _id: '507f1f77bcf86cd799439012',
+                estado: 'LISTA',
+                contingencia: false,
+                proveedor_ia: 'contingencia',
+                salida: { items: [{ nombreInsumo: 'Café heurístico' }] },
+            });
+            expect(evalProveedorContingencia.esContingencia).toBe(true);
+            expect(evalProveedorContingencia.puedeAprobar).toBe(false);
+        });
+
+        it('evaluarEstadoImportacionIA diferencia estado PROCESANDO y estado LISTA real', () => {
+            const evalProcesando = evaluarEstadoImportacionIA({ estado: 'PROCESANDO' });
+            expect(evalProcesando.estadoVisual).toBe('procesando');
+            expect(evalProcesando.enProceso).toBe(true);
+            expect(evalProcesando.mensajePrincipal).toContain('Analizando con IA');
+            expect(evalProcesando.puedeAprobar).toBe(false);
+
+            const evalLista = evaluarEstadoImportacionIA({
+                _id: '507f1f77bcf86cd799439013',
+                estado: 'LISTA',
+                contingencia: false,
+                proveedorIa: 'groq',
+                salida: {
+                    items: [{ nombreInsumo: 'Café Colombia', cantidad: '5', unidad: 'kg', precioTotal: '115000.00' }],
+                },
+            });
+            expect(evalLista.estadoVisual).toBe('lista');
+            expect(evalLista.esContingencia).toBe(false);
+            expect(evalLista.puedeAprobar).toBe(true);
+        });
+
+        it('evaluarEstadoResumenIA y formatearEventoTiempoReal exponen mensaje explícito ante contingencia o error', () => {
+            const evalResContingencia = evaluarEstadoResumenIA({
+                contingencia: true,
+                proveedor_ia: 'contingencia',
+                mensaje_contingencia: 'Sin proveedor LLM',
+                resumen_ejecutivo: 'Texto demo que no debe mostrarse',
+                advertencias: ['GROQ_API_KEY faltante'],
+            });
+            expect(evalResContingencia.esContingencia).toBe(true);
+            expect(evalResContingencia.mensajePrincipal).toBe(MENSAJE_IA_NO_DISPONIBLE);
+            expect(evalResContingencia.dictamenIa).toBe('');
+
+            const evalResRed = evaluarEstadoResumenIA(null, new Error('Failed to fetch'));
+            expect(evalResRed.esContingencia).toBe(true);
+            expect(evalResRed.mensajePrincipal).toBe(MENSAJE_IA_NO_DISPONIBLE);
+            expect(evalResRed.detalleTecnico).toBe('Failed to fetch');
+
+            const evalResOk = evaluarEstadoResumenIA({
+                contingencia: false,
+                proveedor_ia: 'groq',
+                resumen_ejecutivo: 'Margen saludable en bebidas calientes.',
+                productos_destacados: ['Espresso Doble'],
+                sugerencias_rotacion: [],
+                alertas_costos: [],
+            });
+            expect(evalResOk.esContingencia).toBe(false);
+            expect(evalResOk.dictamenIa).toBe('Margen saludable en bebidas calientes.');
+
+            const evImpCont = formatearEventoTiempoReal('importacion.lista', {
+                estado: 'CONTINGENCIA',
+                contingencia: true,
+                mensajeContingencia: 'GROQ_API_KEY ausente',
+            });
+            expect(evImpCont.nivel).toBe('advertencia');
+            expect(evImpCont.detalle).toContain('No se pudo usar la IA, revisá la configuración');
         });
     });
 });

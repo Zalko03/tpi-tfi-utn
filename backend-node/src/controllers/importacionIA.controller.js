@@ -17,6 +17,10 @@ export const crearImportacion = async (req, res, next) => {
             importacionId: importacion._id,
             estado: importacion.estado,
             versionPrompt: importacion.versionPrompt,
+            contingencia: Boolean(importacion.contingencia),
+            proveedorIa: importacion.proveedorIa ?? null,
+            mensajeContingencia: importacion.mensajeContingencia ?? null,
+            advertencias: Array.isArray(importacion.advertencias) ? importacion.advertencias : [],
             creadoEn: importacion.createdAt,
         });
     } catch (error) {

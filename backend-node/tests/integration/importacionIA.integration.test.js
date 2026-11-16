@@ -135,6 +135,10 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
         expect(res.status).toBe(202);
         expect(res.body).toHaveProperty('importacionId');
         expect(res.body).toHaveProperty('versionPrompt', 'v1');
+        expect(res.body).toHaveProperty('contingencia', false);
+        expect(res.body).toHaveProperty('proveedorIa', null);
+        expect(res.body).toHaveProperty('mensajeContingencia', null);
+        expect(res.body).toHaveProperty('advertencias', []);
 
         const importacionId = res.body.importacionId;
 
@@ -188,7 +192,91 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
         const doc = await ImportacionIA.findById(importacionId);
         expect(doc.estado).toBe('CONTINGENCIA');
         expect(doc.contingencia).toBe(true);
+        expect(doc.proveedorIa).toBe('contingencia');
+        expect(doc.mensajeContingencia).toContain('No se pudo usar la IA, revisá la configuración');
+        expect(doc.advertencias).toContain('Timeout ai-service');
         expect(doc.mensajeError).toContain('manual o por CSV');
+
+        const resDetalle = await request(app)
+            .get(`/api/importaciones/${importacionId}`)
+            .set('Authorization', `Bearer ${tokenDuenio}`);
+
+        expect(resDetalle.status).toBe(200);
+        expect(resDetalle.body.estado).toBe('CONTINGENCIA');
+        expect(resDetalle.body.contingencia).toBe(true);
+        expect(resDetalle.body.proveedorIa).toBe('contingencia');
+        expect(resDetalle.body.mensajeContingencia).toContain(
+            'No se pudo usar la IA, revisá la configuración'
+        );
+        expect(resDetalle.body.advertencias).toContain('Timeout ai-service');
+        expect(resDetalle.body.salida.items).toEqual([]);
+    });
+
+    it('expone contingencia desde ai-service (sin ítems heurísticos falsos) y bloquea aprobación engañosa', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                proveedor_detectado: 'Distribuidora Heurística',
+                envio_detectado: '0.00',
+                moneda: 'ARS',
+                items: [
+                    {
+                        nombre_insumo: 'Café heurístico',
+                        cantidad: '1',
+                        unidad: 'kg',
+                        precio_total: '21000.00',
+                    },
+                ],
+                advertencias: ['GROQ_API_KEY no está configurada en el entorno.'],
+                version_prompt: 'v1',
+                proveedor_ia: 'contingencia',
+                latencia_ms: 2,
+                contingencia: true,
+                mensaje_contingencia: 'No se pudo usar la IA, revisá la configuración.',
+            }),
+        });
+
+        const res = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                textoLista: 'Café heurístico 1 kg $21000',
+                proveedorNombre: 'Distribuidora Heurística',
+            });
+
+        expect(res.status).toBe(202);
+        const importacionId = res.body.importacionId;
+
+        await procesarImportacionEnSegundoPlano(importacionId, {
+            textoLista: 'Café heurístico 1 kg $21000',
+            proveedorNombre: 'Distribuidora Heurística',
+            versionPrompt: 'v1',
+        });
+
+        const resDetalle = await request(app)
+            .get(`/api/importaciones/${importacionId}`)
+            .set('Authorization', `Bearer ${tokenDuenio}`);
+
+        expect(resDetalle.status).toBe(200);
+        expect(resDetalle.body.estado).toBe('CONTINGENCIA');
+        expect(resDetalle.body.contingencia).toBe(true);
+        expect(resDetalle.body.proveedorIa).toBe('contingencia');
+        expect(resDetalle.body.mensajeContingencia).toContain('No se pudo usar la IA');
+        expect(resDetalle.body.advertencias).toContain(
+            'GROQ_API_KEY no está configurada en el entorno.'
+        );
+        expect(resDetalle.body.salida.items).toEqual([]);
+
+        const resAprobar = await request(app)
+            .post(`/api/importaciones/${importacionId}/aprobar`)
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                items: [{ nombreInsumo: 'Café heurístico', cantidad: '1', unidad: 'kg', precioTotal: '21000.00' }],
+            });
+
+        expect(resAprobar.status).toBe(400);
+        expect(resAprobar.body.mensaje).toContain('modo contingencia');
     });
 
     it('permite listar importaciones paginadas y devuelve 404 ante ID inexistente', async () => {

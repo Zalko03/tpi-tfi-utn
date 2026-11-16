@@ -2908,3 +2908,66 @@ textarea:focus {
     }
 }
 
+/* ============================================================
+   ALERTAS EXPLÍCITAS DE CONTINGENCIA IA Y ESTADO PROCESANDO
+   ============================================================ */
+.alerta-contingencia-ia {
+    background: #FFFBEB;
+    border: 1.5px solid #D97706;
+    border-left: 5px solid #B45309;
+    border-radius: var(--radio-md);
+    padding: 1rem 1.15rem;
+    margin-bottom: 1.1rem;
+    color: #78350F;
+}
+
+.alerta-contingencia-ia-titulo {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: #92400E;
+    margin-bottom: 0.35rem;
+}
+
+.alerta-contingencia-ia-detalle {
+    font-size: 0.87rem;
+    color: #78350F;
+    margin: 0.25rem 0;
+}
+
+.alerta-contingencia-ia-lista {
+    margin: 0.45rem 0 0.45rem 1.2rem;
+    padding: 0;
+    font-size: 0.84rem;
+    color: #92400E;
+}
+
+.alerta-contingencia-ia-alternativa {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #78350F;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(180, 83, 9, 0.2);
+}
+
+.alerta-procesando-ia {
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-left: 4px solid #2B6CB0;
+    border-radius: var(--radio-md);
+    padding: 0.9rem 1.1rem;
+    color: #1E3A8A;
+    font-weight: 600;
+}
+
+.btn-exito-comercial:disabled,
+.btn-descartar-comercial:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    pointer-events: none;
+}
+

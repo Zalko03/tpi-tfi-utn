@@ -185,6 +185,7 @@ class OllamaAdapter(ProveedorIA):
 def parsear_lista_precios_heuristica(
     texto: str,
     proveedor_informado: Optional[str] = None,
+    advertencia_contingencia: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Parser determinista ultrarrápido y liviano de listas de precios gastronómicas.
@@ -194,7 +195,7 @@ def parsear_lista_precios_heuristica(
     proveedor = proveedor_informado
     envio = "0.00"
     items: list[dict[str, Any]] = []
-    advertencias: list[str] = []
+    advertencias: list[str] = [advertencia_contingencia] if advertencia_contingencia else []
 
     lineas = [linea.strip() for linea in texto.splitlines() if linea.strip()]
 
@@ -357,7 +358,10 @@ def parsear_lista_precios_heuristica(
     }
 
 
-def fallback_determinista_demostracion(datos_usuario: str) -> dict[str, Any]:
+def fallback_determinista_demostracion(
+    datos_usuario: str,
+    motivo: Optional[str] = None,
+) -> dict[str, Any]:
     """
     Fallback determinista de demostración: procesa la entrada sin consumir recursos locales.
     Soporta extracción de listas de precios y resúmenes semanales.
@@ -372,6 +376,11 @@ def fallback_determinista_demostracion(datos_usuario: str) -> dict[str, Any]:
         destacados = [p.get("nombre") for p in prods[:3] if p.get("unidades_vendidas", 0) > 0]
         if not destacados:
             destacados = ["Café Espresso Doble", "Capuchino Italiano"]
+        alertas = [
+            "Revisar precio de reposición de leche y descartables en próximo pedido mayorista."
+        ]
+        if motivo:
+            alertas.insert(0, f"Aviso técnico: {motivo}")
         return {
             "resumen_ejecutivo": (
                 f"Demostración comercial: Período {data.get('fecha_desde', '')} al {data.get('fecha_hasta', '')}. "
@@ -386,9 +395,7 @@ def fallback_determinista_demostracion(datos_usuario: str) -> dict[str, Any]:
                     "motivo": "Alta rotación y contribución al margen global del local.",
                 }
             ],
-            "alertas_costos": [
-                "Revisar precio de reposición de leche y descartables en próximo pedido mayorista."
-            ],
+            "alertas_costos": alertas,
             "contingencia": True,
         }
 
@@ -398,7 +405,11 @@ def fallback_determinista_demostracion(datos_usuario: str) -> dict[str, Any]:
         proveedor = data.get("proveedor_informado")
         texto = data.get("texto_lista_precios") or datos_usuario
 
-    return parsear_lista_precios_heuristica(texto=str(texto), proveedor_informado=proveedor)
+    return parsear_lista_precios_heuristica(
+        texto=str(texto),
+        proveedor_informado=proveedor,
+        advertencia_contingencia=motivo,
+    )
 
 
 class GroqAdapter(ProveedorIA):
@@ -428,7 +439,10 @@ class GroqAdapter(ProveedorIA):
     ) -> dict[str, Any]:
         if not self.api_key:
             if self.fallback_demo:
-                return fallback_determinista_demostracion(datos_usuario)
+                return fallback_determinista_demostracion(
+                    datos_usuario,
+                    motivo="GROQ_API_KEY no está configurada en el entorno.",
+                )
             raise ErrorProveedorIA("GROQ_API_KEY no está configurada en el entorno.")
 
         url = f"{self.base_url}/chat/completions"
@@ -452,18 +466,24 @@ class GroqAdapter(ProveedorIA):
                 respuesta.raise_for_status()
                 payload = respuesta.json()
         except (httpx.TimeoutException, httpx.HTTPError) as exc:
+            motivo = (
+                "Tiempo de espera agotado al consultar Groq API."
+                if isinstance(exc, httpx.TimeoutException)
+                else "Fallo de comunicación HTTP con Groq API."
+            )
             if self.fallback_demo:
-                return fallback_determinista_demostracion(datos_usuario)
-            if isinstance(exc, httpx.TimeoutException):
-                raise ErrorProveedorIA("Tiempo de espera agotado al consultar Groq API.") from exc
-            raise ErrorProveedorIA("Fallo de comunicación HTTP con Groq API.") from exc
+                return fallback_determinista_demostracion(datos_usuario, motivo=motivo)
+            raise ErrorProveedorIA(motivo) from exc
 
         try:
             elecciones = payload.get("choices") or []
             texto_respuesta = elecciones[0]["message"]["content"]
         except (IndexError, KeyError, TypeError) as exc:
             if self.fallback_demo:
-                return fallback_determinista_demostracion(datos_usuario)
+                return fallback_determinista_demostracion(
+                    datos_usuario,
+                    motivo="Estructura de respuesta inesperada desde Groq API.",
+                )
             raise ErrorProveedorIA("Estructura de respuesta inesperada desde Groq API.") from exc
 
         return extraer_objeto_json(texto_respuesta)

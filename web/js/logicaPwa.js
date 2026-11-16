@@ -192,14 +192,21 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
             };
         }
         case 'importacion.lista': {
-            const enContingencia = Boolean(payload.contingencia) || payload.estado === 'CONTINGENCIA';
+            const enContingencia =
+                Boolean(payload.contingencia) ||
+                payload.estado === 'CONTINGENCIA' ||
+                payload.estado === 'FALLIDA' ||
+                payload.proveedorIa === 'contingencia' ||
+                payload.proveedor_ia === 'contingencia';
             return {
                 evento: nombreEvento,
                 nivel: enContingencia ? 'advertencia' : 'info',
                 titulo: enContingencia
                     ? 'Importación IA en modo contingencia'
                     : `Propuesta IA lista (${payload.cantidadItems ?? 0} ítems)`,
-                detalle: `Proveedor: ${payload.proveedorDetectado || 'Sin especificar'} · Estado: ${payload.estado || 'LISTA'}`,
+                detalle: enContingencia
+                    ? `No se pudo usar la IA, revisá la configuración${payload.mensajeContingencia ? ` · ${payload.mensajeContingencia}` : ''}`
+                    : `Proveedor: ${payload.proveedorDetectado || 'Sin especificar'} · Estado: ${payload.estado || 'LISTA'}`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
             };
@@ -1156,5 +1163,170 @@ export const unificarTrazabilidadRegistros = ({
     };
 
     return { registros, conteos };
+};
+
+export const MENSAJE_IA_NO_DISPONIBLE = 'No se pudo usar la IA, revisá la configuración';
+
+/**
+ * Evalúa el estado visual de una importación de precios IA sin disfrazar
+ * respuestas de contingencia o errores de red como propuestas válidas de IA.
+ */
+export const evaluarEstadoImportacionIA = (doc = null) => {
+    if (!doc || typeof doc !== 'object') {
+        return {
+            estadoVisual: 'contingencia',
+            esContingencia: true,
+            enProceso: false,
+            mensajePrincipal: MENSAJE_IA_NO_DISPONIBLE,
+            detalleTecnico: 'No se recibió respuesta del servicio de importación.',
+            advertencias: [],
+            sugerenciaAlternativa:
+                'Podés usar la importación directa CSV ("Confirmar Directamente en Inventario y Recalcular") o registrar la compra de forma manual.',
+            puedeAprobar: false,
+        };
+    }
+
+    const estado = String(doc.estado || '').toUpperCase();
+    const proveedorIa = doc.proveedorIa ?? doc.proveedor_ia ?? null;
+    const esContingencia =
+        Boolean(doc.contingencia) ||
+        estado === 'CONTINGENCIA' ||
+        estado === 'FALLIDA' ||
+        proveedorIa === 'contingencia';
+
+    const enProceso = !esContingencia && (estado === 'PENDIENTE' || estado === 'PROCESANDO');
+
+    const salida = doc.salida || {};
+    const items = Array.isArray(salida.items)
+        ? salida.items
+        : Array.isArray(doc.items)
+          ? doc.items
+          : [];
+
+    const advertenciasCrudas = [
+        ...(Array.isArray(doc.advertencias) ? doc.advertencias : []),
+        ...(Array.isArray(salida.advertencias) ? salida.advertencias : []),
+    ]
+        .map((a) => String(a || '').trim())
+        .filter(Boolean);
+    const advertencias = [...new Set(advertenciasCrudas)];
+
+    const detalleCrudo =
+        doc.mensajeContingencia ||
+        doc.mensaje_contingencia ||
+        doc.mensajeError ||
+        doc.error ||
+        '';
+    const detalleTecnico = String(detalleCrudo || '').trim();
+
+    if (esContingencia) {
+        return {
+            estadoVisual: 'contingencia',
+            esContingencia: true,
+            enProceso: false,
+            mensajePrincipal: MENSAJE_IA_NO_DISPONIBLE,
+            detalleTecnico,
+            advertencias,
+            sugerenciaAlternativa:
+                'No se generó ninguna propuesta con IA. Podés usar la importación directa CSV ("Confirmar Directamente en Inventario y Recalcular") o registrar la compra de forma manual.',
+            puedeAprobar: false,
+        };
+    }
+
+    if (enProceso) {
+        return {
+            estadoVisual: 'procesando',
+            esContingencia: false,
+            enProceso: true,
+            mensajePrincipal: 'Analizando con IA...',
+            detalleTecnico: 'Consultando el servicio de IA para extraer insumos y precios.',
+            advertencias: [],
+            sugerenciaAlternativa: '',
+            puedeAprobar: false,
+        };
+    }
+
+    const tieneIdServidor = Boolean(doc._id && !String(doc._id).startsWith('local-'));
+    return {
+        estadoVisual: 'lista',
+        esContingencia: false,
+        enProceso: false,
+        mensajePrincipal: 'Propuesta generada por IA lista para revisión',
+        detalleTecnico: '',
+        advertencias,
+        sugerenciaAlternativa: '',
+        puedeAprobar: tieneIdServidor && items.length > 0,
+    };
+};
+
+/**
+ * Evalúa la respuesta del endpoint /v1/resumen-semanal (Consultor IA)
+ * diferenciando una respuesta real de IA del modo contingencia.
+ */
+export const evaluarEstadoResumenIA = (respuestaAi = null, errorRed = null) => {
+    if (errorRed || !respuestaAi || typeof respuestaAi !== 'object') {
+        const msgError =
+            typeof errorRed === 'string'
+                ? errorRed
+                : errorRed?.message || 'No se pudo comunicar con el servicio de IA.';
+        return {
+            esContingencia: true,
+            mensajePrincipal: MENSAJE_IA_NO_DISPONIBLE,
+            detalleTecnico: msgError,
+            advertencias: msgError ? [msgError] : [],
+            dictamenIa: '',
+            productosDestacados: [],
+            sugerenciasRotacion: [],
+            alertasCostos: [],
+        };
+    }
+
+    const proveedorIa = respuestaAi.proveedor_ia ?? respuestaAi.proveedorIa ?? null;
+    const esContingencia =
+        Boolean(respuestaAi.contingencia) || proveedorIa === 'contingencia';
+
+    const advertenciasCrudas = [
+        ...(Array.isArray(respuestaAi.advertencias) ? respuestaAi.advertencias : []),
+        ...(esContingencia && Array.isArray(respuestaAi.alertas_costos)
+            ? respuestaAi.alertas_costos
+            : []),
+    ]
+        .map((a) => String(a || '').trim())
+        .filter(Boolean);
+    const advertencias = [...new Set(advertenciasCrudas)];
+
+    const detalleTecnico = String(
+        respuestaAi.mensaje_contingencia || respuestaAi.mensajeContingencia || ''
+    ).trim();
+
+    if (esContingencia) {
+        return {
+            esContingencia: true,
+            mensajePrincipal: MENSAJE_IA_NO_DISPONIBLE,
+            detalleTecnico,
+            advertencias,
+            dictamenIa: '',
+            productosDestacados: [],
+            sugerenciasRotacion: [],
+            alertasCostos: [],
+        };
+    }
+
+    return {
+        esContingencia: false,
+        mensajePrincipal: '',
+        detalleTecnico: '',
+        advertencias: [],
+        dictamenIa: String(respuestaAi.resumen_ejecutivo || '').trim(),
+        productosDestacados: Array.isArray(respuestaAi.productos_destacados)
+            ? respuestaAi.productos_destacados
+            : [],
+        sugerenciasRotacion: Array.isArray(respuestaAi.sugerencias_rotacion)
+            ? respuestaAi.sugerencias_rotacion
+            : [],
+        alertasCostos: Array.isArray(respuestaAi.alertas_costos)
+            ? respuestaAi.alertas_costos
+            : [],
+    };
 };
 

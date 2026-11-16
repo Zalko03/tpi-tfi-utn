@@ -631,12 +631,14 @@ Envío: $2000</textarea>
                             <!-- Paso 2: Propuesta analizada para revisión humana -->
                             <div id="panel-revision-ia" class="tarjeta-panel-blanca panel-revision-ia-animado" style="display: none;">
                                 <div class="ia-paso-cabecera">
-                                    <div class="paso-circulo exito">2</div>
+                                    <div class="paso-circulo exito" id="ia-paso2-circulo">2</div>
                                     <div>
                                         <h3>Revisión y Aprobación de la Propuesta</h3>
                                         <p class="text-muted">Verifique los ítems detectados. Al aprobar, se actualizarán los costos en las recetas automáticamente.</p>
                                     </div>
                                 </div>
+
+                                <div id="ia-alerta-contingencia" class="alerta-contingencia-ia" role="alert" style="display: none;"></div>
 
                                 <div class="ia-resumen-deteccion" id="ia-resumen-banner">
                                     <!-- Datos de resumen del parseo -->

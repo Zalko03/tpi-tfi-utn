@@ -12,12 +12,14 @@ import {
     ejecutarSincronizacionConLock,
     encolarVentaOffline,
     escaparHtml,
-    extraerItemsDesdeTextoLista,
+    evaluarEstadoImportacionIA,
+    evaluarEstadoResumenIA,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    MENSAJE_IA_NO_DISPONIBLE,
     obtenerContenidoPlantillaCsv,
     obtenerVentasOffline,
     parsearCsvProveedor,
@@ -1356,6 +1358,37 @@ const renderizarPreviewCsv = (resultadoCsv) => {
     }
 };
 
+const construirHtmlAlertaContingenciaIA = ({
+    mensajePrincipal = MENSAJE_IA_NO_DISPONIBLE,
+    detalleTecnico = '',
+    advertencias = [],
+    sugerenciaAlternativa = '',
+} = {}) => {
+    const listaAdvertencias = Array.isArray(advertencias)
+        ? advertencias.filter((a) => a && a !== detalleTecnico)
+        : [];
+    const detalleHtml = detalleTecnico
+        ? `<p class="alerta-contingencia-ia-detalle"><strong>Motivo:</strong> ${escaparHtml(detalleTecnico)}</p>`
+        : '';
+    const advertenciasHtml =
+        listaAdvertencias.length > 0
+            ? `<ul class="alerta-contingencia-ia-lista">${listaAdvertencias.map((adv) => `<li>${escaparHtml(adv)}</li>`).join('')}</ul>`
+            : '';
+    const alternativaHtml = sugerenciaAlternativa
+        ? `<p class="alerta-contingencia-ia-alternativa">${escaparHtml(sugerenciaAlternativa)}</p>`
+        : '';
+
+    return `
+        <div class="alerta-contingencia-ia-titulo">
+            ${SVG_ICONOS.alerta}
+            <span>${escaparHtml(mensajePrincipal)}</span>
+        </div>
+        ${detalleHtml}
+        ${advertenciasHtml}
+        ${alternativaHtml}
+    `;
+};
+
 const enviarCsvAlCircuitoAprobacion = async () => {
     const csv = estadoApp.csvParseadoActual;
     if (!csv || csv.items.length === 0) {
@@ -1368,18 +1401,14 @@ const enviarCsvAlCircuitoAprobacion = async () => {
         $('textarea-lista-ia').value = csv.textoParaIa;
     }
     if ($('estado-importacion-ia')) {
-        $('estado-importacion-ia').textContent = 'Analizando planilla CSV con IA...';
+        $('estado-importacion-ia').textContent = 'Analizando con IA...';
     }
 
-    // Rellenar inmediatamente la tabla del Paso 2 con los ítems detectados del CSV
     renderizarPropuestaIAComercial({
-        _id: 'local-csv',
-        estado: 'LISTA',
-        salida: {
-            proveedorDetectado: proveedorNombre,
-            envioDetectado: csv.envioTotal,
-            items: csv.items,
-        },
+        _id: null,
+        estado: 'PROCESANDO',
+        entrada: { proveedorNombre, textoLista: csv.textoParaIa },
+        salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
     });
 
     try {
@@ -1395,24 +1424,51 @@ const enviarCsvAlCircuitoAprobacion = async () => {
                 versionPrompt: 'v1',
             }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (res.status === 202 && data.importacionId) {
-            mostrarToast('Planilla enviada al circuito de aprobación. Cargando propuesta...', 'exito');
-            if (estadoApp.importacionActual) {
-                estadoApp.importacionActual._id = data.importacionId;
-            }
+            mostrarToast('Planilla enviada al circuito de aprobación. Analizando con IA...', 'info');
             const datosDetalle = await consultarDetalleImportacion(data.importacionId);
-            if (datosDetalle) {
-                renderizarPropuestaIAComercial(datosDetalle);
-            }
+            const evaluacion = evaluarEstadoImportacionIA(datosDetalle);
             if ($('estado-importacion-ia')) {
-                $('estado-importacion-ia').textContent = 'Propuesta lista para revisión en el Paso 2.';
+                $('estado-importacion-ia').textContent = evaluacion.esContingencia
+                    ? MENSAJE_IA_NO_DISPONIBLE
+                    : evaluacion.enProceso
+                      ? 'Analizando con IA...'
+                      : 'Propuesta lista para revisión en el Paso 2.';
+            }
+            if (evaluacion.esContingencia) {
+                mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
             }
         } else {
-            mostrarToast('Propuesta generada desde CSV lista para aprobar en el Paso 2.', 'info');
+            const motivo = data?.mensaje || `El servidor respondió HTTP ${res.status}.`;
+            renderizarPropuestaIAComercial({
+                _id: null,
+                estado: 'CONTINGENCIA',
+                contingencia: true,
+                proveedorIa: 'contingencia',
+                mensajeContingencia: motivo,
+                advertencias: data?.detalles ? [String(data.detalles)] : [],
+                salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
+            });
+            if ($('estado-importacion-ia')) {
+                $('estado-importacion-ia').textContent = MENSAJE_IA_NO_DISPONIBLE;
+            }
+            mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
         }
-    } catch {
-        mostrarToast('Propuesta generada desde CSV lista para aprobar en el Paso 2.', 'info');
+    } catch (err) {
+        renderizarPropuestaIAComercial({
+            _id: null,
+            estado: 'CONTINGENCIA',
+            contingencia: true,
+            proveedorIa: 'contingencia',
+            mensajeContingencia: err?.message || 'No se pudo conectar con el servicio de importación IA.',
+            advertencias: [err?.message || 'Error de red'],
+            salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
+        });
+        if ($('estado-importacion-ia')) {
+            $('estado-importacion-ia').textContent = MENSAJE_IA_NO_DISPONIBLE;
+        }
+        mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
     }
 };
 
@@ -1468,54 +1524,150 @@ const consultarDetalleImportacion = async (importacionId, intento = 1) => {
         const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${importacionId}`, {
             headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` },
         });
-        const datos = await res.json();
+        const datos = await res.json().catch(() => ({}));
         if (res.ok) {
             if (
                 (datos.estado === 'PENDIENTE' || datos.estado === 'PROCESANDO') &&
-                intento < 12
+                intento < 20
             ) {
-                await new Promise((r) => setTimeout(r, 350));
+                if (intento === 1) {
+                    renderizarPropuestaIAComercial(datos);
+                }
+                await new Promise((r) => setTimeout(r, 500));
                 return await consultarDetalleImportacion(importacionId, intento + 1);
             }
             renderizarPropuestaIAComercial(datos);
             return datos;
         }
-    } catch {
-        // Silencioso
+
+        const docError = {
+            _id: importacionId,
+            estado: 'CONTINGENCIA',
+            contingencia: true,
+            proveedorIa: 'contingencia',
+            mensajeContingencia: datos?.mensaje || `Error HTTP ${res.status} al consultar el resultado de la IA.`,
+            salida: { items: [] },
+        };
+        renderizarPropuestaIAComercial(docError);
+        return docError;
+    } catch (err) {
+        const docError = {
+            _id: importacionId,
+            estado: 'CONTINGENCIA',
+            contingencia: true,
+            proveedorIa: 'contingencia',
+            mensajeContingencia: err?.message || 'Error de conexión al consultar el servicio de IA.',
+            salida: { items: [] },
+        };
+        renderizarPropuestaIAComercial(docError);
+        return docError;
     }
-    return null;
 };
 
 const renderizarPropuestaIAComercial = (doc) => {
     const panel = $('panel-revision-ia');
     const tabla = $('tabla-items-ia-body');
     const banner = $('ia-resumen-banner');
+    const alertaContingencia = $('ia-alerta-contingencia');
+    const btnAprobar = $('btn-aprobar-ia');
+    const btnRechazar = $('btn-rechazar-ia');
+    const pasoCirculo = $('ia-paso2-circulo');
     if (!panel || !tabla || !banner) return;
 
     panel.style.display = 'block';
-    const salida = doc.salida || {};
+    const salida = doc?.salida || {};
+    const evaluacion = evaluarEstadoImportacionIA(doc);
+
+    if (evaluacion.enProceso) {
+        if (alertaContingencia) {
+            alertaContingencia.style.display = 'none';
+            alertaContingencia.innerHTML = '';
+        }
+        if (pasoCirculo) {
+            pasoCirculo.className = 'paso-circulo';
+        }
+        estadoApp.importacionActual = {
+            ...(doc || {}),
+            salida: { ...salida, items: [] },
+        };
+        banner.innerHTML = `
+            <div class="alerta-procesando-ia">
+                <strong>Analizando con IA...</strong>
+                <span>${escaparHtml(evaluacion.detalleTecnico)}</span>
+            </div>
+        `;
+        tabla.innerHTML = `
+            <tr>
+                <td colspan="5" class="col-centro text-muted py-4">Analizando con IA... Esperando respuesta del servicio.</td>
+            </tr>
+        `;
+        if (btnAprobar) {
+            btnAprobar.disabled = true;
+            btnAprobar.style.display = 'inline-flex';
+        }
+        if (btnRechazar) {
+            btnRechazar.disabled = true;
+        }
+        return;
+    }
+
+    if (evaluacion.esContingencia) {
+        if (pasoCirculo) {
+            pasoCirculo.className = 'paso-circulo';
+        }
+        if (alertaContingencia) {
+            alertaContingencia.style.display = 'block';
+            alertaContingencia.innerHTML = construirHtmlAlertaContingenciaIA(evaluacion);
+        }
+        estadoApp.importacionActual = {
+            ...(doc || {}),
+            contingencia: true,
+            salida: {
+                ...salida,
+                items: [],
+            },
+        };
+        banner.innerHTML = `
+            <strong>Estado:</strong> <span class="badge-alerta-amarilla">${escaparHtml(doc?.estado || 'CONTINGENCIA')}</span> ·
+            <strong>Proveedor IA:</strong> ${escaparHtml(doc?.proveedorIa || doc?.proveedor_ia || 'contingencia')}
+        `;
+        tabla.innerHTML = `
+            <tr>
+                <td colspan="5" class="col-centro text-muted py-4">No hay propuesta generada por IA porque el servicio entró en modo contingencia.</td>
+            </tr>
+        `;
+        if (btnAprobar) {
+            btnAprobar.disabled = true;
+            btnAprobar.style.display = 'none';
+        }
+        if (btnRechazar) {
+            btnRechazar.disabled = false;
+            const spanRechazar = btnRechazar.querySelector('span');
+            if (spanRechazar) {
+                spanRechazar.textContent = doc?._id ? 'Descartar Registro' : 'Cerrar Aviso';
+            }
+        }
+        return;
+    }
+
+    if (alertaContingencia) {
+        alertaContingencia.style.display = 'none';
+        alertaContingencia.innerHTML = '';
+    }
+    if (pasoCirculo) {
+        pasoCirculo.className = 'paso-circulo exito';
+    }
+
     let itemsCrudos = [];
     if (Array.isArray(salida.items) && salida.items.length > 0) {
         itemsCrudos = salida.items;
-    } else if (Array.isArray(doc.items) && doc.items.length > 0) {
+    } else if (Array.isArray(doc?.items) && doc.items.length > 0) {
         itemsCrudos = doc.items;
-    } else if (Array.isArray(doc.propuesta?.items) && doc.propuesta.items.length > 0) {
+    } else if (Array.isArray(doc?.propuesta?.items) && doc.propuesta.items.length > 0) {
         itemsCrudos = doc.propuesta.items;
     }
 
-    let envioDetectado = salida.envioDetectado ?? doc.envioDetectado ?? doc.propuesta?.envioDetectado ?? 0;
-
-    const esDocumentoServidor = Boolean(doc._id && !String(doc._id).startsWith('local-'));
-    if (itemsCrudos.length === 0 && !esDocumentoServidor) {
-        const textoFuente = doc.entrada?.textoLista || $('textarea-lista-ia')?.value || '';
-        const extraidoLocal = extraerItemsDesdeTextoLista(textoFuente);
-        if (extraidoLocal.items.length > 0) {
-            itemsCrudos = extraidoLocal.items;
-            if (!Number(envioDetectado)) {
-                envioDetectado = extraidoLocal.envioDetectado;
-            }
-        }
-    }
+    const envioDetectado = salida.envioDetectado ?? doc?.envioDetectado ?? doc?.propuesta?.envioDetectado ?? 0;
 
     const itemsNormalizados = itemsCrudos.map((it) => {
         const nombre =
@@ -1557,15 +1709,15 @@ const renderizarPropuestaIAComercial = (doc) => {
 
     const proveedorDetectado =
         salida.proveedorDetectado ||
-        doc.proveedorDetectado ||
-        doc.propuesta?.proveedorDetectado ||
-        doc.entrada?.proveedorNombre ||
+        doc?.proveedorDetectado ||
+        doc?.propuesta?.proveedorDetectado ||
+        doc?.entrada?.proveedorNombre ||
         $('input-proveedor-ia')?.value.trim() ||
         'Distribuidora';
 
     estadoApp.importacionActual = {
         ...doc,
-        _id: doc._id || estadoApp.importacionActual?._id || 'local-csv',
+        _id: doc._id,
         salida: {
             ...salida,
             proveedorDetectado,
@@ -1577,8 +1729,21 @@ const renderizarPropuestaIAComercial = (doc) => {
     banner.innerHTML = `
         <strong>Proveedor Detectado:</strong> ${escaparHtml(proveedorDetectado)} ·
         <strong>Flete Prorrateado:</strong> ${formatearMoneda(envioDetectado || 0)} ·
-        <strong>Estado:</strong> <span class="badge-rol duenio">${escaparHtml(doc.estado || 'LISTA')}</span>
+        <strong>Proveedor IA:</strong> ${escaparHtml(doc?.proveedorIa || 'IA')} ·
+        <strong>Estado:</strong> <span class="badge-rol duenio">${escaparHtml(doc?.estado || 'LISTA')}</span>
     `;
+
+    if (btnAprobar) {
+        btnAprobar.style.display = 'inline-flex';
+        btnAprobar.disabled = itemsNormalizados.length === 0;
+    }
+    if (btnRechazar) {
+        btnRechazar.disabled = false;
+        const spanRechazar = btnRechazar.querySelector('span');
+        if (spanRechazar) {
+            spanRechazar.textContent = 'Descartar Borrador';
+        }
+    }
 
     tabla.innerHTML = '';
     if (itemsNormalizados.length === 0) {
@@ -2152,7 +2317,8 @@ const consultarDiagnosticoStockIA = async () => {
             (p) => Array.isArray(p.receta_items) && p.receta_items.length > 0
         );
 
-        let dictamenIa = null;
+        let dataAi = null;
+        let errorAi = null;
         const rangoSel = obtenerRangoFechasSeleccionado();
         const hoyLocal = formatearFechaLocalInput(new Date());
         const hace7Local = formatearFechaLocalInput(new Date(Date.now() - 7 * 86400000));
@@ -2226,15 +2392,21 @@ const consultarDiagnosticoStockIA = async () => {
                         'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     },
                     body: JSON.stringify(payloadAi),
-                }).catch(() => null);
-                if (resAi && resAi.ok) {
-                    const dataAi = await resAi.json();
-                    dictamenIa = dataAi.resumen_ejecutivo;
+                });
+                if (resAi.ok) {
+                    dataAi = await resAi.json();
+                } else {
+                    const errBody = await resAi.json().catch(() => ({}));
+                    errorAi = errBody?.mensaje || `El servicio respondió HTTP ${resAi.status}`;
                 }
+            } else {
+                errorAi = 'No hay datos de catálogo o sesión activa para consultar la IA.';
             }
-        } catch {
-            // Fallback determinista inmediato
+        } catch (err) {
+            errorAi = err?.message || 'No se pudo comunicar con el servicio de IA.';
         }
+
+        const evalResumen = evaluarEstadoResumenIA(dataAi, errorAi);
 
         const fechaDictamen = new Date().toLocaleString('es-AR');
         const itemsCriticosHtml = insumosCriticos.length > 0
@@ -2245,16 +2417,46 @@ const consultarDiagnosticoStockIA = async () => {
             ? productosConReceta.slice(0, 4).map((p) => `<li><strong>${escaparHtml(p.nombre)}:</strong> Costo actual de receta ${formatearMoneda(p.costo_total_calculado || 0)} (Margen: ${p.margen_bruto ? Math.round(Number(p.margen_bruto) * 100) : 0}%).</li>`).join('')
             : '<li>Las recetas registradas operan con parámetros de costeo directo estándar.</li>';
 
-        const resumenTextoIa = dictamenIa
-            ? escaparHtml(dictamenIa)
-            : 'El inventario refleja consistencia entre los costos unitarios de insumos registrados y el precio de venta al público en mostrador.';
+        if (evalResumen.esContingencia) {
+            const alertaContingenciaHtml = `<div class="alerta-contingencia-ia" role="alert">${construirHtmlAlertaContingenciaIA({
+                mensajePrincipal: evalResumen.mensajePrincipal,
+                detalleTecnico: evalResumen.detalleTecnico,
+                advertencias: evalResumen.advertencias,
+                sugerenciaAlternativa: 'No se generó un dictamen con IA. A continuación se muestran únicamente datos locales del inventario sin interpretación de IA.',
+            })}</div>`;
+
+            cuerpo.innerHTML = `
+                ${alertaContingenciaHtml}
+                <h4>DATOS LOCALES DEL INVENTARIO (SIN ANÁLISIS DE IA)</h4>
+                <p><strong>Fecha y Hora:</strong> ${fechaDictamen} · <strong>Período:</strong> ${formatearFechaCortaEtiqueta(fechaDesde)} al ${formatearFechaCortaEtiqueta(fechaHasta)}</p>
+                
+                <div class="ia-bloque">
+                    <div class="ia-bloque-titulo">1. Insumos de Mayor Costo Base Registrado</div>
+                    <ul>${itemsCriticosHtml}</ul>
+                </div>
+
+                <div class="ia-bloque">
+                    <div class="ia-bloque-titulo">2. Recetas Activas en Carta</div>
+                    <ul>${productosImpactoHtml}</ul>
+                </div>
+            `;
+            mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+            return;
+        }
+
+        const resumenTextoIa = evalResumen.dictamenIa
+            ? escaparHtml(evalResumen.dictamenIa)
+            : 'Análisis completado por el proveedor de IA.';
+        const sugerenciasHtml = evalResumen.sugerenciasRotacion.length > 0
+            ? `<ul>${evalResumen.sugerenciasRotacion.map((s) => `<li><strong>${escaparHtml(s.producto)}:</strong> ${escaparHtml(s.accion_sugerida)} — ${escaparHtml(s.motivo)}</li>`).join('')}</ul>`
+            : '<p>Se aconseja monitorear insumos de café y lácteos antes de alcanzar el punto de quiebre de stock.</p>';
 
         cuerpo.innerHTML = `
             <h4>INFORME EJECUTIVO: DIAGNÓSTICO DE INVENTARIO Y REPOSICIÓN ESTRATÉGICA</h4>
             <p><strong>Fecha y Hora de Emisión:</strong> ${fechaDictamen} · <strong>Período Evaluado:</strong> ${formatearFechaCortaEtiqueta(fechaDesde)} al ${formatearFechaCortaEtiqueta(fechaHasta)} · <strong>Perfil Solicitante:</strong> Propietario / Gerencia General</p>
             
             <div class="ia-bloque">
-                <div class="ia-bloque-titulo">1. Estado General del Inventario</div>
+                <div class="ia-bloque-titulo">1. Dictamen Ejecutivo (IA)</div>
                 <p>Se auditaron ${insumos.length} insumos activos y ${catalogo.length} productos comerciales en carta. ${resumenTextoIa}</p>
             </div>
 
@@ -2270,8 +2472,7 @@ const consultarDiagnosticoStockIA = async () => {
 
             <div class="ia-bloque">
                 <div class="ia-bloque-titulo">4. Plan de Acción y Sugerencias de Reposición</div>
-                <p>Se aconseja programar órdenes de compra priorizando insumos de café y lácteos antes de alcanzar el punto de quiebre de stock. Asimismo, verificar variaciones superiores al 10% en el próximo lote importado para evitar erosión del margen neto.</p>
-                <p><strong>Dictamen Final:</strong> CONDICIÓN OPERATIVA NORMAL CON SEGUIMIENTO DE INSUMOS CLAVE.</p>
+                ${sugerenciasHtml}
             </div>
         `;
         mostrarToast('Diagnóstico de stock e insumos completado con éxito.', 'exito');
@@ -2922,7 +3123,13 @@ Flete y entrega a local: $4500`;
         const textoLista = $('textarea-lista-ia')?.value.trim() || '';
         const estadoPill = $('estado-importacion-ia');
 
-        if (estadoPill) estadoPill.textContent = 'Analizando texto con IA...';
+        if (estadoPill) estadoPill.textContent = 'Analizando con IA...';
+        renderizarPropuestaIAComercial({
+            _id: null,
+            estado: 'PROCESANDO',
+            entrada: { proveedorNombre, textoLista },
+            salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
+        });
 
         try {
             const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones`, {
@@ -2937,42 +3144,58 @@ Flete y entrega a local: $4500`;
                     versionPrompt: 'v1',
                 }),
             });
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
             if (res.status === 202 && data.importacionId) {
-                mostrarToast('Lista recibida. Procesando extracción de insumos...', 'info');
-                await consultarDetalleImportacion(data.importacionId);
-                if (estadoPill) estadoPill.textContent = 'Propuesta procesada y lista en el Paso 2.';
+                mostrarToast('Lista recibida. Analizando con IA...', 'info');
+                const datosDetalle = await consultarDetalleImportacion(data.importacionId);
+                const evaluacion = evaluarEstadoImportacionIA(datosDetalle);
+                if (estadoPill) {
+                    estadoPill.textContent = evaluacion.esContingencia
+                        ? MENSAJE_IA_NO_DISPONIBLE
+                        : evaluacion.enProceso
+                          ? 'Analizando con IA...'
+                          : 'Propuesta procesada con IA y lista en el Paso 2.';
+                }
+                if (evaluacion.esContingencia) {
+                    mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+                }
             } else {
-                const extraidoLocal = extraerItemsDesdeTextoLista(textoLista);
+                const motivo = data?.mensaje || `El servidor respondió HTTP ${res.status}.`;
                 renderizarPropuestaIAComercial({
-                    _id: 'local-ia',
-                    estado: 'LISTA',
-                    salida: {
-                        proveedorDetectado: proveedorNombre,
-                        envioDetectado: extraidoLocal.envioDetectado,
-                        items: extraidoLocal.items,
-                    },
+                    _id: null,
+                    estado: 'CONTINGENCIA',
+                    contingencia: true,
+                    proveedorIa: 'contingencia',
+                    mensajeContingencia: motivo,
+                    advertencias: data?.detalles ? [String(data.detalles)] : [],
+                    salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
                 });
-                mostrarToast('Propuesta extraída lista para revisión.', 'info');
+                if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
+                mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
             }
-        } catch {
-            const extraidoLocal = extraerItemsDesdeTextoLista(textoLista);
+        } catch (err) {
             renderizarPropuestaIAComercial({
-                _id: 'local-ia',
-                estado: 'LISTA',
-                salida: {
-                    proveedorDetectado: proveedorNombre,
-                    envioDetectado: extraidoLocal.envioDetectado,
-                    items: extraidoLocal.items,
-                },
+                _id: null,
+                estado: 'CONTINGENCIA',
+                contingencia: true,
+                proveedorIa: 'contingencia',
+                mensajeContingencia: err?.message || 'No se pudo conectar con el servicio de IA.',
+                advertencias: [err?.message || 'Error de red'],
+                salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
             });
-            mostrarToast('Propuesta extraída en modo local lista para revisión.', 'info');
+            if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
+            mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
         }
     });
 
     $('btn-aprobar-ia')?.addEventListener('click', async () => {
         const doc = estadoApp.importacionActual;
         if (!doc) return;
+        const evaluacion = evaluarEstadoImportacionIA(doc);
+        if (!evaluacion.puedeAprobar) {
+            mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+            return;
+        }
         const id = doc._id;
         const salida = doc.salida || {};
         const itemsParaAprobar = Array.isArray(salida.items) ? salida.items : [];
@@ -2980,63 +3203,22 @@ Flete y entrega a local: $4500`;
         const envio = salida.envioDetectado || '0.00';
 
         try {
-            if (id && !String(id).startsWith('local-')) {
-                const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                    },
-                    body: JSON.stringify({
-                        proveedorNombre,
-                        envio,
-                        items: itemsParaAprobar,
-                    }),
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    const cantCompras = data.comprasCreadas?.length || itemsParaAprobar.length;
-                    const cantRecetas = data.productosRecalculados?.length || 0;
-                    mostrarToast(
-                        `Propuesta aprobada: ${cantCompras} insumos/compras actualizados y ${cantRecetas} recetas recalculadas.`,
-                        'exito'
-                    );
-                    if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
-                    await cargarInsumos();
-                    await cargarCatalogo();
-                    return;
-                }
-                mostrarToast(
-                    data.mensaje || `Error ${res.status} al aprobar la propuesta en el servidor.`,
-                    'peligro'
-                );
-                return;
-            }
-
-            // Solo para borradores locales sin ID en MongoDB se confirma directo en Django
-            const resDjango = await fetch(`${estadoApp.djangoUrl}/api/compras/confirmar-importacion/`, {
+            const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 },
                 body: JSON.stringify({
-                    proveedor_nombre: proveedorNombre,
+                    proveedorNombre,
                     envio,
-                    items: itemsParaAprobar.map((it) => ({
-                        nombre_insumo: it.nombreInsumo || it.nombre_insumo,
-                        cantidad: it.cantidad,
-                        unidad: it.unidad,
-                        precio_total: it.precioTotal || it.precio_total,
-                        iva_incluido: true,
-                        alicuota: it.alicuota || '21.00',
-                    })),
+                    items: itemsParaAprobar,
                 }),
             });
-            const dataDjango = await resDjango.json();
-            if (resDjango.ok) {
-                const cantCompras = dataDjango.compras_creadas?.length || itemsParaAprobar.length;
-                const cantRecetas = dataDjango.productos_recalculados?.length || 0;
+            const data = await res.json();
+            if (res.ok) {
+                const cantCompras = data.comprasCreadas?.length || itemsParaAprobar.length;
+                const cantRecetas = data.productosRecalculados?.length || 0;
                 mostrarToast(
                     `Propuesta aprobada: ${cantCompras} insumos/compras actualizados y ${cantRecetas} recetas recalculadas.`,
                     'exito'
@@ -3044,9 +3226,12 @@ Flete y entrega a local: $4500`;
                 if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
                 await cargarInsumos();
                 await cargarCatalogo();
-            } else {
-                mostrarToast(dataDjango.mensaje || 'Error al aprobar la propuesta.', 'peligro');
+                return;
             }
+            mostrarToast(
+                data.mensaje || `Error ${res.status} al aprobar la propuesta en el servidor.`,
+                'peligro'
+            );
         } catch (err) {
             mostrarToast(`Error: ${err.message}`, 'peligro');
         }
@@ -3058,7 +3243,11 @@ Flete y entrega a local: $4500`;
 
     $('btn-rechazar-ia')?.addEventListener('click', async () => {
         const id = estadoApp.importacionActual?._id;
-        if (!id) return;
+        if (!id || String(id).startsWith('local-')) {
+            if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
+            estadoApp.importacionActual = null;
+            return;
+        }
         try {
             const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${id}/rechazar`, {
                 method: 'POST',

@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import {
     extraerPreciosIA,
+    generarResumenSemanalIA,
     validarItemExtraido,
     validarYNormalizarSalidaIA,
 } from '../../src/clients/ai.client.js';
@@ -164,6 +165,92 @@ describe('Unit Tests - Cliente HTTP hacia ai-service (ai.client.js)', () => {
             expect(resultado.items).toEqual([]);
             expect(resultado.proveedorDetectado).toBe('Tostadero Norte');
             expect(resultado.mensajeContingencia).toContain('manual o por CSV');
+            expect(resultado.mensajeContingencia).toContain('No se pudo usar la IA, revisá la configuración');
+        });
+
+        it('descarta ítems heurísticos si ai-service responde con contingencia: true o proveedor_ia: "contingencia"', () => {
+            const normalizado = validarYNormalizarSalidaIA({
+                proveedor_detectado: 'Distribuidora Demo',
+                envio_detectado: '1500.00',
+                moneda: 'ARS',
+                items: [
+                    {
+                        nombre_insumo: 'Café heurístico',
+                        cantidad: '1',
+                        unidad: 'kg',
+                        precio_total: '20000.00',
+                    },
+                ],
+                advertencias: ['GROQ_API_KEY no está configurada en el entorno.'],
+                version_prompt: 'v1',
+                proveedor_ia: 'contingencia',
+                latencia_ms: 2,
+                contingencia: true,
+                mensaje_contingencia: 'No se pudo usar la IA, revisá la configuración.',
+            });
+
+            expect(normalizado.contingencia).toBe(true);
+            expect(normalizado.proveedorIa).toBe('contingencia');
+            expect(normalizado.items).toEqual([]);
+            expect(normalizado.envioDetectado).toBe('0.00');
+            expect(normalizado.advertencias).toEqual([
+                'GROQ_API_KEY no está configurada en el entorno.',
+            ]);
+            expect(normalizado.mensajeContingencia).toContain('No se pudo usar la IA');
+        });
+    });
+
+    describe('generarResumenSemanalIA', () => {
+        it('oculta texto demo y expone contingencia cuando ai-service responde en modo contingencia', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    resumen_ejecutivo: 'Demostración comercial: rentabilidad operativa óptima.',
+                    productos_destacados: ['Espresso'],
+                    sugerencias_rotacion: [],
+                    alertas_costos: ['Aviso técnico: GROQ_API_KEY no configurada.'],
+                    version_prompt: 'v1',
+                    proveedor_ia: 'contingencia',
+                    latencia_ms: 1,
+                    contingencia: true,
+                    mensaje_contingencia: 'No se pudo usar la IA, revisá la configuración.',
+                }),
+            });
+
+            const res = await generarResumenSemanalIA({
+                fecha_desde: '2026-11-01',
+                fecha_hasta: '2026-11-07',
+                total_ventas: '1000.00',
+                ganancia_bruta_total: '500.00',
+                cantidad_tickets: 10,
+                productos: [],
+            });
+
+            expect(res.contingencia).toBe(true);
+            expect(res.proveedor_ia).toBe('contingencia');
+            expect(res.resumen_ejecutivo).toBeNull();
+            expect(res.mensaje_contingencia).toContain('No se pudo usar la IA, revisá la configuración');
+            expect(res.advertencias).toEqual(['Aviso técnico: GROQ_API_KEY no configurada.']);
+        });
+
+        it('retorna contingencia explícita sin resumen falso cuando ai-service no responde', async () => {
+            global.fetch = jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+            const res = await generarResumenSemanalIA({
+                fecha_desde: '2026-11-01',
+                fecha_hasta: '2026-11-07',
+                total_ventas: '1000.00',
+                ganancia_bruta_total: '500.00',
+                cantidad_tickets: 10,
+                productos: [],
+            });
+
+            expect(res.contingencia).toBe(true);
+            expect(res.proveedor_ia).toBe('contingencia');
+            expect(res.resumen_ejecutivo).toBeNull();
+            expect(res.mensaje_contingencia).toContain('No se pudo usar la IA, revisá la configuración');
+            expect(res.advertencias).toEqual(['connect ECONNREFUSED']);
         });
     });
 });

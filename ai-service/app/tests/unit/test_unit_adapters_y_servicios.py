@@ -447,6 +447,10 @@ class TestUnitServiciosConContingencia:
         respuesta = await extraer_precios_de_lista(solicitud, adaptador=adaptador)
         assert respuesta.contingencia is True
         assert respuesta.proveedor_ia == "contingencia"
+        assert "No se pudo usar la IA, revisá la configuración" in (
+            respuesta.mensaje_contingencia or ""
+        )
+        assert any("GROQ_API_KEY" in adv for adv in respuesta.advertencias)
         assert len(respuesta.items) == 1
 
         solicitud_resumen = SolicitudResumenSemanal(
@@ -468,3 +472,7 @@ class TestUnitServiciosConContingencia:
         respuesta_resumen = await generar_resumen_semanal(solicitud_resumen, adaptador=adaptador)
         assert respuesta_resumen.contingencia is True
         assert respuesta_resumen.proveedor_ia == "contingencia"
+        assert "No se pudo usar la IA, revisá la configuración" in (
+            respuesta_resumen.mensaje_contingencia or ""
+        )
+        assert any("GROQ_API_KEY" in al for al in respuesta_resumen.alertas_costos)

@@ -1247,4 +1247,45 @@ Cómo probarlo:
 - `cd backend-node && npm test`
 - `.venv/bin/ruff check backend-django/ && .venv/bin/ruff format --check backend-django/ && cd backend-node && npm run lint`
 ---
+Fecha: 2026-11-16
+Tarea: Visibilidad explícita de modo contingencia / fallo de IA sin propuestas heurísticas engañosas (Punto 2)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **1. `ai-service`:**
+  - En `proveedor_ia.py`, `GroqAdapter` propaga el motivo técnico de contingencia (`GROQ_API_KEY` faltante, timeout, error HTTP o respuesta inesperada) en `advertencias` / `alertas_costos` al activar `fallback_determinista_demostracion`.
+  - En `extraccion.py` y `resumen.py`, se unificaron los mensajes `MENSAJE_CONTINGENCIA_EXTRACCION` y `MENSAJE_CONTINGENCIA_RESUMEN` indicando explícitamente `"No se pudo usar la IA, revisá la configuración"`.
+- **2. `backend-node`:**
+  - En `src/clients/ai.client.js`: `validarYNormalizarSalidaIA` y `extraerPreciosIA` detectan `contingencia: true` o `proveedor_ia === "contingencia"`, descartan ítems heurísticos falsos (`items: []`), preservan `advertencias` y exponen `mensajeContingencia` claro; `generarResumenSemanalIA` oculta textos ficticios (`resumen_ejecutivo: null`) cuando hay contingencia o caída de red.
+  - En `src/models/ImportacionIA.js`, `src/services/importacionIA.service.js` y `src/controllers/importacionIA.controller.js`: se agregaron `mensajeContingencia` y `advertencias` al esquema y a las respuestas (`POST /api/importaciones`, `GET /api/importaciones/:id` y evento `importacion.lista`), y se bloqueó con HTTP 400 aprobar importaciones en estado `CONTINGENCIA` / `FALLIDA` o con `proveedorIa === "contingencia"`.
+- **3. Frontend PWA (`web/`):**
+  - En `web/js/logicaPwa.js` se agregaron `MENSAJE_IA_NO_DISPONIBLE`, `evaluarEstadoImportacionIA` y `evaluarEstadoResumenIA`, y se actualizó `formatearEventoTiempoReal` para `importacion.lista` en contingencia.
+  - En `web/index.html`, `web/css/estilos.css` y `web/js/app.js`: se agregó `#ia-alerta-contingencia` en el Paso 2 de importación, se eliminó la pre-renderización local/heurística (`local-csv` / `local-ia` / `extraerItemsDesdeTextoLista`), se muestra `"Analizando con IA..."` mientras está en curso, se muestra el cartel prominente `"No se pudo usar la IA, revisá la configuración"` con detalle técnico y sugerencia de CSV directo o carga manual al fallar/entrar en contingencia (deshabilitando la aprobación engañosa), y se aplicó el mismo aviso en el Consultor IA de Reportes (`/v1/resumen-semanal`).
+- **4. Tests:**
+  - Actualizadas y ampliadas las pruebas en `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`, `backend-node/tests/unit/aiClient.unit.test.js`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/importacionIA.integration.test.js`, `backend-node/tests/integration/resumenSemanal.integration.test.js` y `backend-node/tests/integration/clientePwa.integration.test.js`.
+Archivos tocados:
+- `ai-service/app/services/proveedor_ia.py`
+- `ai-service/app/services/extraccion.py`
+- `ai-service/app/services/resumen.py`
+- `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`
+- `backend-node/src/clients/ai.client.js`
+- `backend-node/src/models/ImportacionIA.js`
+- `backend-node/src/services/importacionIA.service.js`
+- `backend-node/src/controllers/importacionIA.controller.js`
+- `backend-node/tests/unit/aiClient.unit.test.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/integration/importacionIA.integration.test.js`
+- `backend-node/tests/integration/resumenSemanal.integration.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `ai-service/.venv/bin/pytest ai-service/`
+- `cd backend-node && npm test`
+- `.venv/bin/ruff check ai-service/ && .venv/bin/ruff format --check ai-service/ && cd backend-node && npm run lint`
+---
+
 

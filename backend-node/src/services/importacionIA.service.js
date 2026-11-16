@@ -24,40 +24,76 @@ export const procesarImportacionEnSegundoPlano = async (
             versionPrompt,
         });
 
-        const estadoFinal = resultadoIA.contingencia ? 'CONTINGENCIA' : 'LISTA';
+        const esContingencia =
+            Boolean(resultadoIA.contingencia) || resultadoIA.proveedorIa === 'contingencia';
+        const estadoFinal = esContingencia ? 'CONTINGENCIA' : 'LISTA';
+        const advertencias = Array.isArray(resultadoIA.advertencias)
+            ? resultadoIA.advertencias.map(String)
+            : [];
+        const mensajeContingencia = esContingencia
+            ? resultadoIA.mensajeContingencia ||
+              resultadoIA.error ||
+              'No se pudo usar la IA, revisá la configuración. Puede cargar los precios de forma manual o por CSV.'
+            : null;
+        const proveedorIaFinal =
+            resultadoIA.proveedorIa || (esContingencia ? 'contingencia' : 'desconocido');
 
         const actualizada = await importacionRepo.actualizarImportacionPorId(importacionId, {
             estado: estadoFinal,
             salida: {
                 proveedorDetectado: resultadoIA.proveedorDetectado,
-                envioDetectado: resultadoIA.envioDetectado,
+                envioDetectado: esContingencia ? '0.00' : resultadoIA.envioDetectado,
                 moneda: resultadoIA.moneda,
-                items: resultadoIA.items,
-                advertencias: resultadoIA.advertencias,
+                items: esContingencia ? [] : resultadoIA.items,
+                advertencias,
             },
+            advertencias,
             versionPrompt: resultadoIA.versionPrompt,
-            proveedorIa: resultadoIA.proveedorIa,
+            proveedorIa: proveedorIaFinal,
             latenciaMs: resultadoIA.latenciaMs,
-            contingencia: resultadoIA.contingencia,
-            mensajeError: resultadoIA.mensajeContingencia || resultadoIA.error || null,
+            contingencia: esContingencia,
+            mensajeContingencia,
+            mensajeError: mensajeContingencia || resultadoIA.error || null,
         });
 
         // Paso 3 del flujo de arquitectura: aviso en tiempo real por Socket.IO
         emitirImportacionLista({
             importacionId: String(importacionId),
             estado: estadoFinal,
-            contingencia: resultadoIA.contingencia,
+            contingencia: esContingencia,
+            proveedorIa: proveedorIaFinal,
+            mensajeContingencia,
+            advertencias,
             proveedorDetectado: resultadoIA.proveedorDetectado,
-            cantidadItems: resultadoIA.items.length,
+            cantidadItems: esContingencia ? 0 : resultadoIA.items.length,
         });
 
         return actualizada;
     } catch (error) {
-        return await importacionRepo.actualizarImportacionPorId(importacionId, {
+        const detalleError = error.message || 'Error inesperado durante el procesamiento de IA';
+        const actualizada = await importacionRepo.actualizarImportacionPorId(importacionId, {
             estado: 'FALLIDA',
             contingencia: true,
-            mensajeError: error.message || 'Error inesperado durante el procesamiento de IA',
+            proveedorIa: 'contingencia',
+            mensajeContingencia: 'No se pudo usar la IA, revisá la configuración.',
+            mensajeError: detalleError,
+            advertencias: [detalleError],
+            'salida.advertencias': [detalleError],
+            'salida.items': [],
         });
+
+        emitirImportacionLista({
+            importacionId: String(importacionId),
+            estado: 'FALLIDA',
+            contingencia: true,
+            proveedorIa: 'contingencia',
+            mensajeContingencia: 'No se pudo usar la IA, revisá la configuración.',
+            advertencias: [detalleError],
+            proveedorDetectado: null,
+            cantidadItems: 0,
+        });
+
+        return actualizada;
     }
 };
 
@@ -146,7 +182,20 @@ export const aprobarImportacionPrecios = async (
         throw error;
     }
 
-    if (importacion.estado !== 'LISTA' && importacion.estado !== 'CONTINGENCIA') {
+    if (
+        importacion.contingencia === true ||
+        importacion.estado === 'CONTINGENCIA' ||
+        importacion.estado === 'FALLIDA' ||
+        importacion.proveedorIa === 'contingencia'
+    ) {
+        const error = new Error(
+            'No se puede aprobar una importación en modo contingencia porque no fue generada por la IA. Usá la importación directa CSV o la carga manual.'
+        );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (importacion.estado !== 'LISTA') {
         const error = new Error(
             `La importación en estado ${importacion.estado} aún no puede ser aprobada`
         );
