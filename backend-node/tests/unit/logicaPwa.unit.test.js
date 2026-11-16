@@ -12,14 +12,20 @@ import {
     ejecutarSincronizacionConLock,
     eliminarVentaOffline,
     encolarVentaOffline,
+    esArchivoDocAntiguo,
+    esArchivoDocx,
+    esArchivoExcel,
     esArchivoPdf,
     escaparHtml,
     estaFechaEnRango,
+    evaluarCsvPlantillaDirecta,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
     evaluarTextoComoCsvDirecto,
     evaluarTextoExtraidoPdf,
+    extraerCsvDeExcelBuffer,
     extraerItemsDesdeTextoLista,
+    extraerTextoDeDocxBuffer,
     extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
@@ -27,6 +33,8 @@ import {
     formatearFechaLocalInput,
     generarIdOperacion,
     limpiarColaOffline,
+    MENSAJE_ARCHIVO_DEMASIADO_GRANDE,
+    MENSAJE_DOC_ANTIGUO,
     MENSAJE_IA_NO_DISPONIBLE,
     MENSAJE_PDF_ESCANEADO,
     obtenerContenidoPlantillaCsv,
@@ -35,8 +43,10 @@ import {
     parsearCsvProveedor,
     procesarColaVentasOffline,
     reconstruirLineasDeItemsPdf,
+    TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
     validarRangoFechas,
+    validarTamanoArchivoImportacion,
 } from '../../../web/js/logicaPwa.js';
 
 describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () => {
@@ -815,6 +825,149 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                     disableWorker: true,
                     isEvalSupported: false,
                 })
+            );
+        });
+    });
+
+    describe('Importación de Excel (.xlsx/.xls), Word (.docx), rechazo de .doc y límite 5 MB (Offline-First)', () => {
+        it('detecta formatos .xlsx/.xls, .docx, rechaza .doc antiguo y valida límite de 5 MB', () => {
+            expect(esArchivoExcel({ name: 'lista.XLSX', type: '' })).toBe(true);
+            expect(esArchivoExcel({ name: 'lista.xls', type: '' })).toBe(true);
+            expect(esArchivoExcel({ name: 'lista.csv', type: 'application/vnd.ms-excel' })).toBe(false);
+
+            expect(esArchivoDocx({ name: 'presupuesto.DOCX', type: '' })).toBe(true);
+            expect(esArchivoDocx({ name: 'presupuesto.doc', type: 'application/msword' })).toBe(false);
+
+            expect(esArchivoDocAntiguo({ name: 'lista_vieja.DOC', type: '' })).toBe(true);
+            expect(esArchivoDocAntiguo({ name: 'lista_vieja.doc', type: 'application/msword' })).toBe(true);
+            expect(esArchivoDocAntiguo({ name: 'lista_nueva.docx', type: '' })).toBe(false);
+            expect(MENSAJE_DOC_ANTIGUO).toBe('Guardá el archivo como .docx y volvé a subirlo');
+
+            expect(
+                validarTamanoArchivoImportacion({
+                    name: 'ok.xlsx',
+                    size: TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
+                })
+            ).toEqual({ valido: true, mensajeError: null });
+
+            expect(
+                validarTamanoArchivoImportacion({
+                    name: 'gigante.xlsx',
+                    size: TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES + 1,
+                })
+            ).toEqual({
+                valido: false,
+                mensajeError: MENSAJE_ARCHIVO_DEMASIADO_GRANDE,
+            });
+        });
+
+        it('extraerCsvDeExcelBuffer lee únicamente la primera hoja y convierte a CSV con SheetJS', () => {
+            const hoja1 = { '!ref': 'A1:D2' };
+            const hoja2 = { '!ref': 'A1:B2' };
+            const xlsxMock = {
+                read: jest.fn(() => ({
+                    SheetNames: ['Lista Mayo', 'Notas Internas'],
+                    Sheets: {
+                        'Lista Mayo': hoja1,
+                        'Notas Internas': hoja2,
+                    },
+                })),
+                utils: {
+                    sheet_to_csv: jest.fn((hoja) =>
+                        hoja === hoja1
+                            ? 'insumo,cantidad,unidad,precio_total\nCafé Tostado,5,kg,115000'
+                            : 'otra,hoja\nignorar,999'
+                    ),
+                },
+            };
+
+            const res = extraerCsvDeExcelBuffer(new Uint8Array([80, 75, 3, 4]).buffer, xlsxMock);
+
+            expect(xlsxMock.read).toHaveBeenCalledTimes(1);
+            expect(xlsxMock.utils.sheet_to_csv).toHaveBeenCalledTimes(1);
+            expect(xlsxMock.utils.sheet_to_csv).toHaveBeenCalledWith(hoja1, {
+                blankrows: false,
+            });
+            expect(res).toEqual({
+                ok: true,
+                csv: 'insumo,cantidad,unidad,precio_total\nCafé Tostado,5,kg,115000',
+                nombreHoja: 'Lista Mayo',
+                totalHojas: 2,
+                lineas: 2,
+            });
+
+            const evalDirecta = evaluarCsvPlantillaDirecta(res.csv);
+            expect(evalDirecta.compatible).toBe(true);
+            expect(evalDirecta.resultado.items).toHaveLength(1);
+            expect(evalDirecta.resultado.items[0].nombre_insumo).toBe('Café Tostado');
+        });
+
+        it('evaluarCsvPlantillaDirecta rechaza encabezados no coincidentes para derivar a IA y extraerCsvDeExcelBuffer falla en hojas vacías', () => {
+            const csvOtraEstructura = [
+                'codigo_articulo,descripcion,presentacion,lista_vigente',
+                'A-101,Café en grano molido,Bolsa 1kg,24500',
+            ].join('\n');
+            expect(evaluarCsvPlantillaDirecta(csvOtraEstructura).compatible).toBe(false);
+
+            const xlsxSinHojas = {
+                read: jest.fn(() => ({ SheetNames: [], Sheets: {} })),
+                utils: { sheet_to_csv: jest.fn() },
+            };
+            expect(() => extraerCsvDeExcelBuffer(new Uint8Array([1, 2, 3]), xlsxSinHojas)).toThrow(
+                'El archivo Excel no contiene hojas para importar.'
+            );
+
+            const xlsxHojaVacia = {
+                read: jest.fn(() => ({
+                    SheetNames: ['Hoja1'],
+                    Sheets: { Hoja1: {} },
+                })),
+                utils: { sheet_to_csv: jest.fn(() => ',,,\n   ') },
+            };
+            expect(() => extraerCsvDeExcelBuffer(new Uint8Array([1, 2, 3]), xlsxHojaVacia)).toThrow(
+                'La primera hoja del archivo Excel está vacía o no contiene datos.'
+            );
+
+            expect(() => extraerCsvDeExcelBuffer(new Uint8Array([]), xlsxHojaVacia)).toThrow(
+                'El archivo Excel está vacío o no contiene datos.'
+            );
+        });
+
+        it('extraerTextoDeDocxBuffer extrae texto plano con mammoth.extractRawText y valida documentos vacíos o errores', async () => {
+            const mammothMock = {
+                extractRawText: jest.fn().mockResolvedValue({
+                    value: 'Lista Distribuidora Central\nCafé Colombia 5 kg: $115000\nEnvío: $4500',
+                    messages: [],
+                }),
+            };
+
+            const buffer = new Uint8Array([80, 75, 3, 4, 1, 2]).buffer;
+            const res = await extraerTextoDeDocxBuffer(buffer, mammothMock);
+
+            expect(mammothMock.extractRawText).toHaveBeenCalledTimes(1);
+            expect(mammothMock.extractRawText).toHaveBeenCalledWith({
+                arrayBuffer: expect.any(ArrayBuffer),
+            });
+            expect(res.ok).toBe(true);
+            expect(res.lineas).toBe(3);
+            expect(res.texto).toContain('Café Colombia 5 kg: $115000');
+
+            const mammothVacio = {
+                extractRawText: jest.fn().mockResolvedValue({ value: '   \n  ', messages: [] }),
+            };
+            await expect(
+                extraerTextoDeDocxBuffer(new Uint8Array([80, 75, 3, 4]), mammothVacio)
+            ).rejects.toThrow('El documento Word (.docx) no contiene texto legible para importar.');
+
+            const mammothError = {
+                extractRawText: jest.fn().mockRejectedValue(new Error('Archivo DOCX corrupto')),
+            };
+            await expect(
+                extraerTextoDeDocxBuffer(new Uint8Array([80, 75, 3, 4]), mammothError)
+            ).rejects.toThrow('Archivo DOCX corrupto');
+
+            await expect(extraerTextoDeDocxBuffer(new ArrayBuffer(0), mammothMock)).rejects.toThrow(
+                'El archivo Word (.docx) está vacío o no contiene datos.'
             );
         });
     });

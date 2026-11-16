@@ -1,4 +1,4 @@
-const NOMBRE_CACHE = 'cafe-gestion-pwa-v1';
+const NOMBRE_CACHE = 'cafe-gestion-pwa-v2';
 const RECURSOS_CASCARA = [
     '/app/',
     '/app/index.html',
@@ -8,6 +8,8 @@ const RECURSOS_CASCARA = [
     '/app/js/app.js',
     '/app/vendor/pdfjs/pdf.min.js',
     '/app/vendor/pdfjs/pdf.worker.min.js',
+    '/app/vendor/sheetjs/xlsx.full.min.js',
+    '/app/vendor/mammoth/mammoth.browser.min.js',
     '/',
     '/index.html',
     '/manifest.webmanifest',
@@ -16,6 +18,8 @@ const RECURSOS_CASCARA = [
     '/js/app.js',
     '/vendor/pdfjs/pdf.min.js',
     '/vendor/pdfjs/pdf.worker.min.js',
+    '/vendor/sheetjs/xlsx.full.min.js',
+    '/vendor/mammoth/mammoth.browser.min.js',
 ];
 
 self.addEventListener('install', (evento) => {

@@ -22,6 +22,40 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-16
+Tarea: Importación offline-first de listas de proveedores en Excel (.xlsx/.xls) y Word (.docx)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Librerías vendored offline-first (`web/vendor/`):**
+  - Se descargó e incorporó **SheetJS `0.20.3`** (`web/vendor/sheetjs/xlsx.full.min.js`) desde el CDN oficial (`https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js`) evitando la versión `0.18.5` de npm (CVE-2023-30533 y CVE-2024-22363), junto con `web/vendor/sheetjs/README.md`.
+  - Se descargó e incorporó **Mammoth.js `1.13.0`** (`web/vendor/mammoth/mammoth.browser.min.js`) desde jsDelivr/npm oficial, junto con `web/vendor/mammoth/README.md`.
+- **Lógica PWA (`web/js/logicaPwa.js`):**
+  - Se incorporaron validación de tamaño máximo de 5 MB (`TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES`, `validarTamanoArchivoImportacion`) y detección de formatos (`esArchivoExcel`, `esArchivoDocx`, `esArchivoDocAntiguo` con `MENSAJE_DOC_ANTIGUO`).
+  - Se implementó `extraerCsvDeExcelBuffer` para leer únicamente la primera hoja (`SheetNames[0]`) con `XLSX.utils.sheet_to_csv` y lanzar error claro si no hay hojas o está vacía, junto con `evaluarCsvPlantillaDirecta` para distinguir planillas compatibles con importación directa sin IA.
+  - Se implementó `extraerTextoDeDocxBuffer` para extraer únicamente texto plano con `mammoth.extractRawText({ arrayBuffer })`, validando buffers o documentos vacíos.
+- **UI y flujo cliente (`web/index.html`, `web/js/app.js`):**
+  - Se cargaron ambos scripts locales en `web/index.html`, se ampliaron `accept` (`.xlsx,.xls,.docx`) y textos de ayuda en `#input-archivo-csv` y `#archivo-lista-ia`.
+  - En `web/js/app.js`, `procesarArchivoImportacionSeleccionado` rechaza `.doc` antiguo con `"Guardá el archivo como .docx y volvé a subirlo"`, valida el tope de 5 MB antes de leer el archivo, enruta Excel compatible a importación directa sin IA o al editor IA si difieren las columnas, y extrae texto plano de `.docx` hacia el flujo IA igual que `.pdf` usando `textContent` / `escaparHtml`.
+- **Service Worker (`web/sw.js`) y tests (`backend-node/tests/`):**
+  - Se incrementó `NOMBRE_CACHE` a `cafe-gestion-pwa-v2` y se agregaron `xlsx.full.min.js` y `mammoth.browser.min.js` al precaché. Se verificó que `web/Dockerfile` copia `vendor/` completo.
+  - Se agregaron tests unitarios en `backend-node/tests/unit/logicaPwa.unit.test.js` (con mocks de `XLSX` y `mammoth`) y se actualizó `backend-node/tests/integration/clientePwa.integration.test.js`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna; el cliente web envía el texto extraído por las rutas existentes (`POST /api/compras/confirmar-importacion/` o `POST /api/importaciones` con `origenArchivo: 'csv' | 'texto'`).
+Problemas y decisiones técnicas:
+- Se mantuvo `ultimoOrigenArchivo` en `'csv'` (para Excel convertido a CSV) y `'texto'` (para Word `.docx` en texto plano) para mantener compatibilidad estricta con el enum `['texto', 'csv', 'pdf']` de `ImportacionIA` y `importacionIA.routes.js`.
+- En `esArchivoExcel` se excluyó explícitamente `.csv` cuando el navegador reporta MIME `application/vnd.ms-excel`.
+Archivos tocados:
+- `web/vendor/sheetjs/xlsx.full.min.js`, `web/vendor/sheetjs/README.md`
+- `web/vendor/mammoth/mammoth.browser.min.js`, `web/vendor/mammoth/README.md`
+- `web/js/logicaPwa.js`, `web/js/app.js`, `web/index.html`, `web/sw.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `node --check web/js/logicaPwa.js && node --check web/js/app.js && node --check web/sw.js`
+- `cd backend-node && npm test && npm run lint`
+---
+
+---
+Fecha: 2026-11-16
 Tarea: Botones mostrar/ocultar en contraseña (`#input-password`) y token JWT (`#input-token-jwt`) del login
 Rama: feature/reportes-filtro-fechas
 Cambios realizados:

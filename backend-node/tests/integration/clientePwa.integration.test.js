@@ -20,7 +20,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('btn-csv-desde-texto');
         expect(res.text).toContain('archivo-lista-ia');
         expect(res.text).toContain('/app/vendor/pdfjs/pdf.min.js');
-        expect(res.text).not.toMatch(/https?:\/\/[^"']*pdfjs|cdnjs|unpkg|jsdelivr/i);
+        expect(res.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');
+        expect(res.text).toContain('/app/vendor/mammoth/mammoth.browser.min.js');
+        expect(res.text).not.toMatch(/https?:\/\/[^"']*(?:pdfjs|sheetjs|xlsx|mammoth)|cdnjs|unpkg|jsdelivr/i);
         expect(res.text).toContain('/app/manifest.webmanifest');
         expect(res.text).toContain('/app/js/app.js');
     });
@@ -41,22 +43,37 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
     });
 
     it('sirve el Service Worker (sw.js), la hoja de estilos y los módulos JS del cliente PWA', async () => {
-        const [resSw, resCss, resAppJs, resLogicaJs, resPdfJs, resPdfWorker] = await Promise.all([
+        const [
+            resSw,
+            resCss,
+            resAppJs,
+            resLogicaJs,
+            resPdfJs,
+            resPdfWorker,
+            resSheetJs,
+            resMammoth,
+        ] = await Promise.all([
             request(app).get('/app/sw.js'),
             request(app).get('/app/css/estilos.css'),
             request(app).get('/app/js/app.js'),
             request(app).get('/app/js/logicaPwa.js'),
             request(app).get('/app/vendor/pdfjs/pdf.min.js'),
             request(app).get('/app/vendor/pdfjs/pdf.worker.min.js'),
+            request(app).get('/app/vendor/sheetjs/xlsx.full.min.js'),
+            request(app).get('/app/vendor/mammoth/mammoth.browser.min.js'),
         ]);
 
         expect(resSw.status).toBe(200);
-        expect(resSw.text).toContain('cafe-gestion-pwa-v1');
+        expect(resSw.text).toContain('cafe-gestion-pwa-v2');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.worker.min.js');
+        expect(resSw.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');
+        expect(resSw.text).toContain('/app/vendor/mammoth/mammoth.browser.min.js');
 
         expect(resPdfJs.status).toBe(200);
         expect(resPdfWorker.status).toBe(200);
+        expect(resSheetJs.status).toBe(200);
+        expect(resMammoth.status).toBe(200);
 
         expect(resCss.status).toBe(200);
         expect(resCss.text).toContain('.grilla-modulos');

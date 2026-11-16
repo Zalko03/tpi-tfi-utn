@@ -1567,3 +1567,258 @@ export const extraerTextoDePdfBuffer = async (
     }
 };
 
+export const TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES = 5 * 1024 * 1024;
+export const MENSAJE_ARCHIVO_DEMASIADO_GRANDE =
+    'El archivo supera el límite máximo permitido de 5 MB.';
+export const MENSAJE_DOC_ANTIGUO = 'Guardá el archivo como .docx y volvé a subirlo';
+
+/**
+ * Valida antes de leer un archivo que no supere el tamaño máximo permitido (5 MB por defecto).
+ */
+export const validarTamanoArchivoImportacion = (
+    archivo,
+    maxBytes = TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES
+) => {
+    if (!archivo) {
+        return { valido: false, mensajeError: 'No se seleccionó ningún archivo.' };
+    }
+    const tamano = Number(archivo.size ?? 0);
+    if (Number.isFinite(tamano) && tamano > maxBytes) {
+        return { valido: false, mensajeError: MENSAJE_ARCHIVO_DEMASIADO_GRANDE };
+    }
+    return { valido: true, mensajeError: null };
+};
+
+/**
+ * Detecta archivos Word heredados en formato binario .doc (distinto de .docx).
+ */
+export const esArchivoDocAntiguo = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    if (nombre.endsWith('.docx')) return false;
+    return nombre.endsWith('.doc') || tipo === 'application/msword';
+};
+
+/**
+ * Determina si un archivo corresponde a una planilla Excel (.xlsx o .xls).
+ */
+export const esArchivoExcel = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    if (nombre.endsWith('.xlsx') || nombre.endsWith('.xls')) {
+        return true;
+    }
+    // En Windows algunos navegadores reportan .csv como application/vnd.ms-excel
+    if (
+        nombre.endsWith('.csv') ||
+        nombre.endsWith('.txt') ||
+        nombre.endsWith('.pdf') ||
+        nombre.endsWith('.doc') ||
+        nombre.endsWith('.docx')
+    ) {
+        return false;
+    }
+    return (
+        tipo === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        tipo === 'application/vnd.ms-excel'
+    );
+};
+
+/**
+ * Determina si un archivo corresponde a un documento Word moderno (.docx).
+ */
+export const esArchivoDocx = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    return (
+        nombre.endsWith('.docx') ||
+        tipo === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+};
+
+/**
+ * Verifica si un texto CSV (por ejemplo, exportado desde la primera hoja de un Excel)
+ * posee encabezados compatibles con la plantilla CSV directa del proyecto y filas válidas.
+ */
+export const evaluarCsvPlantillaDirecta = (contenidoCsv = '') => {
+    const vacio = {
+        compatible: false,
+        resultado: parsearCsvProveedor(''),
+    };
+    const texto = String(contenidoCsv || '').trim();
+    if (!texto) return vacio;
+
+    const lineas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+    if (lineas.length < 2) return vacio;
+
+    const primeraLinea = lineas[0];
+    const delimitador = primeraLinea.includes(';')
+        ? ';'
+        : primeraLinea.includes(',')
+          ? ','
+          : primeraLinea.includes('\t')
+            ? '\t'
+            : null;
+
+    if (!delimitador) return vacio;
+
+    const colsCabecera = primeraLinea.split(delimitador).map((c) =>
+        c
+            .replace(/["']/g, '')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+    );
+
+    const tieneColumnaInsumo = colsCabecera.some(
+        (c) => c.includes('insumo') || c.includes('producto') || c.includes('nombre')
+    );
+    const tieneColumnaPrecio = colsCabecera.some(
+        (c) =>
+            c.includes('precio') ||
+            c.includes('total') ||
+            c.includes('importe') ||
+            c.includes('costo') ||
+            c.includes('valor')
+    );
+
+    if (!tieneColumnaInsumo || !tieneColumnaPrecio) {
+        return vacio;
+    }
+
+    const evalCsv = evaluarTextoComoCsvDirecto(texto);
+    return {
+        compatible: evalCsv.compatible,
+        resultado: evalCsv.resultado,
+    };
+};
+
+/**
+ * Convierte la primera hoja de un archivo Excel (.xlsx / .xls) a texto CSV usando SheetJS local.
+ */
+export const extraerCsvDeExcelBuffer = (bufferExcel, xlsxRef = null) => {
+    const xlsx =
+        xlsxRef || (typeof globalThis !== 'undefined' ? globalThis.XLSX : null);
+
+    if (
+        !xlsx ||
+        typeof xlsx.read !== 'function' ||
+        typeof xlsx.utils?.sheet_to_csv !== 'function'
+    ) {
+        throw new Error(
+            'La librería local SheetJS no está disponible para procesar archivos Excel.'
+        );
+    }
+
+    if (!bufferExcel) {
+        throw new Error('El archivo Excel está vacío o no se pudo leer.');
+    }
+
+    const datos =
+        bufferExcel instanceof Uint8Array
+            ? bufferExcel
+            : bufferExcel instanceof ArrayBuffer
+              ? new Uint8Array(bufferExcel)
+              : new Uint8Array(bufferExcel?.buffer || bufferExcel);
+
+    if (!datos || datos.byteLength === 0) {
+        throw new Error('El archivo Excel está vacío o no contiene datos.');
+    }
+
+    const workbook = xlsx.read(datos, { type: 'array' });
+    if (!workbook || !Array.isArray(workbook.SheetNames) || workbook.SheetNames.length === 0) {
+        throw new Error('El archivo Excel no contiene hojas para importar.');
+    }
+
+    const nombreHoja = workbook.SheetNames[0];
+    const primeraHoja = workbook.Sheets?.[nombreHoja];
+    if (!primeraHoja) {
+        throw new Error('La primera hoja del archivo Excel está vacía.');
+    }
+
+    const csv = String(
+        xlsx.utils.sheet_to_csv(primeraHoja, { blankrows: false }) || ''
+    ).trim();
+
+    if (!csv || csv.replace(/[,;\s\r\n]+/g, '').length === 0) {
+        throw new Error('La primera hoja del archivo Excel está vacía o no contiene datos.');
+    }
+
+    const lineas = csv
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+    return {
+        ok: true,
+        csv,
+        nombreHoja,
+        totalHojas: workbook.SheetNames.length,
+        lineas: lineas.length,
+    };
+};
+
+/**
+ * Extrae únicamente texto plano desde un archivo Word (.docx) usando Mammoth local.
+ */
+export const extraerTextoDeDocxBuffer = async (bufferDocx, mammothRef = null) => {
+    const mammoth =
+        mammothRef || (typeof globalThis !== 'undefined' ? globalThis.mammoth : null);
+
+    if (!mammoth || typeof mammoth.extractRawText !== 'function') {
+        throw new Error(
+            'La librería local Mammoth no está disponible para procesar archivos Word (.docx).'
+        );
+    }
+
+    if (!bufferDocx) {
+        throw new Error('El archivo Word (.docx) está vacío o no se pudo leer.');
+    }
+
+    let arrayBuffer;
+    if (bufferDocx instanceof ArrayBuffer) {
+        arrayBuffer = bufferDocx;
+    } else if (ArrayBuffer.isView(bufferDocx)) {
+        arrayBuffer = bufferDocx.buffer.slice(
+            bufferDocx.byteOffset,
+            bufferDocx.byteOffset + bufferDocx.byteLength
+        );
+    } else if (bufferDocx?.buffer instanceof ArrayBuffer) {
+        arrayBuffer = bufferDocx.buffer;
+    } else {
+        throw new Error('El formato del archivo Word (.docx) no es válido.');
+    }
+
+    if (arrayBuffer.byteLength === 0) {
+        throw new Error('El archivo Word (.docx) está vacío o no contiene datos.');
+    }
+
+    const resultado = await mammoth.extractRawText({ arrayBuffer });
+    const texto = String(resultado?.value || '').trim();
+    if (!texto) {
+        throw new Error(
+            'El documento Word (.docx) no contiene texto legible para importar.'
+        );
+    }
+
+    const lineas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+    return {
+        ok: true,
+        texto,
+        lineas: lineas.length,
+        advertencias: Array.isArray(resultado?.messages) ? resultado.messages : [],
+    };
+};
+

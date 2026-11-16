@@ -11,17 +11,24 @@ import {
     construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
     encolarVentaOffline,
+    esArchivoDocAntiguo,
+    esArchivoDocx,
+    esArchivoExcel,
     esArchivoPdf,
     escaparHtml,
+    evaluarCsvPlantillaDirecta,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
     evaluarTextoComoCsvDirecto,
+    extraerCsvDeExcelBuffer,
+    extraerTextoDeDocxBuffer,
     extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    MENSAJE_DOC_ANTIGUO,
     MENSAJE_IA_NO_DISPONIBLE,
     obtenerContenidoPlantillaCsv,
     obtenerVentasOffline,
@@ -29,6 +36,7 @@ import {
     procesarColaVentasOffline,
     unificarTrazabilidadRegistros,
     validarRangoFechas,
+    validarTamanoArchivoImportacion,
 } from './logicaPwa.js';
 
 const CLAVE_CATALOGO_CACHE = 'sapori_catalogo_cache';
@@ -1391,7 +1399,7 @@ const leerArchivoComoArrayBuffer = (archivo) => {
     return new Promise((resolve, reject) => {
         const lector = new FileReader();
         lector.onload = (ev) => resolve(ev.target?.result);
-        lector.onerror = () => reject(new Error('No se pudo leer el archivo PDF como ArrayBuffer.'));
+        lector.onerror = () => reject(new Error('No se pudo leer el archivo como ArrayBuffer.'));
         lector.readAsArrayBuffer(archivo);
     });
 };
@@ -1407,10 +1415,10 @@ const mostrarEstadoArchivoPdf = (mensaje, tipo = 'info') => {
     }
     el.style.display = 'block';
     el.className = `alerta-archivo-pdf ${tipo}`;
-    el.textContent = mensaje;
+    el.textContent = String(mensaje);
 };
 
-const procesarArchivoPdfSeleccionado = async (archivo) => {
+const procesarArchivoPdfSeleccionado = async (archivo, origenSelector = 'ia') => {
     if (!archivo) return;
     mostrarEstadoArchivoPdf(`Extrayendo texto de "${archivo.name}" con pdf.js local...`, 'info');
     try {
@@ -1447,8 +1455,102 @@ const procesarArchivoPdfSeleccionado = async (archivo) => {
             `Texto extraído del PDF (${resultado.lineas} renglones listos para analizar).`,
             'exito'
         );
+        if (origenSelector === 'csv') {
+            $('textarea-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        }
     } catch (err) {
         const msg = err?.message || 'Error al procesar el archivo PDF localmente.';
+        mostrarEstadoArchivoPdf(msg, 'advertencia');
+        mostrarToast(msg, 'peligro');
+    }
+};
+
+const procesarArchivoExcelSeleccionado = async (archivo, origenSelector = 'csv') => {
+    if (!archivo) return;
+    mostrarEstadoArchivoPdf(`Procesando planilla Excel "${archivo.name}" localmente con SheetJS...`, 'info');
+    try {
+        const xlsxLib = typeof window !== 'undefined' ? window.XLSX : null;
+        const buffer = await leerArchivoComoArrayBuffer(archivo);
+        const { csv, nombreHoja, totalHojas, lineas } = extraerCsvDeExcelBuffer(buffer, xlsxLib);
+        const { compatible, resultado } = evaluarCsvPlantillaDirecta(csv);
+
+        if (compatible && resultado.items.length > 0) {
+            aplicarCsvParseadoEnPreview(resultado, 'archivo CSV');
+            const avisoHojas =
+                totalHojas > 1 ? ` (primera hoja "${nombreHoja}" de ${totalHojas})` : '';
+            mostrarEstadoArchivoPdf(
+                `Excel "${archivo.name}"${avisoHojas} compatible con plantilla CSV directa: ${resultado.items.length} ítems listos sin IA.`,
+                'info'
+            );
+            mostrarToast(
+                `Excel parseado directamente (sin IA): ${resultado.items.length} ítems listos en Previsualización de CSV.`,
+                'exito'
+            );
+            if (origenSelector === 'ia') {
+                $('panel-preview-csv')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+            }
+            return;
+        }
+
+        estadoApp.csvParseadoActual = null;
+        estadoApp.csvContingenciaFallback = null;
+        if ($('panel-preview-csv')) {
+            $('panel-preview-csv').style.display = 'none';
+        }
+        estadoApp.ultimoOrigenArchivo = 'csv';
+        if ($('textarea-lista-ia')) {
+            $('textarea-lista-ia').value = csv;
+        }
+        const avisoHojas = totalHojas > 1 ? ` (primera hoja "${nombreHoja}")` : '';
+        mostrarEstadoArchivoPdf(
+            `Excel "${archivo.name}"${avisoHojas} convertido a texto CSV (${lineas} líneas). Las columnas no coinciden con la plantilla directa; listo para analizar con IA.`,
+            'info'
+        );
+        mostrarToast(
+            `Excel extraído (${lineas} renglones). Listo para analizar con IA.`,
+            'info'
+        );
+        if (origenSelector === 'csv') {
+            $('textarea-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        }
+    } catch (err) {
+        const msg = err?.message || 'Error al procesar el archivo Excel localmente.';
+        mostrarEstadoArchivoPdf(msg, 'advertencia');
+        mostrarToast(msg, 'peligro');
+    }
+};
+
+const procesarArchivoDocxSeleccionado = async (archivo, origenSelector = 'ia') => {
+    if (!archivo) return;
+    mostrarEstadoArchivoPdf(`Extrayendo texto de "${archivo.name}" con Mammoth local...`, 'info');
+    try {
+        const mammothLib = typeof window !== 'undefined' ? window.mammoth : null;
+        const buffer = await leerArchivoComoArrayBuffer(archivo);
+        const resultado = await extraerTextoDeDocxBuffer(buffer, mammothLib);
+
+        estadoApp.ultimoOrigenArchivo = 'texto';
+        if ($('textarea-lista-ia')) {
+            $('textarea-lista-ia').value = resultado.texto;
+        }
+        const evalCsv = evaluarTextoComoCsvDirecto(resultado.texto);
+        if (evalCsv.compatible) {
+            aplicarCsvParseadoEnPreview(evalCsv.resultado, 'docx');
+        } else {
+            estadoApp.csvContingenciaFallback = null;
+        }
+        mostrarEstadoArchivoPdf(
+            `Word "${archivo.name}" procesado localmente (${resultado.lineas} líneas extraídas). Listo para analizar con IA.`,
+            'info'
+        );
+        mostrarToast(
+            `Texto extraído de Word (${resultado.lineas} renglones listos para analizar).`,
+            'exito'
+        );
+        if (origenSelector === 'csv') {
+            $('textarea-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        }
+    } catch (err) {
+        const msg = err?.message || 'Error al procesar el archivo Word (.docx) localmente.';
         mostrarEstadoArchivoPdf(msg, 'advertencia');
         mostrarToast(msg, 'peligro');
     }
@@ -1457,7 +1559,12 @@ const procesarArchivoPdfSeleccionado = async (archivo) => {
 const aplicarCsvParseadoEnPreview = (resultado, origenEtiqueta = 'archivo CSV') => {
     estadoApp.csvParseadoActual = resultado;
     estadoApp.csvContingenciaFallback = resultado;
-    estadoApp.ultimoOrigenArchivo = origenEtiqueta === 'pdf' ? 'pdf' : 'csv';
+    estadoApp.ultimoOrigenArchivo =
+        origenEtiqueta === 'pdf'
+            ? 'pdf'
+            : origenEtiqueta === 'docx'
+              ? 'texto'
+              : 'csv';
     renderizarPreviewCsv(resultado);
     if ($('textarea-lista-ia') && resultado.textoParaIa && origenEtiqueta === 'archivo CSV') {
         $('textarea-lista-ia').value = resultado.textoParaIa;
@@ -1466,8 +1573,29 @@ const aplicarCsvParseadoEnPreview = (resultado, origenEtiqueta = 'archivo CSV') 
 
 const procesarArchivoImportacionSeleccionado = async (archivo, origenSelector = 'csv') => {
     if (!archivo) return;
+    if (esArchivoDocAntiguo(archivo)) {
+        mostrarEstadoArchivoPdf(MENSAJE_DOC_ANTIGUO, 'advertencia');
+        mostrarToast(MENSAJE_DOC_ANTIGUO, 'advertencia');
+        return;
+    }
+
+    const validacionTamano = validarTamanoArchivoImportacion(archivo);
+    if (!validacionTamano.valido) {
+        mostrarEstadoArchivoPdf(validacionTamano.mensajeError, 'advertencia');
+        mostrarToast(validacionTamano.mensajeError, 'peligro');
+        return;
+    }
+
     if (esArchivoPdf(archivo)) {
-        await procesarArchivoPdfSeleccionado(archivo);
+        await procesarArchivoPdfSeleccionado(archivo, origenSelector);
+        return;
+    }
+    if (esArchivoExcel(archivo)) {
+        await procesarArchivoExcelSeleccionado(archivo, origenSelector);
+        return;
+    }
+    if (esArchivoDocx(archivo)) {
+        await procesarArchivoDocxSeleccionado(archivo, origenSelector);
         return;
     }
 
@@ -3341,6 +3469,7 @@ const inicializarEventosDOM = () => {
 
     inputArchivoCsv?.addEventListener('change', (e) => {
         const archivo = e.target.files?.[0];
+        e.target.value = '';
         if (archivo) procesarArchivoImportacionSeleccionado(archivo, 'csv');
     });
 
@@ -3350,6 +3479,7 @@ const inicializarEventosDOM = () => {
     });
     inputArchivoIa?.addEventListener('change', (e) => {
         const archivo = e.target.files?.[0];
+        e.target.value = '';
         if (archivo) procesarArchivoImportacionSeleccionado(archivo, 'ia');
     });
 
