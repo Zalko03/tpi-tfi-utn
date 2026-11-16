@@ -415,7 +415,7 @@ td.col-numero {
     align-items: center;
 }
 
-.input-con-icono svg {
+.input-con-icono > svg {
     position: absolute;
     left: 0.9rem;
     color: var(--texto-mutado);
@@ -424,6 +424,49 @@ td.col-numero {
 
 .input-con-icono input {
     padding-left: 2.6rem !important;
+}
+
+.input-con-accion {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-con-accion input {
+    padding-right: 2.85rem !important;
+}
+
+.btn-toggle-visibilidad {
+    position: absolute;
+    right: 0.45rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radio-sm);
+    background: transparent;
+    color: var(--texto-mutado);
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-toggle-visibilidad:hover {
+    color: var(--texto-color);
+    background: var(--color-ambar-light);
+}
+
+.btn-toggle-visibilidad:focus-visible {
+    outline: 2px solid var(--color-ambar);
+    outline-offset: 1px;
+}
+
+.btn-toggle-visibilidad svg[hidden] {
+    display: none;
 }
 
 input[type="text"],

@@ -22,6 +22,35 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-16
+Tarea: Botones mostrar/ocultar en contraseña (`#input-password`) y token JWT (`#input-token-jwt`) del login
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **HTML (`web/index.html`):**
+  - Se envolvió `#input-password` en `.input-con-icono.input-con-accion` y se agregó el botón `#btn-toggle-password` (`type="button"`, `aria-label="Mostrar contraseña"`, `aria-pressed="false"`) con íconos SVG inline de ojo abierto y ojo tachado.
+  - Se configuró `#input-token-jwt` oculto por defecto (`type="password"`, `autocomplete="off"`), envuelto en `.input-con-accion` con su botón `#btn-toggle-token-jwt` (`type="button"`, `aria-label="Mostrar token JWT"`, `aria-pressed="false"`) e íconos SVG equivalentes.
+- **Estilos (`web/css/estilos.css`):**
+  - Se acotó `.input-con-icono svg` a hijo directo (`.input-con-icono > svg`) para no afectar el posicionamiento de los íconos de acción a la derecha.
+  - Se incorporaron las clases `.input-con-accion` (con `padding-right: 2.85rem` en el `<input>`) y `.btn-toggle-visibilidad` (posicionamiento centrado a la derecha, hover, `focus-visible` y ocultamiento explícito de `svg[hidden]`).
+- **Lógica de UI (`web/js/app.js`):**
+  - Se implementaron los helpers reutilizables `actualizarEstadoVisibilidadCampo`, `restablecerVisibilidadCredencialesLogin`, `inicializarTogglesVisibilidad` y `limpiarCredencialesFormularioLogin` para alternar `type`, `aria-label`, `aria-pressed` y visibilidad de íconos SVG en ambos campos.
+  - Se garantizó el retorno al estado oculto (`type="password"`, `aria-pressed="false"`) en inicialización, evento `reset` de `#form-login`, selección de perfiles demo, login exitoso y `cerrarSesion`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna; los cambios son estrictamente de UI/accesibilidad en el formulario de ingreso del cliente web.
+Problemas y decisiones técnicas:
+- Se restringió la regla `.input-con-icono svg` a `.input-con-icono > svg` para evitar que los SVG del botón de ojo heredaran `position: absolute; left: 0.9rem;` del ícono izquierdo del campo.
+- Se centralizó el comportamiento de ambos toggles mediante atributos `data-target-input`, `data-label-mostrar` y `data-label-ocultar` en HTML, evitando duplicación de manejadores en `web/js/app.js`.
+Archivos tocados:
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/app.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `node --check web/js/app.js`
+- `cd backend-node && npm test && npm run lint`
+---
+
+---
+Fecha: 2026-11-16
 Tarea: Mitigación CVE-2024-4367 en pdf.js, guardia anti-doble envío CSV directo y ajuste de etiquetas de margen bruto
 Rama: feature/reportes-filtro-fechas
 Cambios realizados:

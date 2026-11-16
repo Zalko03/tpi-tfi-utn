@@ -389,11 +389,62 @@ const decodificarClaimsJwt = (token) => {
     }
 };
 
+const actualizarEstadoVisibilidadCampo = (btnToggle, visible) => {
+    if (!btnToggle) return;
+    const targetId = btnToggle.dataset.targetInput;
+    const input = targetId ? $(targetId) : null;
+    if (!input) return;
+
+    const esVisible = Boolean(visible);
+    input.type = esVisible ? 'text' : 'password';
+    btnToggle.setAttribute('aria-pressed', esVisible ? 'true' : 'false');
+
+    const labelMostrar = btnToggle.dataset.labelMostrar || 'Mostrar';
+    const labelOcultar = btnToggle.dataset.labelOcultar || 'Ocultar';
+    btnToggle.setAttribute('aria-label', esVisible ? labelOcultar : labelMostrar);
+
+    const iconoMostrar = btnToggle.querySelector('.icono-ojo-mostrar');
+    const iconoOcultar = btnToggle.querySelector('.icono-ojo-ocultar');
+    if (iconoMostrar) iconoMostrar.hidden = esVisible;
+    if (iconoOcultar) iconoOcultar.hidden = !esVisible;
+};
+
+const restablecerVisibilidadCredencialesLogin = () => {
+    document.querySelectorAll('.btn-toggle-visibilidad').forEach((btn) => {
+        actualizarEstadoVisibilidadCampo(btn, false);
+    });
+};
+
+const inicializarTogglesVisibilidad = () => {
+    document.querySelectorAll('.btn-toggle-visibilidad').forEach((btn) => {
+        actualizarEstadoVisibilidadCampo(btn, false);
+        btn.addEventListener('click', () => {
+            const targetId = btn.dataset.targetInput;
+            const input = targetId ? $(targetId) : null;
+            if (!input) return;
+            actualizarEstadoVisibilidadCampo(btn, input.type === 'password');
+        });
+    });
+};
+
+const limpiarCredencialesFormularioLogin = ({ resetearFormulario = false } = {}) => {
+    if (resetearFormulario) {
+        $('form-login')?.reset();
+        const detalleToken = document.querySelector('#form-login .acceso-tecnico-toggle');
+        if (detalleToken) detalleToken.open = false;
+    } else {
+        if ($('input-password')) $('input-password').value = '';
+        if ($('input-token-jwt')) $('input-token-jwt').value = '';
+    }
+    restablecerVisibilidadCredencialesLogin();
+};
+
 const actualizarUIUsuario = () => {
     const pantallaLogin = $('pantalla-login');
     const u = estadoApp.usuario;
 
     if (!estadoApp.tokenJwt) {
+        restablecerVisibilidadCredencialesLogin();
         if (pantallaLogin) pantallaLogin.style.display = 'flex';
         return;
     }
@@ -517,6 +568,7 @@ const ejecutarLogin = async (username, password, tokenManual = '') => {
     if (tokenManual) {
         estadoApp.tokenJwt = tokenManual;
         sessionStorage.setItem('cafe_jwt', tokenManual);
+        limpiarCredencialesFormularioLogin();
         actualizarUIUsuario();
         conectarSocketTiempoReal();
         cargarDatosIniciales();
@@ -566,6 +618,7 @@ const ejecutarLogin = async (username, password, tokenManual = '') => {
             }
         }
 
+        limpiarCredencialesFormularioLogin();
         actualizarUIUsuario();
         conectarSocketTiempoReal();
         cargarDatosIniciales();
@@ -584,6 +637,7 @@ const cerrarSesion = () => {
     if (estadoApp.socket) {
         estadoApp.socket.disconnect();
     }
+    limpiarCredencialesFormularioLogin({ resetearFormulario: true });
     actualizarUIUsuario();
     mostrarToast('Sesión cerrada correctamente.', 'info');
 };
@@ -3047,6 +3101,8 @@ const cambiarSeccion = (nombreSeccion) => {
 // INICIALIZACIÓN DE EVENTOS DEL DOM
 // ============================================================
 const inicializarEventosDOM = () => {
+    inicializarTogglesVisibilidad();
+
     // 1. Autocompletado de usuario demo (sin contraseñas hardcodeadas)
     document.querySelectorAll('.btn-demo-acceso').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -3056,6 +3112,7 @@ const inicializarEventosDOM = () => {
                 $('input-password').value = '';
                 $('input-password').focus();
             }
+            restablecerVisibilidadCredencialesLogin();
             const estadoEl = $('mensaje-auth');
             if (estadoEl) {
                 estadoEl.textContent = `Usuario '${usuario}' seleccionado. Ingresá tu contraseña para continuar.`;
@@ -3063,7 +3120,11 @@ const inicializarEventosDOM = () => {
         });
     });
 
-    // 2. Submit de Formulario de Login
+    // 2. Submit y reset de Formulario de Login
+    $('form-login')?.addEventListener('reset', () => {
+        restablecerVisibilidadCredencialesLogin();
+    });
+
     $('form-login')?.addEventListener('submit', (e) => {
         e.preventDefault();
         const username = $('input-username')?.value.trim();
