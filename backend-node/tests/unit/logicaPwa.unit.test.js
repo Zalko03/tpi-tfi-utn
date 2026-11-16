@@ -1,6 +1,8 @@
+import fs from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import vm from 'vm';
 import { jest } from '@jest/globals';
 import {
     agregarProductoAlCarrito,
@@ -887,6 +889,7 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(xlsxMock.utils.sheet_to_csv).toHaveBeenCalledTimes(1);
             expect(xlsxMock.utils.sheet_to_csv).toHaveBeenCalledWith(hoja1, {
                 blankrows: false,
+                rawNumbers: true,
             });
             expect(res).toEqual({
                 ok: true,
@@ -900,6 +903,41 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(evalDirecta.compatible).toBe(true);
             expect(evalDirecta.resultado.items).toHaveLength(1);
             expect(evalDirecta.resultado.items[0].nombre_insumo).toBe('Café Tostado');
+        });
+
+        it('integración real con SheetJS v0.20.3 vendored preserva valores numéricos con formato de moneda o miles', () => {
+            const __filename = fileURLToPath(import.meta.url);
+            const __dirname = path.dirname(__filename);
+            const rutaSheetJs = path.resolve(
+                __dirname,
+                '../../../web/vendor/sheetjs/xlsx.full.min.js'
+            );
+            const codigoSheetJs = fs.readFileSync(rutaSheetJs, 'utf8');
+            const contexto = { console };
+            vm.runInNewContext(codigoSheetJs, contexto);
+            const xlsxReal = contexto.XLSX;
+
+            expect(xlsxReal).toBeDefined();
+            expect(xlsxReal.version).toBe('0.20.3');
+
+            const wb = xlsxReal.utils.book_new();
+            const ws = xlsxReal.utils.aoa_to_sheet([
+                ['insumo', 'cantidad', 'unidad', 'precio_total', 'alicuota_iva', 'envio'],
+                ['Café Tostado en Grano', 2, 'kg', 18000, 21, 0],
+                ['Leche Entera Barista', 10, 'l', 14000.5, 21, 0],
+            ]);
+            ws.D2.z = '#,##0';
+            ws.D3.z = '"$"#,##0.00';
+            xlsxReal.utils.book_append_sheet(wb, ws, 'Lista');
+
+            const bufferXlsx = xlsxReal.write(wb, { type: 'array', bookType: 'xlsx' });
+            const extraido = extraerCsvDeExcelBuffer(bufferXlsx, xlsxReal);
+            const parseado = parsearCsvProveedor(extraido.csv);
+
+            expect(extraido.ok).toBe(true);
+            expect(parseado.items).toHaveLength(2);
+            expect(parseado.items[0].precio_total).toBe('18000.00');
+            expect(parseado.items[1].precio_total).toBe('14000.50');
         });
 
         it('evaluarCsvPlantillaDirecta rechaza encabezados no coincidentes para derivar a IA y extraerCsvDeExcelBuffer falla en hojas vacías', () => {

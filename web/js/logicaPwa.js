@@ -1745,7 +1745,7 @@ export const extraerCsvDeExcelBuffer = (bufferExcel, xlsxRef = null) => {
     }
 
     const csv = String(
-        xlsx.utils.sheet_to_csv(primeraHoja, { blankrows: false }) || ''
+        xlsx.utils.sheet_to_csv(primeraHoja, { blankrows: false, rawNumbers: true }) || ''
     ).trim();
 
     if (!csv || csv.replace(/[,;\s\r\n]+/g, '').length === 0) {

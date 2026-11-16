@@ -22,6 +22,29 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-16
+Tarea: Preservación de números formateados en Excel (`rawNumbers: true`), test real con SheetJS v0.20.3 y verificación SHA-256 de Mammoth
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Extracción CSV desde Excel (`web/js/logicaPwa.js`):** En `extraerCsvDeExcelBuffer`, se actualizó la llamada a `xlsx.utils.sheet_to_csv(primeraHoja, { blankrows: false, rawNumbers: true })` para evitar que formatos de miles o moneda (ej. `#,##0` o `"$"#,##0.00`) introduzcan comas o símbolos que alteren el parseo posterior en `parsearCsvProveedor`.
+- **Tests unitarios y de integración real (`backend-node/tests/unit/logicaPwa.unit.test.js`):**
+  - Se actualizó la aserción del mock de `sheet_to_csv` para exigir `{ blankrows: false, rawNumbers: true }`.
+  - Se incorporó un test de integración real cargando `web/vendor/sheetjs/xlsx.full.min.js` (`0.20.3`) con `fs.readFileSync` + `vm.runInNewContext`, armando un libro con celdas numéricas formateadas (`18000` con `z = '#,##0'` y `14000.5` con `z = '"$"#,##0.00'`), serializando con `XLSX.write` y validando que `extraerCsvDeExcelBuffer` + `parsearCsvProveedor` devuelven exactamente 2 ítems con `precio_total` `"18000.00"` y `"14000.50"`.
+- **Verificación de integridad (`web/vendor/mammoth/README.md`):** Se ejecutó `sha256sum web/vendor/mammoth/mammoth.browser.min.js` confirmando el hash completo `92914a3708cfdf1e62cb553d1856a7fedab21da83d8ee82845de2f897b368cab` ya presente en `web/vendor/mammoth/README.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna; se mantienen sin cambios los contratos entre cliente web y backends.
+Problemas y decisiones técnicas:
+- Sin `rawNumbers: true`, `sheet_to_csv` exportaba números formateados (p. ej. `"18,000"` o `"$14,000.50"`), rompiendo la normalización numérica cuando el delimitador CSV es coma (`,`). Usar `rawNumbers: true` preserva el valor numérico crudo de SheetJS sin perder compatibilidad.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `node --check web/js/logicaPwa.js`
+- `cd backend-node && npm test && npm run lint`
+---
+
+---
+Fecha: 2026-11-16
 Tarea: Importación offline-first de listas de proveedores en Excel (.xlsx/.xls) y Word (.docx)
 Rama: feature/reportes-filtro-fechas
 Cambios realizados:
