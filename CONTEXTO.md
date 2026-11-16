@@ -20,13 +20,21 @@ Sistema de gestión y POS para cafeterías de especialidad (TFI Programación IV
 ## 4. Cómo se Corre y Cómo se Testea
 - **Docker (completo)**: `cp .env.example .env && docker compose up -d --build` (Web en `http://localhost:80`).
 - **Local (dev)**: Django en `:8000` (`python manage.py runserver`), Node en `:3000` (`npm run dev`), AI en `:8001` (`uvicorn app.main:app`), Web en estático/5173.
-- **Tests (563 pruebas en verde)**:
-  - Django: `cd backend-django && pytest` (370 tests)
-  - Node: `cd backend-node && npm test` (130 tests)
-  - AI Service: `cd ai-service && pytest` (63 tests)
-  - Linters: `ruff check backend-django/ ai-service/` | `cd backend-node && npm run lint`
+- **Tests (600 pruebas en verde)**:
+  - Django: `backend-django/.venv/bin/pytest backend-django/` (390 tests)
+  - Node: `cd backend-node && npm test` (143 tests)
+  - AI Service: `ai-service/.venv/bin/pytest ai-service/` (67 tests)
+  - Linters: `.venv/bin/ruff check backend-django/ ai-service/` && `.venv/bin/ruff format --check backend-django/ ai-service/` | `cd backend-node && npm run lint`
 
 ## 5. Estado Actual
-- **Rama actual**: `feature/pos-comercial-sapori-stock`.
-- **Qué está hecho**: TP 0 al 4 completados y mergeados en `main`. Documentación IEEE 830 e informe final TFI listos. Rediseño frontend completo nivel producto comercial (POS, caja, compras IA, ingeniería de recetas, finanzas, personal) sin jerga técnica.
-- **Qué falta**: Merge de la rama actual a `main`. Trabajos futuros del informe (descuento físico automático de stock por receta y facturación electrónica).
+- **Rama actual**: `main` (PR #17 `feature/pos-comercial-sapori-stock` mergeado exitosamente).
+- **Qué está hecho**:
+  - Rediseño comercial integral "Sapori Stock" (POS táctil/escáner, arqueo ciego estricto, compras y carga de insumos, costeo dinámico de recetas, reportes y personal).
+  - Circuito de aprobación y previsualización para importaciones de insumos vía IA (Gemini/Ollama) y CSV con confirmación explícita y auditoría.
+  - Idempotencia de ventas garantizada de punta a punta con `id_operacion` único persistido en backend Django y base de datos.
+  - Precios calculados 100% en backend desde base de datos, blindados contra manipulación en cliente.
+  - Arqueo ciego estricto: montos reales ocultos para cajeros, notificación y cálculo en backend Django con emisión de eventos Socket.IO para actualización en vivo.
+  - Sincronización offline robusta en PWA con exclusión mutua vía `navigator.locks`, reintentos controlados y cola visible de transacciones rechazadas.
+  - Normas de ingeniería y gobernanza (`NORMAS.md`) vigentes.
+  - 600 pruebas automatizadas en verde entre las 3 suites (`390` Django + `143` Node + `67` AI Service).
+- **Qué falta / Futuras etapas**: Trabajos futuros del informe (descuento físico automático de stock por receta y facturación electrónica AFIP/ARCA).
