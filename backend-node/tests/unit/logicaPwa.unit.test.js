@@ -786,5 +786,36 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             const evalBinario = evaluarTextoExtraidoPdf('%PDF-1.4\n1 0 obj');
             expect(evalBinario.valido).toBe(false);
         });
+
+        it('fuerza isEvalSupported: false en pdfjs.getDocument (mitigación CVE-2024-4367) aunque opciones intente habilitarlo', async () => {
+            const pdfMock = {
+                numPages: 1,
+                getPage: jest.fn().mockResolvedValue({
+                    getTextContent: jest.fn().mockResolvedValue({
+                        items: [{ str: 'Cafe Tostado 1 kg $25000', transform: [1, 0, 0, 1, 72, 760], width: 120 }],
+                    }),
+                }),
+                destroy: jest.fn().mockResolvedValue(undefined),
+            };
+            const pdfjsMock = {
+                getDocument: jest.fn().mockReturnValue({
+                    promise: Promise.resolve(pdfMock),
+                }),
+            };
+
+            const resultado = await extraerTextoDePdfBuffer(new Uint8Array([37, 80, 68, 70]), pdfjsMock, {
+                disableWorker: true,
+                isEvalSupported: true,
+            });
+
+            expect(resultado.ok).toBe(true);
+            expect(pdfjsMock.getDocument).toHaveBeenCalledTimes(1);
+            expect(pdfjsMock.getDocument).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    disableWorker: true,
+                    isEvalSupported: false,
+                })
+            );
+        });
     });
 });

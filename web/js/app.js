@@ -1610,16 +1610,27 @@ const enviarCsvAlCircuitoAprobacion = async () => {
     }
 };
 
+let confirmacionCsvDirectaEnCurso = false;
+
 const confirmarCsvDirectoEnInventario = async () => {
-    const csv = estadoApp.csvParseadoActual;
-    if (!csv || csv.items.length === 0) {
-        mostrarToast('Primero cargue un archivo CSV válido.', 'advertencia');
-        return;
+    if (confirmacionCsvDirectaEnCurso) return;
+    confirmacionCsvDirectaEnCurso = true;
+    const btnConfirmar = $('btn-csv-confirmar-directo');
+    const textoOriginalBtn = btnConfirmar ? btnConfirmar.textContent : '';
+    if (btnConfirmar) {
+        btnConfirmar.disabled = true;
+        btnConfirmar.textContent = 'Confirmando...';
     }
 
-    const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Proveedor Planilla CSV';
-
     try {
+        const csv = estadoApp.csvParseadoActual;
+        if (!csv || csv.items.length === 0) {
+            mostrarToast('Primero cargue un archivo CSV válido.', 'advertencia');
+            return;
+        }
+
+        const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Proveedor Planilla CSV';
+
         const res = await fetch(`${estadoApp.djangoUrl}/api/compras/confirmar-importacion/`, {
             method: 'POST',
             headers: {
@@ -1659,6 +1670,13 @@ const confirmarCsvDirectoEnInventario = async () => {
         }
     } catch (err) {
         mostrarToast(`Error de red al confirmar importación: ${err.message}`, 'peligro');
+    } finally {
+        confirmacionCsvDirectaEnCurso = false;
+        const btnActual = $('btn-csv-confirmar-directo');
+        if (btnActual) {
+            btnActual.disabled = false;
+            if (textoOriginalBtn) btnActual.textContent = textoOriginalBtn;
+        }
     }
 };
 
@@ -2310,7 +2328,7 @@ export const cargarFinanzas = async () => {
             if ($('fin-unidades-totales')) $('fin-unidades-totales').textContent = String(Math.round(Number(data.unidades_vendidas || 0)));
 
             const margenPct = (Number(data.margen_bruto_promedio || 0) * 100).toFixed(1);
-            if ($('fin-margen-promedio')) $('fin-margen-promedio').textContent = `Margen neto promedio: ${margenPct}%`;
+            if ($('fin-margen-promedio')) $('fin-margen-promedio').textContent = `Margen bruto promedio: ${margenPct}%`;
         }
 
         const resRanking = await fetch(
@@ -3008,7 +3026,7 @@ const cambiarSeccion = (nombreSeccion) => {
         caja: { titulo: 'Caja & Arqueo Ciego', sub: 'Control de turnos, arqueo ciego y auditoría de fondos' },
         compras: { titulo: 'Compras & Listas IA', sub: 'Importación CSV y extracción inteligente de listas de distribuidores' },
         recetas: { titulo: 'Ingeniería de Recetas & Rentabilidad', sub: 'Costeo dinámico por insumos, descartables y mano de obra' },
-        finanzas: { titulo: 'Reportes, Trazabilidad & Finanzas', sub: 'Trazabilidad por fechas, facturación real, margen neto y punto de equilibrio' },
+        finanzas: { titulo: 'Reportes, Trazabilidad & Finanzas', sub: 'Trazabilidad por fechas, facturación real, margen bruto y punto de equilibrio' },
         personal: { titulo: 'Equipo & Permisos', sub: 'Gobernanza de personal y control granular de accesos' },
     };
 

@@ -21,6 +21,29 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-16
+Tarea: Mitigación CVE-2024-4367 en pdf.js, guardia anti-doble envío CSV directo y ajuste de etiquetas de margen bruto
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Seguridad PDF (`web/js/logicaPwa.js`):** En `extraerTextoDePdfBuffer`, se agregó `isEvalSupported: false` después de `...opciones` en la llamada a `pdfjs.getDocument(...)` para mitigar CVE-2024-4367 sin posibilidad de sobrescritura por parte del caller.
+- **Guardia anti-doble envío (`web/js/app.js`):** En `confirmarCsvDirectoEnInventario`, se incorporó la bandera `confirmacionCsvDirectaEnCurso`, deshabilitación temporal de `#btn-csv-confirmar-directo` (`disabled = true` con preservación de texto) y bloque `try { ... } finally { ... }` para restaurar siempre bandera y botón incluso ante errores o retornos tempranos.
+- **Etiquetas de finanzas (`web/js/app.js`):** Se actualizó `"Margen neto promedio"` a `"Margen bruto promedio"` y `"margen neto"` a `"margen bruto"` en el subtítulo de la sección Finanzas para mantener coherencia con el cálculo de margen bruto.
+- **Tests (`backend-node/tests/unit/logicaPwa.unit.test.js`):** Se agregó un test unitario que verifica que `extraerTextoDePdfBuffer` pasa `isEvalSupported: false` a `pdfjs.getDocument` incluso cuando `opciones` intenta pasar `isEvalSupported: true`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna; se mantienen sin cambios los contratos de endpoints y módulos.
+Problemas y decisiones técnicas:
+- Se ubicó `isEvalSupported: false` al final del objeto pasado a `pdfjs.getDocument` para garantizar que ningún parámetro en `opciones` reactive `eval` al procesar PDFs externos.
+- Se reconsulta `$('btn-csv-confirmar-directo')` dentro del `finally` para restaurar su estado únicamente si continúa presente en el DOM.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+---
+
+---
 Fecha: 2026-11-15
 Tarea: Idempotencia en ventas, arqueo ciego estricto, cola offline y eliminación de credenciales hardcodeadas
 Rama: feature/pos-comercial-sapori-stock

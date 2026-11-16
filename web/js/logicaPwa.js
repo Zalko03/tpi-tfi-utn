@@ -1534,6 +1534,8 @@ export const extraerTextoDePdfBuffer = async (
         verbosity: 0,
         disableWorker,
         ...opciones,
+        // Mitigación CVE-2024-4367: impedir ejecución de eval en fuentes PDF incluso si opciones lo habilita
+        isEvalSupported: false,
     });
 
     const pdfDoc = await tareaCarga.promise;
