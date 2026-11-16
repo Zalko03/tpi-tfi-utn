@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.usuarios.permissions import PermisoObjetoVenta, TienePermiso
+from apps.usuarios.permissions import PermisoObjetoVenta, TienePermiso, usuario_tiene_permiso
 from apps.ventas.models import Venta
 from apps.ventas.serializers import VentaSerializer
 from apps.ventas.services import (
@@ -92,6 +92,18 @@ class VentaViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             return qs.filter(turno_caja__usuario=user)
         return qs
+
+    def filter_queryset(self, queryset):
+        if self.action == "list" and not usuario_tiene_permiso(
+            self.request, "caja.ver_efectivo_esperado"
+        ):
+            # Evita deducir ventas en efectivo filtrando por medio_pago u ordenando por total
+            self.filterset_fields = ["turno_caja", "origen"]
+            self.ordering_fields = ["fecha"]
+        else:
+            self.filterset_fields = ["turno_caja", "medio_pago", "origen"]
+            self.ordering_fields = ["fecha", "total"]
+        return super().filter_queryset(queryset)
 
     @action(detail=True, methods=["post"], url_path="anular")
     def anular(self, request, pk=None):

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from rest_framework import exceptions, serializers
 
+from apps.usuarios.permissions import usuario_tiene_permiso
 from apps.ventas.models import Venta, VentaItem
 from apps.ventas.services import registrar_venta
 
@@ -42,11 +43,13 @@ class VentaItemDetailSerializer(serializers.ModelSerializer):
 class VentaSerializer(serializers.ModelSerializer):
     items = VentaItemDetailSerializer(many=True, read_only=True)
     items_entrada = VentaItemInputSerializer(many=True, write_only=True, required=True)
+    id_operacion = serializers.UUIDField(required=False, allow_null=True)
 
     class Meta:
         model = Venta
         fields = [
             "id",
+            "id_operacion",
             "turno_caja",
             "fecha",
             "medio_pago",
@@ -78,26 +81,52 @@ class VentaSerializer(serializers.ModelSerializer):
         if turno and request and hasattr(request, "user"):
             user = request.user
             if not getattr(user, "is_superuser", False):
-                perfil = getattr(user, "perfil", None)
-                puede_ajenos = (
-                    perfil.tiene_permiso("caja.gestionar_turnos_ajenos") if perfil else False
-                )
-                if not puede_ajenos:
-                    payload = getattr(request.auth, "payload", None)
-                    if payload is None and hasattr(request.auth, "get"):
-                        payload = request.auth
-                    puede_ajenos = "caja.gestionar_turnos_ajenos" in (
-                        payload.get("permisos", []) if payload else []
-                    )
+                puede_ajenos = usuario_tiene_permiso(request, "caja.gestionar_turnos_ajenos")
                 if turno.usuario_id and turno.usuario_id != user.id and not puede_ajenos:
                     raise exceptions.PermissionDenied("Debe pertenecer al turno abierto del cajero")
+
+        if turno and turno.estado != "ABIERTO":
+            raise serializers.ValidationError(
+                {"turno_caja": "No se puede registrar una venta en un turno de caja cerrado."}
+            )
+
+        if not attrs.get("items_entrada"):
+            raise serializers.ValidationError(
+                {"items_entrada": "La venta debe contener al menos un producto."}
+            )
+
         return attrs
 
     def create(self, validated_data):
         items_data = validated_data.pop("items_entrada")
-        return registrar_venta(
-            items_data=items_data,
-            medio_pago=validated_data.get("medio_pago", "EFECTIVO"),
-            origen=validated_data.get("origen", "propio"),
-            turno_caja=validated_data.get("turno_caja"),
-        )
+        try:
+            return registrar_venta(
+                items_data=items_data,
+                medio_pago=validated_data.get("medio_pago", "EFECTIVO"),
+                origen=validated_data.get("origen", "propio"),
+                turno_caja=validated_data.get("turno_caja"),
+                id_operacion=validated_data.get("id_operacion"),
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get("request")
+        if (
+            request
+            and getattr(request, "method", "GET") != "POST"
+            and not usuario_tiene_permiso(request, "caja.ver_efectivo_esperado")
+        ):
+            # Arqueo ciego estricto: un usuario sin caja.ver_efectivo_esperado no puede
+            # consultar montos ni medios de pago históricos para reconstruir el arqueo.
+            ret["total"] = None
+            ret["medio_pago"] = None
+            ret["costo_total_snapshot"] = None
+            for item in ret.get("items") or []:
+                if isinstance(item, dict):
+                    item["precio_unitario"] = None
+                    item["costo_unitario_snapshot"] = None
+                    if "subtotal" in item:
+                        item["subtotal"] = None
+        return ret

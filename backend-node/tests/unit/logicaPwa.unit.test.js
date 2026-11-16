@@ -1,18 +1,24 @@
+import { jest } from '@jest/globals';
 import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularResumenCarrito,
+    CLAVE_COLA_VENTAS_RECHAZADAS,
     convertirMontoACentavos,
+    ejecutarSincronizacionConLock,
     eliminarVentaOffline,
     encolarVentaOffline,
     escaparHtml,
     extraerItemsDesdeTextoLista,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
+    generarIdOperacion,
     limpiarColaOffline,
     obtenerContenidoPlantillaCsv,
     obtenerVentasOffline,
+    obtenerVentasRechazadasOffline,
     parsearCsvProveedor,
+    procesarColaVentasOffline,
 } from '../../../web/js/logicaPwa.js';
 
 describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () => {
@@ -241,6 +247,158 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                 'Café &#39;Especial&#39; &amp; Co.'
             );
             expect(escaparHtml(null)).toBe('');
+        });
+
+        it('genera id_operacion UUID v4 válido y lo incluye al encolar ventas offline', () => {
+            const uuidRegex =
+                /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            const id1 = generarIdOperacion();
+            expect(id1).toMatch(uuidRegex);
+
+            const storage = crearStorageMock();
+            const res = encolarVentaOffline(
+                { turno_caja: 7, medio_pago: 'EFECTIVO', items: [{ producto: 1, cantidad: 1 }] },
+                storage
+            );
+            expect(res.ventaEncolada.payload.id_operacion).toMatch(uuidRegex);
+        });
+
+        it('sincroniza cola offline con navigator.locks (y fallback), enviando origen offline e id_operacion y aislando rechazos 4xx', async () => {
+            const storage = crearStorageMock();
+            const opId1 = generarIdOperacion();
+            const opId2 = generarIdOperacion();
+            const opId3 = generarIdOperacion();
+
+            // Venta 1: 400 definitivo (ej. producto inactivo) -> debe moverse a cafe_cola_ventas_rechazadas
+            encolarVentaOffline(
+                {
+                    id_operacion: opId1,
+                    turno_caja: 10,
+                    medio_pago: 'EFECTIVO',
+                    origen: 'propio',
+                    items_entrada: [{ producto_id: 99, cantidad: 1 }],
+                },
+                storage
+            );
+            // Venta 2: válida con turno_caja 10 abierto -> debe enviarse con origen 'offline', id_operacion y turno 10
+            encolarVentaOffline(
+                {
+                    id_operacion: opId2,
+                    turno_caja: 10,
+                    medio_pago: 'TARJETA',
+                    origen: 'propio',
+                    items_entrada: [{ producto_id: 2, cantidad: 1 }],
+                },
+                storage
+            );
+            // Venta 3: válida pero turno 5 cerrado -> debe usar el turno abierto del usuario actual (10), no el de otro cajero (20)
+            encolarVentaOffline(
+                {
+                    id_operacion: opId3,
+                    turno_caja: 5,
+                    medio_pago: 'EFECTIVO',
+                    items_entrada: [{ producto_id: 3, cantidad: 2 }],
+                },
+                storage
+            );
+
+            const cuerposEnviados = [];
+            const fetchMock = jest.fn(async (_url, opciones) => {
+                const body = JSON.parse(opciones.body);
+                cuerposEnviados.push(body);
+                if (body.id_operacion === opId1) {
+                    return {
+                        ok: false,
+                        status: 400,
+                        json: async () => ({ mensaje: 'Producto inactivo' }),
+                    };
+                }
+                return {
+                    ok: true,
+                    status: 201,
+                    json: async () => ({ id: 100 }),
+                };
+            });
+
+            const lockRequestMock = jest.fn(async (_nombre, _opts, cb) => cb({ name: 'sync-ventas' }));
+
+            const resLock = await ejecutarSincronizacionConLock(
+                () =>
+                    procesarColaVentasOffline({
+                        fetchFn: fetchMock,
+                        djangoUrl: 'http://localhost:8000',
+                        tokenJwt: 'jwt.test',
+                        usuario: { id: 15, rol: 'CAJERO' },
+                        listaTurnos: [
+                            { id: 5, usuario: 15, estado: 'CERRADO' },
+                            { id: 20, usuario: 99, estado: 'ABIERTO' },
+                            { id: 10, usuario: 15, estado: 'ABIERTO' },
+                        ],
+                        storage,
+                    }),
+                { enCurso: false },
+                { request: lockRequestMock }
+            );
+
+            expect(lockRequestMock).toHaveBeenCalledWith(
+                'sync-ventas',
+                { ifAvailable: true },
+                expect.any(Function)
+            );
+            expect(resLock.sincronizadas).toBe(2);
+            expect(resLock.rechazadas).toBe(1);
+            expect(resLock.restantes).toBe(0);
+            expect(obtenerVentasOffline(storage)).toEqual([]);
+
+            const rechazadas = obtenerVentasRechazadasOffline(storage);
+            expect(rechazadas).toHaveLength(1);
+            expect(rechazadas[0].payload.id_operacion).toBe(opId1);
+            expect(rechazadas[0].statusHttp).toBe(400);
+            expect(storage.getItem(CLAVE_COLA_VENTAS_RECHAZADAS)).toBeTruthy();
+
+            expect(cuerposEnviados[1].origen).toBe('offline');
+            expect(cuerposEnviados[1].id_operacion).toBe(opId2);
+            expect(cuerposEnviados[1].turno_caja).toBe(10);
+            expect(cuerposEnviados[2].origen).toBe('offline');
+            expect(cuerposEnviados[2].id_operacion).toBe(opId3);
+            expect(cuerposEnviados[2].turno_caja).toBe(10);
+        });
+
+        it('interrumpe sincronización ante 5xx o 429 manteniendo pendientes y respeta lock no disponible', async () => {
+            const storage = crearStorageMock();
+            encolarVentaOffline(
+                { turno_caja: 10, medio_pago: 'EFECTIVO', items: [{ producto: 1, cantidad: 1 }] },
+                storage
+            );
+
+            const lockOcupado = {
+                request: jest.fn(async (_nombre, _opts, cb) => cb(null)),
+            };
+            const omitido = await ejecutarSincronizacionConLock(
+                () => Promise.resolve({ sincronizadas: 1 }),
+                { enCurso: false },
+                lockOcupado
+            );
+            expect(omitido).toEqual({ omitidoPorLock: true });
+
+            const fetchError503 = jest.fn(async () => ({ ok: false, status: 503 }));
+            const res503 = await ejecutarSincronizacionConLock(
+                () =>
+                    procesarColaVentasOffline({
+                        fetchFn: fetchError503,
+                        djangoUrl: 'http://localhost:8000',
+                        tokenJwt: 'jwt.test',
+                        usuario: { id: 15, rol: 'CAJERO' },
+                        listaTurnos: [{ id: 10, usuario: 15, estado: 'ABIERTO' }],
+                        storage,
+                    }),
+                { enCurso: false },
+                null
+            );
+
+            expect(res503.interrumpidoPorRedOServidor).toBe(true);
+            expect(res503.restantes).toBe(1);
+            expect(obtenerVentasRechazadasOffline(storage)).toEqual([]);
         });
     });
 });

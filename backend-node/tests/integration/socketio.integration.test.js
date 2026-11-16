@@ -166,34 +166,46 @@ describe('Integración: Socket.IO en Tiempo Real, Salas, Eventos y Presencia (T3
         expect(obtenerEstadoPresencia().totalUsuarios).toBe(1);
     });
 
-    it('controla el acceso a la sala turno:{id} y emite venta.registrada a local y turno:{id}', async () => {
+    it('protege la sala turno:{id} de spoof de titularId por CAJERO y no filtra total ni medio_pago a CAJERO/local', async () => {
+        const tokenDuenio = generarTokenTest({
+            user_id: 1,
+            username: 'duenio_arqueo',
+            rol: 'DUENIO',
+            permisos: ['caja.ver_efectivo_esperado', 'caja.gestionar_turnos_ajenos'],
+        });
         const tokenCajeroTitular = generarTokenTest({
             user_id: 15,
             username: 'cajero_turno_10',
             rol: 'CAJERO',
-            permisos: ['ventas.crear'],
+            turnoId: 10,
+            permisos: ['ventas.cobrar_ticket'],
         });
         const tokenOtroCajero = generarTokenTest({
             user_id: 16,
             username: 'cajero_otro',
             rol: 'CAJERO',
-            permisos: ['ventas.crear'],
+            permisos: ['ventas.cobrar_ticket'],
         });
 
+        const clienteDuenio = conectarCliente(tokenDuenio);
         const clienteTitular = conectarCliente(tokenCajeroTitular);
         const clienteOtro = conectarCliente(tokenOtroCajero);
-        await Promise.all([esperarConexion(clienteTitular), esperarConexion(clienteOtro)]);
+        await Promise.all([
+            esperarConexion(clienteDuenio),
+            esperarConexion(clienteTitular),
+            esperarConexion(clienteOtro),
+        ]);
 
-        // 1. El cajero titular se une a su propio turno (turno:10)
+        // 1. El cajero titular se une a su propio turno (verificado por turnoId en JWT)
         const respUnionTitular = await new Promise((resolve) => {
-            clienteTitular.emit('turno:unirse', { turnoId: 10, titularId: 15 }, resolve);
+            clienteTitular.emit('turno:unirse', { turnoId: 10 }, resolve);
         });
         expect(respUnionTitular).toEqual({ ok: true, sala: 'turno:10' });
 
-        // 2. Otro cajero intenta unirse al turno 10 ajeno -> debe ser rechazado (docs/seguridad.md §5.2)
+        // 2. Otro cajero intenta unirse al turno 10 falsificando titularId=16 -> debe ser rechazado (arqueo ciego)
         const promesaErrorAutorizacion = esperarEvento(clienteOtro, 'error:autorizacion');
         const respUnionAjena = await new Promise((resolve) => {
-            clienteOtro.emit('turno:unirse', { turnoId: 10, titularId: 15 }, resolve);
+            clienteOtro.emit('turno:unirse', { turnoId: 10, titularId: 16 }, resolve);
         });
         const eventoError = await promesaErrorAutorizacion;
 
@@ -201,7 +213,8 @@ describe('Integración: Socket.IO en Tiempo Real, Salas, Eventos y Presencia (T3
         expect(respUnionAjena.mensaje).toContain('turno de caja ajeno');
         expect(eventoError.mensaje).toContain('turno de caja ajeno');
 
-        // 3. Emitir venta.registrada: la reciben los miembros de 'local' y 'turno:10' without duplicar entrega por socket
+        // 3. Emitir venta.registrada: DUENIO recibe total y medio_pago; CAJERO/local NO los recibe
+        const promesaVentaDuenio = esperarEvento(clienteDuenio, 'venta.registrada');
         const promesaVentaTitular = esperarEvento(clienteTitular, 'venta.registrada');
         const promesaVentaLocal = esperarEvento(clienteOtro, 'venta.registrada');
 
@@ -209,20 +222,32 @@ describe('Integración: Socket.IO en Tiempo Real, Salas, Eventos y Presencia (T3
             ventaId: 501,
             turnoId: 10,
             total: '6400.00',
+            medio_pago: 'EFECTIVO',
             metodoPago: 'EFECTIVO',
         });
 
-        const [ventaEnTitular, ventaEnLocal] = await Promise.all([
+        const [ventaEnDuenio, ventaEnTitular, ventaEnLocal] = await Promise.all([
+            promesaVentaDuenio,
             promesaVentaTitular,
             promesaVentaLocal,
         ]);
 
-        expect(ventaEnTitular).toMatchObject({
+        expect(ventaEnDuenio).toMatchObject({
             ventaId: 501,
             turnoId: 10,
             total: '6400.00',
+            medio_pago: 'EFECTIVO',
+            metodoPago: 'EFECTIVO',
         });
+        expect(ventaEnTitular.ventaId).toBe(501);
+        expect(ventaEnTitular.total).toBeUndefined();
+        expect(ventaEnTitular.medio_pago).toBeUndefined();
+        expect(ventaEnTitular.metodoPago).toBeUndefined();
+
         expect(ventaEnLocal.ventaId).toBe(501);
+        expect(ventaEnLocal.total).toBeUndefined();
+        expect(ventaEnLocal.medio_pago).toBeUndefined();
+        expect(ventaEnLocal.metodoPago).toBeUndefined();
     });
 
     it('filtra costo.actualizado y stock.bajo según rol/permisos y emite importacion.lista a local (CA8.3)', async () => {

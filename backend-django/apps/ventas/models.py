@@ -42,6 +42,12 @@ class Venta(models.Model):
         default="propio",
         verbose_name="Origen de la venta",
     )
+    id_operacion = models.UUIDField(
+        unique=True,
+        null=True,
+        blank=True,
+        verbose_name="ID de operación idempotente",
+    )
     total = models.DecimalField(
         max_digits=12,
         decimal_places=2,

@@ -541,12 +541,86 @@ class TestApiPermisosNegativosSistematicos:
         assert detalle["efectivo_esperado"] is None
         assert detalle["diferencia"] is None
         assert detalle["ventas_efectivo_total"] is None
+        assert detalle["efectivo_inicial"] is None
+        assert detalle["cantidad_tickets"] is None
+        assert detalle["movimientos"] == []
 
         res_lista = client.get("/api/caja/turnos/")
         assert res_lista.status_code == status.HTTP_200_OK
         datos_lista = res_lista.json().get("datos", [])
         assert len(datos_lista) >= 1
         assert datos_lista[0]["ventas_efectivo_total"] is None
+        assert datos_lista[0]["efectivo_inicial"] is None
+        assert datos_lista[0]["cantidad_tickets"] is None
+        assert datos_lista[0]["movimientos"] == []
+
+    def test_arqueo_ciego_cajero_no_puede_deducir_efectivo_por_get_ventas(self, client, cajero):
+        """
+        Un cajero no debe poder reconstruir ventas_efectivo_total consultando
+        GET /api/ventas/?turno_caja=<id>&medio_pago=EFECTIVO, pero sí puede registrar
+        una venta con POST /api/ventas/ y confirmar su creación.
+        """
+        from apps.caja.models import MovimientoCaja
+        from apps.recetas.models import Producto
+        from apps.ventas.services import registrar_venta
+
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("5000.00"))
+        MovimientoCaja.objects.create(
+            turno_caja=turno, tipo="ENTRADA", monto=Decimal("1000.00"), motivo="Cambio"
+        )
+        prod = Producto.objects.create(
+            nombre="Flat White Ciego",
+            precio_venta=Decimal("3000.00"),
+            costo_total_calculado=Decimal("800.0000"),
+        )
+        registrar_venta(
+            items_data=[{"producto_id": prod.id, "cantidad": Decimal("1")}],
+            medio_pago="EFECTIVO",
+            turno_caja=turno,
+        )
+        registrar_venta(
+            items_data=[{"producto_id": prod.id, "cantidad": Decimal("1")}],
+            medio_pago="TARJETA",
+            turno_caja=turno,
+        )
+
+        client.force_authenticate(user=cajero)
+
+        # POST /api/ventas/ sigue confirmando creación al cajero
+        res_post = client.post(
+            "/api/ventas/",
+            {
+                "turno_caja": turno.id,
+                "medio_pago": "EFECTIVO",
+                "items_entrada": [{"producto_id": prod.id, "cantidad": "1.00"}],
+            },
+            format="json",
+        )
+        assert res_post.status_code == status.HTTP_201_CREATED
+        assert res_post.json()["id"] is not None
+
+        # GET /api/ventas/?turno_caja=<id>&medio_pago=EFECTIVO oculta montos, medios y no filtra por medio_pago
+        res_ventas = client.get(f"/api/ventas/?turno_caja={turno.id}&medio_pago=EFECTIVO")
+        assert res_ventas.status_code == status.HTTP_200_OK
+        datos_ventas = res_ventas.json().get("datos", [])
+        assert len(datos_ventas) == 3  # Incluye TARJETA porque medio_pago no se filtra al cajero
+        for v in datos_ventas:
+            assert v["total"] is None
+            assert v["medio_pago"] is None
+            assert v["costo_total_snapshot"] is None
+            for item in v["items"]:
+                assert item["precio_unitario"] is None
+                assert item["costo_unitario_snapshot"] is None
+
+        # GET /api/caja/turnos/<id>/ oculta movimientos y montos del turno
+        res_turno = client.get(f"/api/caja/turnos/{turno.id}/")
+        assert res_turno.status_code == status.HTTP_200_OK
+        t_data = res_turno.json()
+        assert t_data["ventas_efectivo_total"] is None
+        assert t_data["efectivo_esperado"] is None
+        assert t_data["efectivo_inicial"] is None
+        assert t_data["cantidad_tickets"] is None
+        assert t_data["movimientos"] == []
 
     def test_arqueo_duenio_recibe_ventas_efectivo_total(self, client, duenio):
         """Dueño con caja.ver_efectivo_esperado ve ventas_efectivo_total del turno."""

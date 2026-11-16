@@ -10,6 +10,29 @@ from rest_framework import permissions
 from apps.usuarios.constantes import ROL_DUENIO, ROL_ENCARGADO
 
 
+def usuario_tiene_permiso(request, clave_permiso: str) -> bool:
+    """
+    Comprueba si el usuario autenticado de la request posee el permiso granular
+    indicado en su perfil activo o en el claim de permisos del token JWT.
+    """
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated or not user.is_active:
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+
+    perfil = getattr(user, "perfil", None)
+    if perfil:
+        return perfil.tiene_permiso(clave_permiso)
+
+    auth = getattr(request, "auth", None)
+    payload = getattr(auth, "payload", None)
+    if payload is None and hasattr(auth, "get"):
+        payload = auth
+    token_permisos = payload.get("permisos", []) if payload else []
+    return clave_permiso in token_permisos
+
+
 def TienePermiso(clave_permiso: str) -> Type[permissions.BasePermission]:
     """
     Fábrica de permisos DRF que comprueba si el usuario autenticado posee
@@ -20,24 +43,7 @@ def TienePermiso(clave_permiso: str) -> Type[permissions.BasePermission]:
         message = "No tiene permisos para realizar esta acción"
 
         def has_permission(self, request, view):
-            if not request.user or not request.user.is_authenticated:
-                return False
-            if not request.user.is_active:
-                return False
-            if request.user.is_superuser:
-                return True
-
-            perfil = getattr(request.user, "perfil", None)
-            if perfil:
-                return perfil.tiene_permiso(clave_permiso)
-
-            # Verificación complementaria por claim de JWT en auth token si no hay perfil en BD
-            auth = getattr(request, "auth", None)
-            payload = getattr(auth, "payload", None)
-            if payload is None and hasattr(auth, "get"):
-                payload = auth
-            token_permisos = payload.get("permisos", []) if payload else []
-            return clave_permiso in token_permisos
+            return usuario_tiene_permiso(request, clave_permiso)
 
     return _TienePermiso
 

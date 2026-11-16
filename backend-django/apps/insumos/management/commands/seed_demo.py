@@ -1,9 +1,11 @@
 """Comando seed_demo: puebla la base de datos con catálogo gastronómico realista y datos de muestra."""
 
+import os
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
@@ -20,8 +22,33 @@ from apps.ventas.services import registrar_venta
 class Command(BaseCommand):
     help = "Puebla la base de datos con catálogo de cafetería de especialidad y datos anonimizados de demostración"
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--force-production",
+            action="store_true",
+            help="Permite ejecutar seed_demo incluso cuando DEBUG=False.",
+        )
+
     def handle(self, *args, **options):
+        permitir_produccion = options.get("force_production", False) or (
+            os.environ.get("SEED_DEMO_ALLOW_PRODUCTION", "").strip().lower()
+            in ("1", "true", "yes", "si", "sí")
+        )
+        if not getattr(settings, "DEBUG", False) and not permitir_produccion:
+            raise CommandError(
+                "seed_demo está bloqueado cuando DEBUG=False. "
+                "Solo debe ejecutarse en desarrollo o pasando --force-production explícitamente."
+            )
+
         self.stdout.write(self.style.NOTICE("Iniciando seed_demo gastronómico enriquecido..."))
+
+        password_demo = os.environ.get("SEED_DEMO_PASSWORD", "").strip()
+        if not password_demo:
+            self.stdout.write(
+                self.style.WARNING(
+                    "SEED_DEMO_PASSWORD no definida; los usuarios demo se crearán con contraseña inusable."
+                )
+            )
 
         # 0. Usuarios de demostración (Dueño, Encargado y Cajero)
         usuarios_demo = [
@@ -40,7 +67,10 @@ class Command(BaseCommand):
                     "is_active": True,
                 },
             )
-            u.set_password("Demo1234!")
+            if password_demo:
+                u.set_password(password_demo)
+            else:
+                u.set_unusable_password()
             u.is_active = True
             u.save()
             perfil, _ = PerfilUsuario.objects.get_or_create(usuario=u)

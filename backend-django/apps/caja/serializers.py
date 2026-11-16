@@ -5,6 +5,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
+from apps.usuarios.permissions import usuario_tiene_permiso
 
 
 class MovimientoCajaSerializer(serializers.ModelSerializer):
@@ -102,21 +103,11 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
         ret = super().to_representation(instance)
         request = self.context.get("request")
         if request and hasattr(request, "user"):
-            usuario = request.user
-            puede_ver_esperado = False
-            if getattr(usuario, "is_superuser", False):
-                puede_ver_esperado = True
-            elif hasattr(usuario, "perfil") and usuario.perfil:
-                puede_ver_esperado = usuario.perfil.tiene_permiso("caja.ver_efectivo_esperado")
-            else:
-                payload = getattr(request.auth, "payload", None)
-                if payload is None and hasattr(request.auth, "get"):
-                    payload = request.auth
-                token_permisos = payload.get("permisos", []) if payload else []
-                puede_ver_esperado = "caja.ver_efectivo_esperado" in token_permisos
-
-            if not puede_ver_esperado:
+            if not usuario_tiene_permiso(request, "caja.ver_efectivo_esperado"):
+                ret["efectivo_inicial"] = None
                 ret["efectivo_esperado"] = None
                 ret["diferencia"] = None
                 ret["ventas_efectivo_total"] = None
+                ret["cantidad_tickets"] = None
+                ret["movimientos"] = []
         return ret

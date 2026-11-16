@@ -84,6 +84,9 @@ export const autenticarSocketJwt = (socket, next) => {
             rol: decoded.rol,
             permisos: Array.isArray(decoded.permisos) ? decoded.permisos : [],
         };
+        if (decoded.turnoId !== undefined && decoded.turnoId !== null) {
+            socket.usuario.turnoId = decoded.turnoId;
+        }
 
         return next();
     } catch (error) {

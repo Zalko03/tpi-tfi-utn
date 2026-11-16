@@ -1,11 +1,13 @@
 """Servicio de ventas, congelamiento de snapshots de costo y reportes agregados."""
 
 import logging
+import uuid
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
 from django.db.models.functions import TruncDate
+from rest_framework.exceptions import ValidationError
 
 from apps.recetas.models import Producto
 from apps.ventas.models import Venta, VentaItem
@@ -20,22 +22,63 @@ def registrar_venta(
     origen: str = "propio",
     turno_caja=None,
     fecha=None,
+    id_operacion=None,
 ) -> Venta:
     """
     Registra una venta cobrada en caja. Congela el costo unitario vigente
     de cada producto (HU4 / CA4.2) para que futuros cambios de precio de insumos
-    no reescriban el pasado contable.
+    no reescriban el pasado contable. Soporta idempotencia vía id_operacion.
     """
+    id_operacion_uuid = None
+    if id_operacion is not None and str(id_operacion).strip() != "":
+        try:
+            id_operacion_uuid = (
+                id_operacion
+                if isinstance(id_operacion, uuid.UUID)
+                else uuid.UUID(str(id_operacion))
+            )
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValidationError(
+                {"id_operacion": "El identificador de operación debe ser un UUID válido."}
+            ) from exc
+
+        venta_existente = (
+            Venta.objects.prefetch_related("items__producto")
+            .filter(id_operacion=id_operacion_uuid)
+            .first()
+        )
+        if venta_existente is not None:
+            return venta_existente
+
     if not items_data:
         raise ValueError("La venta debe contener al menos un producto.")
 
-    venta = Venta.objects.create(
-        turno_caja=turno_caja,
-        medio_pago=medio_pago,
-        origen=origen,
-        total=Decimal("0.00"),
-        costo_total_snapshot=Decimal("0.0000"),
-    )
+    if turno_caja is not None and getattr(turno_caja, "estado", None) != "ABIERTO":
+        raise ValidationError(
+            {"turno_caja": "No se puede registrar una venta en un turno de caja cerrado."}
+        )
+
+    try:
+        with transaction.atomic():
+            venta = Venta.objects.create(
+                turno_caja=turno_caja,
+                medio_pago=medio_pago,
+                origen=origen,
+                id_operacion=id_operacion_uuid,
+                total=Decimal("0.00"),
+                costo_total_snapshot=Decimal("0.0000"),
+            )
+    except IntegrityError:
+        if id_operacion_uuid is not None:
+            venta_existente = (
+                Venta.objects.prefetch_related("items__producto")
+                .filter(id_operacion=id_operacion_uuid)
+                .first()
+            )
+            if venta_existente is not None:
+                return venta_existente
+        raise
+
     if fecha:
         venta.fecha = fecha
 
@@ -44,16 +87,35 @@ def registrar_venta(
 
     for item in items_data:
         producto_id = item.get("producto_id")
-        cantidad = Decimal(str(item.get("cantidad", 1)))
+        try:
+            cantidad = Decimal(str(item.get("cantidad", 1)))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValidationError(
+                {"items_entrada": "La cantidad a vender debe ser un número válido."}
+            ) from exc
         if cantidad <= Decimal("0"):
             raise ValueError("La cantidad a vender debe ser mayor a cero.")
 
-        producto = Producto.objects.select_for_update().get(id=producto_id, estado_activo=True)
+        try:
+            producto = Producto.objects.select_for_update().get(id=producto_id, estado_activo=True)
+        except (Producto.DoesNotExist, ValueError, TypeError) as exc:
+            raise ValidationError(
+                {"items_entrada": f"El producto {producto_id} no existe o se encuentra inactivo."}
+            ) from exc
+
         precio_bd = (
             producto.precio_venta
             if isinstance(producto.precio_venta, Decimal)
             else Decimal(str(producto.precio_venta))
         )
+        if precio_bd <= Decimal("0.00"):
+            raise ValidationError(
+                {
+                    "items_entrada": (
+                        f"El producto '{producto.nombre}' tiene un precio de venta inválido ($0.00 o menor)."
+                    )
+                }
+            )
         precio_raw = item.get("precio_unitario")
         if precio_raw not in (None, ""):
             try:

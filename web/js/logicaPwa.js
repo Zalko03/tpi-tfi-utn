@@ -151,13 +151,16 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
 
     switch (nombreEvento) {
         case 'venta.registrada': {
-            const total = payload.total ?? '0.00';
             const turno = payload.turnoId ?? payload.turno_caja ?? 'Local';
+            const tieneTotal = payload.total !== undefined && payload.total !== null;
+            const metodo = payload.metodoPago || payload.medio_pago;
             return {
                 evento: nombreEvento,
                 nivel: 'exito',
                 titulo: `Venta #${payload.ventaId ?? '-'} registrada`,
-                detalle: `Total $${total} · Turno #${turno} (${payload.metodoPago || 'EFECTIVO'})`,
+                detalle: tieneTotal
+                    ? `Total $${payload.total} · Turno #${turno}${metodo ? ` (${metodo})` : ''}`
+                    : `Turno #${turno} · Operación confirmada`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
             };
@@ -499,6 +502,21 @@ export const extraerItemsDesdeTextoLista = (textoCrudo = '') => {
 };
 
 export const CLAVE_COLA_VENTAS_OFFLINE = 'sapori_cola_ventas_offline';
+export const CLAVE_COLA_VENTAS_RECHAZADAS = 'cafe_cola_ventas_rechazadas';
+
+/**
+ * Genera un UUID v4 usando crypto.randomUUID() con fallback determinista en estructura v4.
+ */
+export const generarIdOperacion = () => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+};
 
 const obtenerStorageSeguro = (storagePersonalizado = null) => {
     if (storagePersonalizado) return storagePersonalizado;
@@ -524,17 +542,37 @@ export const obtenerVentasOffline = (storagePersonalizado = null) => {
 };
 
 /**
+ * Obtiene la lista de ventas offline rechazadas definitivamente (errores 4xx de validación).
+ */
+export const obtenerVentasRechazadasOffline = (storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (!storage) return [];
+    try {
+        const crudo = storage.getItem(CLAVE_COLA_VENTAS_RECHAZADAS);
+        if (!crudo) return [];
+        const parseado = JSON.parse(crudo);
+        return Array.isArray(parseado) ? parseado : [];
+    } catch {
+        return [];
+    }
+};
+
+/**
  * Encola una venta en localStorage cuando no hay conexión a internet o el backend no responde.
  */
 export const encolarVentaOffline = (ventaPayload, storagePersonalizado = null) => {
     const storage = obtenerStorageSeguro(storagePersonalizado);
     const colaActual = obtenerVentasOffline(storage);
+    const payloadConId = {
+        ...(ventaPayload || {}),
+        id_operacion: ventaPayload?.id_operacion || generarIdOperacion(),
+    };
 
     const registroOffline = {
         idTemporal: `OFF-${Date.now()}-${colaActual.length + 1}`,
         creadoEn: new Date().toISOString(),
         sincronizada: false,
-        payload: ventaPayload,
+        payload: payloadConId,
     };
 
     const nuevaCola = [...colaActual, registroOffline];
@@ -567,6 +605,32 @@ export const eliminarVentaOffline = (idTemporal, storagePersonalizado = null) =>
 };
 
 /**
+ * Mueve una venta encolada con rechazo definitivo 4xx a una clave separada de rechazadas
+ * y la elimina de la cola activa para no bloquear la sincronización del resto.
+ */
+export const moverVentaARechazadas = (
+    itemCola,
+    motivoError = '',
+    statusHttp = null,
+    storagePersonalizado = null
+) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    const rechazadasActual = obtenerVentasRechazadasOffline(storage);
+    const registroRechazado = {
+        ...itemCola,
+        rechazadaEn: new Date().toISOString(),
+        statusHttp,
+        motivoError: String(motivoError || 'Rechazada por el servidor'),
+    };
+    const nuevasRechazadas = [...rechazadasActual, registroRechazado];
+    if (storage) {
+        storage.setItem(CLAVE_COLA_VENTAS_RECHAZADAS, JSON.stringify(nuevasRechazadas));
+    }
+    eliminarVentaOffline(itemCola?.idTemporal, storage);
+    return nuevasRechazadas;
+};
+
+/**
  * Vacía la cola de ventas offline una vez sincronizadas con el servidor.
  */
 export const limpiarColaOffline = (storagePersonalizado = null) => {
@@ -575,5 +639,231 @@ export const limpiarColaOffline = (storagePersonalizado = null) => {
         storage.removeItem(CLAVE_COLA_VENTAS_OFFLINE);
     }
     return [];
+};
+
+/**
+ * Ejecuta una rutina de sincronización protegida por Web Locks API (`sync-ventas`)
+ * con fallback seguro mediante flag en memoria cuando `navigator.locks` no existe.
+ */
+export const ejecutarSincronizacionConLock = async (
+    fnSincronizacion,
+    estadoLockFallback = { enCurso: false },
+    locksApi = null
+) => {
+    const locks =
+        locksApi ??
+        (typeof navigator !== 'undefined' && navigator?.locks ? navigator.locks : null);
+
+    if (locks && typeof locks.request === 'function') {
+        return locks.request('sync-ventas', { ifAvailable: true }, async (lock) => {
+            if (!lock) {
+                return { omitidoPorLock: true };
+            }
+            return fnSincronizacion();
+        });
+    }
+
+    if (estadoLockFallback.enCurso) {
+        return { omitidoPorLock: true };
+    }
+
+    estadoLockFallback.enCurso = true;
+    try {
+        return await fnSincronizacion();
+    } finally {
+        estadoLockFallback.enCurso = false;
+    }
+};
+
+/**
+ * Determina el turno_caja para sincronizar una venta offline:
+ * conserva el turno original guardado en el ítem si sigue ABIERTO,
+ * o usa el turno abierto del propio usuario actual sin pisar con el turno de otro cajero.
+ */
+export const resolverTurnoParaVentaOffline = ({
+    turnoOriginalId = null,
+    listaTurnos = [],
+    turnoActivo = null,
+    usuario = null,
+} = {}) => {
+    const miId = Number(usuario?.id || 0);
+    const esDuenioOEncargado = ['DUENIO', 'ENCARGADO'].includes(
+        String(usuario?.rol || '').toUpperCase()
+    );
+    const turnos = Array.isArray(listaTurnos) ? listaTurnos : [];
+
+    const turnoPropioAbierto = turnos.find(
+        (t) => t && t.estado === 'ABIERTO' && (miId > 0 ? Number(t.usuario) === miId : true)
+    );
+
+    if (turnoOriginalId !== null && turnoOriginalId !== undefined && Number(turnoOriginalId) > 0) {
+        const idBuscado = Number(turnoOriginalId);
+        if (turnos.length > 0) {
+            const turnoOriginal = turnos.find((t) => Number(t.id) === idBuscado);
+            if (
+                turnoOriginal &&
+                turnoOriginal.estado === 'ABIERTO' &&
+                (Number(turnoOriginal.usuario) === miId || esDuenioOEncargado)
+            ) {
+                return turnoOriginal.id;
+            }
+            return turnoPropioAbierto ? turnoPropioAbierto.id : null;
+        }
+
+        if (
+            turnoActivo &&
+            turnoActivo.estado === 'ABIERTO' &&
+            Number(turnoActivo.id) === idBuscado &&
+            (!turnoActivo.usuario || Number(turnoActivo.usuario) === miId || esDuenioOEncargado)
+        ) {
+            return turnoActivo.id;
+        }
+    }
+
+    if (turnoPropioAbierto) {
+        return turnoPropioAbierto.id;
+    }
+
+    if (
+        turnoActivo &&
+        turnoActivo.estado === 'ABIERTO' &&
+        (!turnoActivo.usuario || Number(turnoActivo.usuario) === miId)
+    ) {
+        return turnoActivo.id;
+    }
+
+    return null;
+};
+
+/**
+ * Procesa los ítems de la cola offline contra POST /api/ventas/:
+ * - Envía origen: 'offline' e id_operacion para garantizar idempotencia.
+ * - Errores 4xx definitivos (excepto 401/408/429) mueven el ítem a cafe_cola_ventas_rechazadas.
+ * - Errores de red, 5xx o 401/408/429 interrumpen la cola para reintentar luego.
+ */
+export const procesarColaVentasOffline = async ({
+    fetchFn,
+    djangoUrl,
+    tokenJwt,
+    usuario = null,
+    turnoActivo = null,
+    listaTurnos = [],
+    storage = null,
+    onItemSincronizado = null,
+    onItemRechazado = null,
+} = {}) => {
+    const cola = obtenerVentasOffline(storage);
+    let sincronizadas = 0;
+    let rechazadas = 0;
+    let sinTurnoAbierto = false;
+    let interrumpidoPorRedOServidor = false;
+
+    for (const itemCola of cola) {
+        const raw = itemCola.payload || {};
+        const itemsRaw = raw.items_entrada || raw.items || [];
+        const medioPago = raw.medio_pago || raw.metodo_pago || 'EFECTIVO';
+
+        let itemsMapeados = [];
+        let errorMapeo = '';
+        try {
+            itemsMapeados = itemsRaw.map((it) => {
+                const prodId = Number(it.producto || it.producto_id || it.id);
+                if (!Number.isInteger(prodId) || prodId <= 0) {
+                    throw new Error('Producto faltante o inválido en una venta de la cola offline.');
+                }
+                const itemObj = {
+                    producto: prodId,
+                    producto_id: prodId,
+                    cantidad: String(it.cantidad || 1),
+                };
+                if (it.precio_unitario && Number(it.precio_unitario) > 0) {
+                    itemObj.precio_unitario = String(it.precio_unitario);
+                }
+                return itemObj;
+            });
+        } catch (errItem) {
+            errorMapeo = errItem.message;
+        }
+
+        if (errorMapeo || itemsMapeados.length === 0) {
+            const motivo = errorMapeo || 'Una venta en cola offline no contiene productos válidos.';
+            moverVentaARechazadas(itemCola, motivo, 400, storage);
+            rechazadas += 1;
+            if (typeof onItemRechazado === 'function') onItemRechazado(itemCola, motivo, 400);
+            continue;
+        }
+
+        const turnoParaVenta = resolverTurnoParaVentaOffline({
+            turnoOriginalId: raw.turno_caja,
+            listaTurnos,
+            turnoActivo,
+            usuario,
+        });
+
+        if (!turnoParaVenta) {
+            sinTurnoAbierto = true;
+            break;
+        }
+
+        const payloadNormalizado = {
+            turno_caja: turnoParaVenta,
+            medio_pago: String(medioPago).toUpperCase(),
+            origen: 'offline',
+            id_operacion: raw.id_operacion || generarIdOperacion(),
+            items: itemsMapeados,
+            items_entrada: itemsMapeados,
+        };
+
+        try {
+            const res = await fetchFn(`${djangoUrl}/api/ventas/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${tokenJwt}`,
+                },
+                body: JSON.stringify(payloadNormalizado),
+            });
+
+            if (res.ok) {
+                sincronizadas += 1;
+                eliminarVentaOffline(itemCola.idTemporal, storage);
+                if (typeof onItemSincronizado === 'function') onItemSincronizado(itemCola);
+            } else {
+                const esErrorClienteDefinitivo =
+                    res.status >= 400 &&
+                    res.status < 500 &&
+                    ![401, 408, 429].includes(res.status);
+
+                if (esErrorClienteDefinitivo) {
+                    let motivo = `Error HTTP ${res.status}`;
+                    try {
+                        const errBody = await res.json();
+                        motivo = errBody?.mensaje || errBody?.detail || motivo;
+                    } catch {
+                        // Mantener motivo por defecto
+                    }
+                    moverVentaARechazadas(itemCola, motivo, res.status, storage);
+                    rechazadas += 1;
+                    if (typeof onItemRechazado === 'function') {
+                        onItemRechazado(itemCola, motivo, res.status);
+                    }
+                } else {
+                    interrumpidoPorRedOServidor = true;
+                    break;
+                }
+            }
+        } catch {
+            interrumpidoPorRedOServidor = true;
+            break;
+        }
+    }
+
+    return {
+        sincronizadas,
+        rechazadas,
+        restantes: obtenerVentasOffline(storage).length,
+        sinTurnoAbierto,
+        interrumpidoPorRedOServidor,
+    };
 };
 

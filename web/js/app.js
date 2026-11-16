@@ -8,15 +8,17 @@ import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularResumenCarrito,
-    eliminarVentaOffline,
+    ejecutarSincronizacionConLock,
     encolarVentaOffline,
     escaparHtml,
     extraerItemsDesdeTextoLista,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
+    generarIdOperacion,
     obtenerContenidoPlantillaCsv,
     obtenerVentasOffline,
     parsearCsvProveedor,
+    procesarColaVentasOffline,
 } from './logicaPwa.js';
 
 const CLAVE_CATALOGO_CACHE = 'sapori_catalogo_cache';
@@ -199,7 +201,7 @@ export const actualizarIndicadorColaOffline = () => {
     }
 };
 
-const asegurarSesionYTurnoParaSincronizacion = async () => {
+const asegurarSesionYTurnosParaSincronizacion = async () => {
     const host = window.location.hostname;
     const esLocalhost = host === 'localhost' || host === '127.0.0.1';
     if (estadoApp.modoConexion === 'offline') {
@@ -221,10 +223,11 @@ const asegurarSesionYTurnoParaSincronizacion = async () => {
         return {
             ok: false,
             error: 'La sesión expiró o es inválida. Iniciá sesión nuevamente para sincronizar.',
+            listaTurnos: [],
         };
     }
 
-    let turnoIdValido = estadoApp.turnoActivo?.estado === 'ABIERTO' ? estadoApp.turnoActivo?.id : null;
+    let listaTurnos = [];
     try {
         const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
             headers: {
@@ -234,154 +237,112 @@ const asegurarSesionYTurnoParaSincronizacion = async () => {
         });
         if (resTurnos.ok) {
             const dataTurnos = await resTurnos.json();
-            const listaTurnos = Array.isArray(dataTurnos)
+            listaTurnos = Array.isArray(dataTurnos)
                 ? dataTurnos
                 : (dataTurnos.datos || dataTurnos.results || []);
             const miId = Number(estadoApp.usuario?.id || 0);
-            const esDuenioOEncargado = ['DUENIO', 'ENCARGADO'].includes(
-                String(estadoApp.usuario?.rol || '').toUpperCase()
-            );
-
             const turnoPropioAbierto = listaTurnos.find(
-                (t) => t.estado === 'ABIERTO' && (Number(t.usuario) === miId || esDuenioOEncargado)
+                (t) => t.estado === 'ABIERTO' && Number(t.usuario) === miId
             );
             if (turnoPropioAbierto) {
-                turnoIdValido = turnoPropioAbierto.id;
                 estadoApp.turnoActivo = turnoPropioAbierto;
                 localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnoPropioAbierto));
-            } else {
-                turnoIdValido = null;
             }
         }
     } catch {
-        // Fallback al turno abierto en caché únicamente si sigue marcado como ABIERTO
+        // Fallback al turno abierto en caché únicamente si pertenece al usuario actual
     }
 
-    return turnoIdValido;
+    return { ok: true, listaTurnos };
 };
 
-let sincronizandoColaOffline = false;
+const estadoLockSincronizacion = { enCurso: false };
 
 export const sincronizarVentasPendientes = async () => {
-    if (sincronizandoColaOffline) {
-        return;
-    }
-
-    // Si el modo de conexión estaba en "offline" manual/contingencia, intentar reconectar contra el servidor local/activo sin bloquearse por el flag manual
-    if (estadoApp.modoConexion === 'offline') {
-        const host = window.location.hostname;
-        const esLocalhost = host === 'localhost' || host === '127.0.0.1';
-        estadoApp.modoConexion = esLocalhost ? 'local' : 'cloud';
-        localStorage.setItem(CLAVE_MODO_CONEXION, estadoApp.modoConexion);
-        if (esLocalhost && (!estadoApp.djangoUrl || estadoApp.djangoUrl.includes('onrender.com') || estadoApp.djangoUrl === 'offline')) {
-            estadoApp.djangoUrl = 'http://localhost:8000';
-            localStorage.setItem(CLAVE_DJANGO_URL, estadoApp.djangoUrl);
-        }
-    }
-
-    const cola = obtenerVentasOffline();
-    if (cola.length === 0) {
+    return ejecutarSincronizacionConLock(async () => {
+        // Si el modo de conexión estaba en "offline" manual/contingencia, intentar reconectar contra el servidor local/activo sin bloquearse por el flag manual
         if (estadoApp.modoConexion === 'offline') {
-            estadoApp.modoConexion = 'local';
-            localStorage.setItem(CLAVE_MODO_CONEXION, 'local');
-            conectarSocketTiempoReal();
+            const host = window.location.hostname;
+            const esLocalhost = host === 'localhost' || host === '127.0.0.1';
+            estadoApp.modoConexion = esLocalhost ? 'local' : 'cloud';
+            localStorage.setItem(CLAVE_MODO_CONEXION, estadoApp.modoConexion);
+            if (
+                esLocalhost &&
+                (!estadoApp.djangoUrl ||
+                    estadoApp.djangoUrl.includes('onrender.com') ||
+                    estadoApp.djangoUrl === 'offline')
+            ) {
+                estadoApp.djangoUrl = 'http://localhost:8000';
+                localStorage.setItem(CLAVE_DJANGO_URL, estadoApp.djangoUrl);
+            }
         }
-        actualizarIndicadorColaOffline();
-        mostrarToast('Modo en línea restablecido. No hay ventas pendientes en la cola local.', 'exito');
-        return;
-    }
 
-    if (navigator.onLine === false) {
-        mostrarToast('El dispositivo continúa sin conexión a internet.', 'advertencia');
-        return;
-    }
-
-    sincronizandoColaOffline = true;
-    try {
-        mostrarToast(`Sincronizando ${cola.length} venta(s) pendiente(s) con el servidor...`, 'info');
-        const turnoIdActivo = await asegurarSesionYTurnoParaSincronizacion();
-        if (!turnoIdActivo) {
+        const cola = obtenerVentasOffline();
+        if (cola.length === 0) {
+            if (estadoApp.modoConexion === 'offline') {
+                estadoApp.modoConexion = 'local';
+                localStorage.setItem(CLAVE_MODO_CONEXION, 'local');
+                conectarSocketTiempoReal();
+            }
+            actualizarIndicadorColaOffline();
             mostrarToast(
-                'No hay un turno de caja abierto para sincronizar la cola offline. Abra un turno primero.',
-                'peligro'
+                'Modo en línea restablecido. No hay ventas pendientes en la cola local.',
+                'exito'
             );
             return;
         }
 
-        let sincronizadas = 0;
-
-        for (const itemCola of cola) {
-            const raw = itemCola.payload || {};
-            const itemsRaw = raw.items_entrada || raw.items || [];
-            const medioPago = raw.medio_pago || raw.metodo_pago || 'EFECTIVO';
-
-            let itemsMapeados;
-            try {
-                itemsMapeados = itemsRaw.map((it) => {
-                    const prodId = Number(it.producto || it.producto_id || it.id);
-                    if (!Number.isInteger(prodId) || prodId <= 0) {
-                        throw new Error('Producto faltante o inválido en una venta de la cola offline.');
-                    }
-                    const cant = String(it.cantidad || 1);
-                    const itemObj = {
-                        producto: prodId,
-                        producto_id: prodId,
-                        cantidad: cant,
-                    };
-                    if (it.precio_unitario && Number(it.precio_unitario) > 0) {
-                        itemObj.precio_unitario = String(it.precio_unitario);
-                    }
-                    return itemObj;
-                });
-            } catch (errItem) {
-                mostrarToast(errItem.message, 'peligro');
-                break;
-            }
-
-            if (itemsMapeados.length === 0) {
-                mostrarToast('Una venta en cola offline no contiene productos válidos.', 'peligro');
-                break;
-            }
-
-            const payloadNormalizado = {
-                turno_caja: turnoIdActivo,
-                medio_pago: String(medioPago).toUpperCase(),
-                origen: raw.origen || 'propio',
-                items: itemsMapeados,
-                items_entrada: itemsMapeados,
-            };
-
-            try {
-                const res = await fetch(`${estadoApp.djangoUrl}/api/ventas/`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                    },
-                    body: JSON.stringify(payloadNormalizado),
-                });
-                if (res.ok) {
-                    sincronizadas += 1;
-                    // Eliminar inmediatamente para evitar cobros duplicados ante un corte a mitad de la cola
-                    eliminarVentaOffline(itemCola.idTemporal);
-                    actualizarIndicadorColaOffline();
-                } else {
-                    break;
-                }
-            } catch {
-                break;
-            }
+        if (navigator.onLine === false) {
+            mostrarToast('El dispositivo continúa sin conexión a internet.', 'advertencia');
+            return;
         }
 
-        const restantes = obtenerVentasOffline();
-        if (restantes.length === 0) {
+        mostrarToast(`Sincronizando ${cola.length} venta(s) pendiente(s) con el servidor...`, 'info');
+        const sesionTurnos = await asegurarSesionYTurnosParaSincronizacion();
+        if (!sesionTurnos.ok) {
+            mostrarToast(sesionTurnos.error, 'peligro');
+            return;
+        }
+
+        const resultado = await procesarColaVentasOffline({
+            fetchFn: fetch,
+            djangoUrl: estadoApp.djangoUrl,
+            tokenJwt: estadoApp.tokenJwt,
+            usuario: estadoApp.usuario,
+            turnoActivo: estadoApp.turnoActivo,
+            listaTurnos: sesionTurnos.listaTurnos,
+            onItemSincronizado: () => {
+                actualizarIndicadorColaOffline();
+            },
+            onItemRechazado: (_item, motivo) => {
+                actualizarIndicadorColaOffline();
+                mostrarToast(
+                    `Venta offline movida a rechazadas: ${motivo}`,
+                    'advertencia'
+                );
+            },
+        });
+
+        if (resultado.sinTurnoAbierto) {
+            mostrarToast(
+                'No hay un turno de caja abierto para sincronizar la cola offline. Abra un turno primero.',
+                'peligro'
+            );
+        }
+
+        if (resultado.restantes === 0) {
             if (estadoApp.modoConexion === 'offline') {
                 estadoApp.modoConexion = 'local';
                 localStorage.setItem(CLAVE_MODO_CONEXION, 'local');
             }
             actualizarIndicadorColaOffline();
             conectarSocketTiempoReal();
-            mostrarToast(`Se sincronizaron ${sincronizadas} venta(s) pendiente(s) con éxito.`, 'exito');
+            if (resultado.sincronizadas > 0) {
+                mostrarToast(
+                    `Se sincronizaron ${resultado.sincronizadas} venta(s) pendiente(s) con éxito.`,
+                    'exito'
+                );
+            }
             await cargarTurnoActivo();
             await cargarCatalogo();
             if (estadoApp.usuario?.rol !== 'CAJERO') {
@@ -390,13 +351,11 @@ export const sincronizarVentasPendientes = async () => {
         } else {
             actualizarIndicadorColaOffline();
             mostrarToast(
-                `Se sincronizaron ${sincronizadas} venta(s). Quedan ${restantes.length} pendiente(s) en cola.`,
+                `Se sincronizaron ${resultado.sincronizadas} venta(s). Quedan ${resultado.restantes} pendiente(s) en cola.`,
                 'advertencia'
             );
         }
-    } finally {
-        sincronizandoColaOffline = false;
-    }
+    }, estadoLockSincronizacion);
 };
 
 // ============================================================
@@ -952,7 +911,9 @@ const cobrarTicketVenta = async () => {
         itemsMapeados.push(itemPayload);
     }
 
+    const idOperacion = generarIdOperacion();
     const payload = {
+        id_operacion: idOperacion,
         turno_caja: turnoId,
         medio_pago: metodoPago,
         metodo_pago: metodoPago,
@@ -1101,7 +1062,10 @@ const actualizarCardTurnoActivo = (turno) => {
     }
 
     if ($('caja-turno-fondo-inicial')) {
-        $('caja-turno-fondo-inicial').textContent = formatearMoneda(turno.efectivo_inicial);
+        $('caja-turno-fondo-inicial').textContent =
+            turno.efectivo_inicial === null || turno.efectivo_inicial === undefined
+                ? 'Confidencial (Arqueo ciego)'
+                : formatearMoneda(turno.efectivo_inicial);
     }
 
     if ($('caja-turno-cajero-texto')) {
@@ -1120,8 +1084,12 @@ const actualizarCardTurnoActivo = (turno) => {
     }
 
     if ($('caja-turno-cant-tickets')) {
-        const cant = Number(turno.cantidad_tickets || 0);
-        $('caja-turno-cant-tickets').textContent = `${cant} ticket${cant !== 1 ? 's' : ''} emitido${cant !== 1 ? 's' : ''}`;
+        if (turno.cantidad_tickets === null || turno.cantidad_tickets === undefined) {
+            $('caja-turno-cant-tickets').textContent = 'Confidencial (Arqueo ciego)';
+        } else {
+            const cant = Number(turno.cantidad_tickets || 0);
+            $('caja-turno-cant-tickets').textContent = `${cant} ticket${cant !== 1 ? 's' : ''} emitido${cant !== 1 ? 's' : ''}`;
+        }
     }
 
     if ($('input-turno-id')) {
@@ -1192,7 +1160,7 @@ const renderizarTablaTurnosAuditoria = () => {
             <td class="col-texto">${escaparHtml(t.usuario_nombre || 'Operador')}</td>
             <td class="col-centro">${t.apertura ? new Date(t.apertura).toLocaleDateString('es-AR') : '-'}</td>
             <td class="col-centro">${t.cierre ? new Date(t.cierre).toLocaleTimeString('es-AR') : '<span class="badge-estado-verde">Abierto</span>'}</td>
-            <td class="col-numero">${formatearMoneda(t.efectivo_inicial)}</td>
+            <td class="col-numero">${t.efectivo_inicial !== null && t.efectivo_inicial !== undefined ? formatearMoneda(t.efectivo_inicial) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero">${t.efectivo_esperado !== null ? formatearMoneda(t.efectivo_esperado) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero">${t.efectivo_contado !== null ? formatearMoneda(t.efectivo_contado) : '-'}</td>
             <td class="col-numero">${diferenciaBadge}</td>
@@ -2471,14 +2439,19 @@ const cambiarSeccion = (nombreSeccion) => {
 // INICIALIZACIÓN DE EVENTOS DEL DOM
 // ============================================================
 const inicializarEventosDOM = () => {
-    // 1. Selector rápido de demostración comercial (1 Clic)
+    // 1. Autocompletado de usuario demo (sin contraseñas hardcodeadas)
     document.querySelectorAll('.btn-demo-acceso').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const usuario = btn.dataset.usuario;
-            const password = btn.dataset.password;
+            const usuario = btn.dataset.usuario || '';
             if ($('input-username')) $('input-username').value = usuario;
-            if ($('input-password')) $('input-password').value = password;
-            ejecutarLogin(usuario, password);
+            if ($('input-password')) {
+                $('input-password').value = '';
+                $('input-password').focus();
+            }
+            const estadoEl = $('mensaje-auth');
+            if (estadoEl) {
+                estadoEl.textContent = `Usuario '${usuario}' seleccionado. Ingresá tu contraseña para continuar.`;
+            }
         });
     });
 

@@ -1,12 +1,15 @@
 """Tests unitarios para ventas y congelamiento de snapshots de costo."""
 
 import logging
+import uuid
 from decimal import Decimal
 
 import pytest
+from rest_framework.exceptions import ValidationError
 
 from apps.caja.models import TurnoCaja
 from apps.recetas.models import Producto
+from apps.ventas.models import Venta
 from apps.ventas.services import registrar_venta
 
 
@@ -210,3 +213,94 @@ class TestVentasServices:
 
         assert venta.total == Decimal("2100.00")
         assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    def test_registrar_venta_idempotente_por_id_operacion(self):
+        """Dos invocaciones con el mismo id_operacion devuelven la misma venta sin duplicar."""
+        turno = TurnoCaja.objects.create(efectivo_inicial=Decimal("5000.00"))
+        producto = Producto.objects.create(
+            nombre="Espresso Idempotente",
+            precio_venta=Decimal("2400.00"),
+            costo_total_calculado=Decimal("700.0000"),
+        )
+        op_id = uuid.uuid4()
+
+        venta_1 = registrar_venta(
+            items_data=[{"producto_id": producto.id, "cantidad": Decimal("2")}],
+            medio_pago="EFECTIVO",
+            origen="offline",
+            turno_caja=turno,
+            id_operacion=op_id,
+        )
+        venta_2 = registrar_venta(
+            items_data=[{"producto_id": producto.id, "cantidad": Decimal("2")}],
+            medio_pago="EFECTIVO",
+            origen="offline",
+            turno_caja=turno,
+            id_operacion=str(op_id),
+        )
+
+        assert venta_1.id == venta_2.id
+        assert Venta.objects.filter(id_operacion=op_id).count() == 1
+        assert venta_1.items.count() == 1
+
+    def test_registrar_venta_rechaza_precio_bd_cero_o_negativo(self):
+        """Nunca permite ventas cuando producto.precio_venta en BD es <= 0."""
+        turno = TurnoCaja.objects.create(efectivo_inicial=Decimal("5000.00"))
+        producto_gratis = Producto.objects.create(
+            nombre="Producto Precio Cero",
+            precio_venta=Decimal("0.00"),
+            costo_total_calculado=Decimal("300.0000"),
+        )
+
+        with pytest.raises(ValidationError):
+            registrar_venta(
+                items_data=[{"producto_id": producto_gratis.id, "cantidad": Decimal("1")}],
+                medio_pago="EFECTIVO",
+                turno_caja=turno,
+            )
+
+        assert Venta.objects.count() == 0
+
+    def test_registrar_venta_rechaza_producto_inexistente_o_inactivo(self):
+        """Producto inactivo o inexistente lanza ValidationError y no crea venta."""
+        turno = TurnoCaja.objects.create(efectivo_inicial=Decimal("5000.00"))
+        inactivo = Producto.objects.create(
+            nombre="Producto Inactivo",
+            precio_venta=Decimal("1800.00"),
+            costo_total_calculado=Decimal("500.0000"),
+            estado_activo=False,
+        )
+
+        with pytest.raises(ValidationError):
+            registrar_venta(
+                items_data=[{"producto_id": inactivo.id, "cantidad": Decimal("1")}],
+                turno_caja=turno,
+            )
+
+        with pytest.raises(ValidationError):
+            registrar_venta(
+                items_data=[{"producto_id": 999999, "cantidad": Decimal("1")}],
+                turno_caja=turno,
+            )
+
+        assert Venta.objects.count() == 0
+
+    def test_registrar_venta_rechaza_turno_cerrado(self):
+        """No permite registrar venta sobre un turno en estado CERRADO."""
+        turno_cerrado = TurnoCaja.objects.create(
+            efectivo_inicial=Decimal("5000.00"),
+            estado="CERRADO",
+        )
+        producto = Producto.objects.create(
+            nombre="Cortado Turno Cerrado",
+            precio_venta=Decimal("2200.00"),
+            costo_total_calculado=Decimal("600.0000"),
+        )
+
+        with pytest.raises(ValidationError):
+            registrar_venta(
+                items_data=[{"producto_id": producto.id, "cantidad": Decimal("1")}],
+                turno_caja=turno_cerrado,
+            )
+
+        assert Venta.objects.count() == 0

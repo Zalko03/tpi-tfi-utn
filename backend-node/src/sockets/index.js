@@ -4,6 +4,7 @@ import {
     registrarInstanciaSocket,
     SALA_ALERTAS_STOCK,
     SALA_LOCAL,
+    SALA_VER_ARQUEO,
     SALA_VER_COSTOS,
 } from './emitter.js';
 import { autenticarSocketJwt } from './middleware/auth.socket.middleware.js';
@@ -41,10 +42,15 @@ export const obtenerEstadoPresencia = () => {
 
 /**
  * Evalúa si un usuario autenticado puede unirse a la sala 'turno:{id}' (docs/seguridad.md §5.2):
- * Solo se permite si el usuario es el titular del turno, si tiene rol DUENIO,
- * o si posee el permiso granular 'caja.gestionar_turnos_ajenos'.
+ * - Permitido para DUENIO o usuarios con permiso 'caja.gestionar_turnos_ajenos'.
+ * - Para CAJERO: NO confía en titularId enviado por el cliente; solo permite si
+ *   el turnoId coincide con el turno verificado en el JWT (usuario.turnoId) o
+ *   si el servidor verificó la titularidad (titularVerificado === true).
  */
-export const validarAccesoSalaTurno = (usuario, { turnoId, titularId = null } = {}) => {
+export const validarAccesoSalaTurno = (
+    usuario,
+    { turnoId, titularId = null, titularVerificado = false } = {}
+) => {
     const idLimpio = turnoId !== undefined && turnoId !== null ? String(turnoId).trim() : '';
     if (!idLimpio) {
         return {
@@ -68,12 +74,17 @@ export const validarAccesoSalaTurno = (usuario, { turnoId, titularId = null } = 
     const puedeGestionarAjenos =
         Array.isArray(usuario.permisos) &&
         usuario.permisos.includes('caja.gestionar_turnos_ajenos');
-    const esTitular =
+    const esTurnoDeJwt =
+        usuario.turnoId !== undefined &&
+        usuario.turnoId !== null &&
+        String(usuario.turnoId) === idLimpio;
+    const esTitularVerificado =
+        titularVerificado === true &&
         titularId !== undefined &&
         titularId !== null &&
         Number(titularId) === Number(usuario.id);
 
-    if (esDuenio || puedeGestionarAjenos || esTitular) {
+    if (esDuenio || puedeGestionarAjenos || esTurnoDeJwt || esTitularVerificado) {
         return {
             permitido: true,
             codigo: 200,
@@ -138,6 +149,14 @@ export const inicializarSocketIO = (servidorHttp) => {
             socket.join(SALA_ALERTAS_STOCK);
         }
 
+        const tieneVerArqueo =
+            usuario.rol === 'DUENIO' ||
+            (Array.isArray(usuario.permisos) &&
+                usuario.permisos.includes('caja.ver_efectivo_esperado'));
+        if (tieneVerArqueo) {
+            socket.join(SALA_VER_ARQUEO);
+        }
+
         // 3. Registro de presencia en vivo
         conexionesActivas.set(socket.id, {
             socketId: socket.id,
@@ -157,9 +176,11 @@ export const inicializarSocketIO = (servidorHttp) => {
             }
         });
 
-        // Unión protegida a la sala 'turno:{id}'
+        // Unión protegida a la sala 'turno:{id}' (no confía en titularId enviado por el cliente)
         socket.on('turno:unirse', (datos = {}, callback) => {
-            const resultado = validarAccesoSalaTurno(usuario, datos);
+            const resultado = validarAccesoSalaTurno(usuario, {
+                turnoId: datos?.turnoId,
+            });
             if (!resultado.permitido) {
                 const payloadError = {
                     ok: false,

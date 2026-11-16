@@ -80,12 +80,7 @@ O directamente con Docker Compose:
 docker compose up -d --build
 ```
 
-### 3. Cargar catálogo de demostración gastronómico
-```bash
-docker compose exec backend-django python manage.py seed_demo
-```
-
-### 4. Acceder al sistema
+### 3. Acceder al sistema
 * **PWA / Tablero y POS:** [http://localhost](http://localhost) (o dominio / IP pública asignada).
 * **Diagnóstico de salud general:** [http://localhost/healthz](http://localhost/healthz)
 * **Diagnóstico profundo Django:** [http://localhost/api/health/profundo/](http://localhost/api/health/profundo/)
@@ -107,7 +102,8 @@ cd backend-django
 source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py seed_demo
+# Solo en desarrollo (DJANGO_DEBUG=True), definiendo SEED_DEMO_PASSWORD en el entorno:
+SEED_DEMO_PASSWORD="<clave-demo-local>" python manage.py seed_demo
 python manage.py runserver 8000
 ```
 
@@ -154,9 +150,9 @@ El proyecto cuenta con **582 tests automatizados** distribuidos entre pruebas un
 
 ## Operación y Mantenimiento
 
-* **Poblar o restaurar catálogo gastronómico demo:**
+* **Poblar catálogo demo (exclusivo para desarrollo local con `DJANGO_DEBUG=True`):**
   ```bash
-  python backend-django/manage.py seed_demo
+  SEED_DEMO_PASSWORD="<clave-demo-local>" python backend-django/manage.py seed_demo
   ```
 * **Generar respaldo consistente (PostgreSQL + MongoDB):**
   ```bash

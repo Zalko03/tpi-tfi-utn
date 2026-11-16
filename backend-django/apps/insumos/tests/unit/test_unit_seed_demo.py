@@ -4,7 +4,8 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth.models import User
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
+from django.test import override_settings
 
 from apps.caja.models import TurnoCaja
 from apps.insumos.models import Compra, Insumo, Proveedor
@@ -12,11 +13,13 @@ from apps.insumos.models import Compra, Insumo, Proveedor
 
 @pytest.mark.django_db
 class TestUnitSeedDemo:
-    def test_seed_demo_preserva_costo_con_compras_y_no_fuerza_turno_id_1(self):
+    @override_settings(DEBUG=True)
+    def test_seed_demo_preserva_costo_con_compras_y_no_fuerza_turno_id_1(self, monkeypatch):
         """
         Si ya existen compras registradas sobre un insumo o turnos previos con otro id,
         seed_demo no debe sobrescribir costo_unitario ni forzar TurnoCaja(id=1).
         """
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
         otro_usuario = User.objects.create_user(username="otro_operador", password="x")
         turno_previo = TurnoCaja.objects.create(
             usuario=otro_usuario,
@@ -48,6 +51,10 @@ class TestUnitSeedDemo:
         assert turno_previo.usuario == otro_usuario
         assert turno_previo.estado == "CERRADO"
 
+        # Sin SEED_DEMO_PASSWORD los usuarios quedan con contraseña inusable (sin clave hardcodeada)
+        duenio = User.objects.get(username="duenio_demo")
+        assert not duenio.has_usable_password()
+
         turnos_abiertos = TurnoCaja.objects.filter(
             usuario__username="cajero_demo",
             estado="ABIERTO",
@@ -60,3 +67,17 @@ class TestUnitSeedDemo:
         assert (
             TurnoCaja.objects.filter(usuario__username="cajero_demo", estado="ABIERTO").count() == 1
         )
+
+    @override_settings(DEBUG=False)
+    def test_seed_demo_bloqueado_en_produccion_salvo_force_production(self, monkeypatch):
+        """Con DEBUG=False, seed_demo falla salvo que se pase --force-production explícito."""
+        monkeypatch.delenv("SEED_DEMO_ALLOW_PRODUCTION", raising=False)
+        with pytest.raises(CommandError, match="DEBUG=False"):
+            call_command("seed_demo")
+
+        clave_test = "ClaveEntornoTest!99"
+        monkeypatch.setenv("SEED_DEMO_PASSWORD", clave_test)
+        call_command("seed_demo", force_production=True)
+
+        cajero = User.objects.get(username="cajero_demo")
+        assert cajero.check_password(clave_test)

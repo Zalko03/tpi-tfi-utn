@@ -22,6 +22,34 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-15
+Tarea: Idempotencia en ventas, arqueo ciego estricto, cola offline y eliminación de credenciales hardcodeadas
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **Ventas e idempotencia (`backend-django`):** Se agregó `Venta.id_operacion` (`UUIDField(unique=True, null=True, blank=True)`, migración `0004_venta_id_operacion.py`) y se declaró sin `UniqueValidator` en `VentaSerializer` para que `registrar_venta` devuelva la venta existente ante reintentos idempotentes; se validó `precio_bd > Decimal("0.00")`, producto activo/existente y `turno_caja.estado == "ABIERTO"` con `ValidationError` (HTTP 400).
+- **Cola offline PWA (`web/`):** `cobrarTicketVenta` y `encolarVentaOffline` adjuntan `id_operacion` UUID v4; la sincronización usa `ejecutarSincronizacionConLock` (`navigator.locks` con `ifAvailable: true` y fallback en memoria), conserva `turno_caja` abierto o usa el turno abierto del usuario actual enviando `origen: 'offline'`, y mueve errores `4xx` definitivos (excepto `401`/`408`/`429`) a `cafe_cola_ventas_rechazadas` sin trabar el resto de la cola.
+- **Arqueo ciego estricto (`backend-django` y `backend-node`):** Se extrajo `usuario_tiene_permiso`; `TurnoCajaSerializer` oculta también `efectivo_inicial`, `cantidad_tickets` y `movimientos` (`[]`) sin `caja.ver_efectivo_esperado`; `VentaSerializer`/`VentaViewSet` redactan en `GET` `total`, `medio_pago`, `costo_total_snapshot` y precios de ítems (y deshabilitan filtro `medio_pago`/orden por `total`) sin ese permiso; en Socket.IO se exige rol no `CAJERO` o `turnoId` verificado en JWT para unirse a salas de turno y se emite `total`/`medio_pago` solo a `permiso:caja.ver_efectivo_esperado`.
+- **Credenciales (`web/`, `seed_demo.py`, `README.md`):** Se eliminó `Demo1234!` del HTML/JS (autocompletado demo solo rellena usuario); `seed_demo` lee `SEED_DEMO_PASSWORD` (o asigna clave inusable) y bloquea ejecución con `DEBUG=False` salvo `--force-production` o `SEED_DEMO_ALLOW_PRODUCTION=True`; se retiró `seed_demo` de la guía productiva en `README.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `POST /api/ventas/` admite `id_operacion` (UUID opcional); `GET /api/ventas/` y evento `venta.registrada` de Socket.IO omiten montos y medio de pago cuando el consumidor no posee `caja.ver_efectivo_esperado`.
+Problemas y decisiones técnicas:
+- Se declaró explícitamente `id_operacion` en `VentaSerializer` para evitar que el `UniqueValidator` automático de DRF rechace con 400 el segundo envío idempotente antes de alcanzar `registrar_venta`.
+- La redacción en `VentaSerializer` se aplica en lecturas (`method != "POST"`) para preservar el comprobante inmediato de creación sin permitir reconstruir el arqueo vía `GET /api/ventas/`.
+Archivos tocados:
+- `backend-django/apps/ventas/{models.py,migrations/0004_venta_id_operacion.py,serializers.py,services.py,views.py}`
+- `backend-django/apps/caja/{serializers.py,views.py}`, `backend-django/apps/usuarios/permissions.py`
+- `backend-django/apps/insumos/management/commands/seed_demo.py`
+- `backend-node/src/sockets/{emitter.js,index.js,middleware/auth.socket.middleware.js}`
+- `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`, `README.md`, `docs/bitacora.md`
+- Suites de test: `test_unit_ventas_services.py`, `test_api_ventas.py`, `test_api_permisos_negativos.py`, `test_unit_seed_demo.py`, `logicaPwa.unit.test.js`, `socketAuth.unit.test.js`, `socketio.integration.test.js`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check backend-django/ ai-service/`
+---
+
+---
+Fecha: 2026-11-15
 Tarea: Enforzar `producto.precio_venta` desde BD en `ventas`, auditoría offline y revisión de descuentos
 Rama: feature/pos-comercial-sapori-stock
 Cambios realizados:
