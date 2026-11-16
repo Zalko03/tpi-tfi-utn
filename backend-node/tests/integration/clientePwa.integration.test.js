@@ -14,6 +14,10 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('filtro-fecha-hasta');
         expect(res.text).toContain('tabla-trazabilidad-reportes');
         expect(res.text).toContain('ia-alerta-contingencia');
+        expect(res.text).toContain('Importación Directa CSV (sin IA)');
+        expect(res.text).toContain('Previsualización de CSV');
+        expect(res.text).toContain('btn-csv-confirmar-directo');
+        expect(res.text).toContain('btn-csv-desde-texto');
         expect(res.text).toContain('/app/manifest.webmanifest');
         expect(res.text).toContain('/app/js/app.js');
     });
@@ -51,6 +55,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(resAppJs.text).toContain('conectarSocketTiempoReal');
         expect(resAppJs.text).toContain('evaluarEstadoImportacionIA');
         expect(resAppJs.text).toContain('evaluarEstadoResumenIA');
+        expect(resAppJs.text).toContain('evaluarTextoComoCsvDirecto');
+        expect(resAppJs.text).toContain('btn-contingencia-usar-csv-directo');
+        expect(resAppJs.text).toContain('/api/compras/confirmar-importacion/');
         expect(resAppJs.text).not.toContain('extraerItemsDesdeTextoLista');
 
         expect(resLogicaJs.status).toBe(200);

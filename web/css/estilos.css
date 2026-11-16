@@ -2953,6 +2953,27 @@ textarea:focus {
     border-top: 1px solid rgba(180, 83, 9, 0.2);
 }
 
+.alerta-contingencia-ia-acciones {
+    display: flex;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+}
+
+.badge-csv-sin-ia {
+    display: inline-flex;
+    align-items: center;
+    background: #ECFDF5;
+    color: #065F46;
+    border: 1px solid #A7F3D0;
+    border-radius: var(--radio-full);
+    padding: 0.15rem 0.6rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+    vertical-align: middle;
+    margin-left: 0.35rem;
+}
+
 .alerta-procesando-ia {
     background: #EFF6FF;
     border: 1px solid #BFDBFE;

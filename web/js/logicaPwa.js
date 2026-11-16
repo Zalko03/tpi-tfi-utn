@@ -243,7 +243,14 @@ export const obtenerContenidoPlantillaCsv = () => {
 export const parsearCsvProveedor = (contenidoCsv = '') => {
     const texto = String(contenidoCsv || '').trim();
     if (!texto) {
-        return { items: [], envioTotal: '0.00', textoParaIa: '' };
+        return {
+            items: [],
+            envioTotal: '0.00',
+            delimitadorDetectado: ',',
+            textoParaIa: '',
+            origen: 'csv-directo',
+            requiereIa: false,
+        };
     }
 
     const lineas = texto
@@ -252,11 +259,24 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
         .filter((l) => l.length > 0 && !l.startsWith('#'));
 
     if (lineas.length === 0) {
-        return { items: [], envioTotal: '0.00', textoParaIa: '' };
+        return {
+            items: [],
+            envioTotal: '0.00',
+            delimitadorDetectado: ',',
+            textoParaIa: '',
+            origen: 'csv-directo',
+            requiereIa: false,
+        };
     }
 
     const primeraLinea = lineas[0];
-    const delimitador = primeraLinea.includes(';') ? ';' : ',';
+    const delimitador = primeraLinea.includes(';')
+        ? ';'
+        : primeraLinea.includes(',')
+          ? ','
+          : primeraLinea.includes('\t')
+            ? '\t'
+            : ',';
 
     const separarColumnas = (linea) => {
         const resultado = [];
@@ -312,7 +332,9 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
             c.includes('insumo') ||
             c.includes('producto') ||
             c.includes('cantidad') ||
-            c.includes('precio')
+            c.includes('precio') ||
+            c.includes('costo') ||
+            c.includes('importe')
     );
 
     const indiceInicio = tieneCabecera ? 1 : 0;
@@ -326,7 +348,14 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
         ? colsCabecera.findIndex((c) => c.includes('unid'))
         : 2;
     const idxPrecio = tieneCabecera
-        ? colsCabecera.findIndex((c) => c.includes('precio') || c.includes('total') || c.includes('importe'))
+        ? colsCabecera.findIndex(
+              (c) =>
+                  c.includes('precio') ||
+                  c.includes('total') ||
+                  c.includes('importe') ||
+                  c.includes('costo') ||
+                  c.includes('valor')
+          )
         : 3;
     const idxAlicuota = tieneCabecera
         ? colsCabecera.findIndex((c) => c.includes('iva') || c.includes('alicuota'))
@@ -345,11 +374,16 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
         const nombreInsumo = String(cols[idxInsumo >= 0 ? idxInsumo : 0] || '').trim();
         if (!nombreInsumo) continue;
 
-        const cantidad = normalizarCantidadTexto(cols[idxCantidad >= 0 ? idxCantidad : 1]);
-        const unidad = String(cols[idxUnidad >= 0 ? idxUnidad : 2] || 'un')
-            .trim()
-            .toLowerCase() || 'un';
-        const precioTotal = normalizarNumeroTexto(cols[idxPrecio >= 0 ? idxPrecio : 3], '0.00');
+        const cantidad =
+            idxCantidad >= 0 ? normalizarCantidadTexto(cols[idxCantidad]) : '1';
+        const unidad =
+            idxUnidad >= 0
+                ? String(cols[idxUnidad] || 'un')
+                      .trim()
+                      .toLowerCase() || 'un'
+                : 'un';
+        const precioTotal =
+            idxPrecio >= 0 ? normalizarNumeroTexto(cols[idxPrecio], '0.00') : '0.00';
         const alicuotaIva = normalizarNumeroTexto(
             idxAlicuota >= 0 ? cols[idxAlicuota] : '21.00',
             '21.00'
@@ -390,6 +424,35 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
         envioTotal,
         delimitadorDetectado: delimitador,
         textoParaIa: lineasTextoIa.join('\n'),
+        origen: 'csv-directo',
+        requiereIa: false,
+    };
+};
+
+/**
+ * Evalúa si un texto pegado o cargado corresponde a una planilla CSV/tabular compatible
+ * con la importación directa CSV (100% sin IA).
+ */
+export const evaluarTextoComoCsvDirecto = (textoCrudo = '') => {
+    const texto = String(textoCrudo || '').trim();
+    if (!texto || (!texto.includes(',') && !texto.includes(';') && !texto.includes('\t'))) {
+        return {
+            compatible: false,
+            resultado: {
+                items: [],
+                envioTotal: '0.00',
+                delimitadorDetectado: ',',
+                textoParaIa: '',
+                origen: 'csv-directo',
+                requiereIa: false,
+            },
+        };
+    }
+
+    const resultado = parsearCsvProveedor(texto);
+    return {
+        compatible: resultado.items.length > 0,
+        resultado,
     };
 };
 
@@ -1181,7 +1244,7 @@ export const evaluarEstadoImportacionIA = (doc = null) => {
             detalleTecnico: 'No se recibió respuesta del servicio de importación.',
             advertencias: [],
             sugerenciaAlternativa:
-                'Podés usar la importación directa CSV ("Confirmar Directamente en Inventario y Recalcular") o registrar la compra de forma manual.',
+                'Podés usar la Importación directa CSV (sin IA) desde la previsualización de CSV o registrar la compra de forma manual.',
             puedeAprobar: false,
         };
     }
@@ -1228,7 +1291,7 @@ export const evaluarEstadoImportacionIA = (doc = null) => {
             detalleTecnico,
             advertencias,
             sugerenciaAlternativa:
-                'No se generó ninguna propuesta con IA. Podés usar la importación directa CSV ("Confirmar Directamente en Inventario y Recalcular") o registrar la compra de forma manual.',
+                'No se generó ninguna propuesta con IA. Podés usar la Importación directa CSV (sin IA) o registrar la compra de forma manual.',
             puedeAprobar: false,
         };
     }

@@ -13,6 +13,7 @@ import {
     estaFechaEnRango,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
+    evaluarTextoComoCsvDirecto,
     extraerItemsDesdeTextoLista,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
@@ -633,6 +634,38 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             });
             expect(evImpCont.nivel).toBe('advertencia');
             expect(evImpCont.detalle).toContain('No se pudo usar la IA, revisá la configuración');
+        });
+
+        it('evaluarTextoComoCsvDirecto y parsearCsvProveedor permiten importación directa CSV sin IA ni GROQ_API_KEY', () => {
+            const csvPegado = [
+                'insumo;cantidad;unidad;precio_total;alicuota_iva;envio',
+                'Café Tostado;2;kg;42000,00;21,00;1500,00',
+                'Azúcar;5;kg;7500,00;21,00;0,00',
+            ].join('\n');
+
+            const evalCsv = evaluarTextoComoCsvDirecto(csvPegado);
+            expect(evalCsv.compatible).toBe(true);
+            expect(evalCsv.resultado.origen).toBe('csv-directo');
+            expect(evalCsv.resultado.requiereIa).toBe(false);
+            expect(evalCsv.resultado.items).toHaveLength(2);
+            expect(evalCsv.resultado.envioTotal).toBe('1500.00');
+
+            // Cabeceras reducidas sin columna cantidad/unidad
+            const csvMinimo = 'insumo,precio_total\nCacao Amargo,19800';
+            const evalMinimo = evaluarTextoComoCsvDirecto(csvMinimo);
+            expect(evalMinimo.compatible).toBe(true);
+            expect(evalMinimo.resultado.items[0]).toMatchObject({
+                nombre_insumo: 'Cacao Amargo',
+                cantidad: '1',
+                unidad: 'un',
+                precio_total: '19800.00',
+            });
+
+            // Texto libre no tabular NO debe confundirse con CSV válido
+            const textoLibre = 'Hola, te paso los precios:\nCafé 1 kg $25000';
+            const evalTexto = evaluarTextoComoCsvDirecto(textoLibre);
+            expect(evalTexto.compatible).toBe(false);
+            expect(evalTexto.resultado.items).toEqual([]);
         });
     });
 });

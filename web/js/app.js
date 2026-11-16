@@ -14,6 +14,7 @@ import {
     escaparHtml,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
+    evaluarTextoComoCsvDirecto,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
@@ -118,6 +119,7 @@ export const estadoApp = {
     carrito: [],
     importacionActual: null,
     csvParseadoActual: null,
+    csvContingenciaFallback: null,
     insumos: [],
     proveedores: [],
     turnosHistorial: [],
@@ -1314,6 +1316,15 @@ const descargarPlantillaCsvModelo = () => {
     mostrarToast('Plantilla plantilla_lista_proveedor.csv descargada.', 'info');
 };
 
+const aplicarCsvParseadoEnPreview = (resultado, origenEtiqueta = 'archivo CSV') => {
+    estadoApp.csvParseadoActual = resultado;
+    estadoApp.csvContingenciaFallback = resultado;
+    renderizarPreviewCsv(resultado);
+    if ($('textarea-lista-ia') && resultado.textoParaIa && origenEtiqueta === 'archivo CSV') {
+        $('textarea-lista-ia').value = resultado.textoParaIa;
+    }
+};
+
 const procesarArchivoCsvSeleccionado = (archivo) => {
     if (!archivo) return;
     const lector = new FileReader();
@@ -1324,14 +1335,31 @@ const procesarArchivoCsvSeleccionado = (archivo) => {
             mostrarToast('El archivo no contiene filas válidas de insumos y precios.', 'advertencia');
             return;
         }
-        estadoApp.csvParseadoActual = resultado;
-        renderizarPreviewCsv(resultado);
-        if ($('textarea-lista-ia')) {
-            $('textarea-lista-ia').value = resultado.textoParaIa;
-        }
-        mostrarToast(`Archivo procesado: ${resultado.items.length} ítems listos para previsualización.`, 'exito');
+        aplicarCsvParseadoEnPreview(resultado, 'archivo CSV');
+        mostrarToast(
+            `CSV parseado directamente (sin IA): ${resultado.items.length} ítems listos en Previsualización de CSV.`,
+            'exito'
+        );
     };
     lector.readAsText(archivo, 'utf-8');
+};
+
+const previsualizarCsvDesdeTexto = () => {
+    const textoCrudo = $('textarea-lista-ia')?.value || '';
+    const { compatible, resultado } = evaluarTextoComoCsvDirecto(textoCrudo);
+    if (!compatible || resultado.items.length === 0) {
+        mostrarToast(
+            'El texto ingresado no tiene formato CSV tabular válido (ej: insumo,cantidad,unidad,precio_total).',
+            'advertencia'
+        );
+        return;
+    }
+    aplicarCsvParseadoEnPreview(resultado, 'texto pegado');
+    $('panel-preview-csv')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    mostrarToast(
+        `Previsualización de CSV (sin IA): ${resultado.items.length} ítems detectados para confirmar.`,
+        'exito'
+    );
 };
 
 const renderizarPreviewCsv = (resultadoCsv) => {
@@ -1340,8 +1368,10 @@ const renderizarPreviewCsv = (resultadoCsv) => {
     const resumen = $('resumen-preview-csv');
     if (!panel || !tbody || !resumen) return;
 
+    const etiquetaDelimitador =
+        resultadoCsv.delimitadorDetectado === '\t' ? 'TAB' : resultadoCsv.delimitadorDetectado || ',';
     panel.style.display = 'block';
-    resumen.textContent = `${resultadoCsv.items.length} filas detectadas · Envío total acumulado: ${formatearMoneda(resultadoCsv.envioTotal)} · Delimitador: "${resultadoCsv.delimitadorDetectado}"`;
+    resumen.textContent = `${resultadoCsv.items.length} filas detectadas · Importación directa CSV (sin IA) · Envío total acumulado: ${formatearMoneda(resultadoCsv.envioTotal)} · Delimitador: "${etiquetaDelimitador}"`;
     tbody.innerHTML = '';
 
     for (const item of resultadoCsv.items) {
@@ -1363,6 +1393,7 @@ const construirHtmlAlertaContingenciaIA = ({
     detalleTecnico = '',
     advertencias = [],
     sugerenciaAlternativa = '',
+    mostrarBotonCsvDirecto = false,
 } = {}) => {
     const listaAdvertencias = Array.isArray(advertencias)
         ? advertencias.filter((a) => a && a !== detalleTecnico)
@@ -1377,6 +1408,13 @@ const construirHtmlAlertaContingenciaIA = ({
     const alternativaHtml = sugerenciaAlternativa
         ? `<p class="alerta-contingencia-ia-alternativa">${escaparHtml(sugerenciaAlternativa)}</p>`
         : '';
+    const botonCsvHtml = mostrarBotonCsvDirecto
+        ? `<div class="alerta-contingencia-ia-acciones">
+                <button type="button" id="btn-contingencia-usar-csv-directo" class="btn-exito-comercial">
+                    Usar Importación directa CSV (sin IA)
+                </button>
+           </div>`
+        : '';
 
     return `
         <div class="alerta-contingencia-ia-titulo">
@@ -1386,6 +1424,7 @@ const construirHtmlAlertaContingenciaIA = ({
         ${detalleHtml}
         ${advertenciasHtml}
         ${alternativaHtml}
+        ${botonCsvHtml}
     `;
 };
 
@@ -1502,13 +1541,18 @@ const confirmarCsvDirectoEnInventario = async () => {
             }),
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (res.ok) {
             mostrarToast(
-                `Importación confirmada: ${data.compras_creadas?.length || csv.items.length} compras registradas y costos recalculados en cascada.`,
+                `Importación directa CSV confirmada (sin IA): ${data.compras_creadas?.length || csv.items.length} compras registradas y costos recalculados en cascada.`,
                 'exito'
             );
+            estadoApp.csvParseadoActual = null;
+            estadoApp.csvContingenciaFallback = null;
             if ($('panel-preview-csv')) $('panel-preview-csv').style.display = 'none';
+            if ($('panel-revision-ia') && estadoApp.importacionActual?.contingencia) {
+                $('panel-revision-ia').style.display = 'none';
+            }
             await cargarInsumos();
             await cargarCatalogo();
         } else {
@@ -1615,9 +1659,32 @@ const renderizarPropuestaIAComercial = (doc) => {
         if (pasoCirculo) {
             pasoCirculo.className = 'paso-circulo';
         }
+        const textoCandidatoCsv = doc?.entrada?.textoLista || $('textarea-lista-ia')?.value || '';
+        const evalCsvTexto = evaluarTextoComoCsvDirecto(textoCandidatoCsv);
+        const csvDisponible =
+            estadoApp.csvContingenciaFallback?.items?.length > 0
+                ? estadoApp.csvContingenciaFallback
+                : evalCsvTexto.compatible
+                  ? evalCsvTexto.resultado
+                  : null;
+        estadoApp.csvContingenciaFallback = csvDisponible;
+
         if (alertaContingencia) {
             alertaContingencia.style.display = 'block';
-            alertaContingencia.innerHTML = construirHtmlAlertaContingenciaIA(evaluacion);
+            alertaContingencia.innerHTML = construirHtmlAlertaContingenciaIA({
+                ...evaluacion,
+                mostrarBotonCsvDirecto: Boolean(csvDisponible && csvDisponible.items.length > 0),
+            });
+            $('btn-contingencia-usar-csv-directo')?.addEventListener('click', () => {
+                if (!estadoApp.csvContingenciaFallback) return;
+                estadoApp.csvParseadoActual = estadoApp.csvContingenciaFallback;
+                renderizarPreviewCsv(estadoApp.csvParseadoActual);
+                $('panel-preview-csv')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+                mostrarToast(
+                    `Previsualización de CSV (sin IA): ${estadoApp.csvParseadoActual.items.length} ítems listos para confirmar.`,
+                    'info'
+                );
+            });
         }
         estadoApp.importacionActual = {
             ...(doc || {}),
@@ -3101,6 +3168,7 @@ const inicializarEventosDOM = () => {
 
     $('btn-csv-circuito-ia')?.addEventListener('click', enviarCsvAlCircuitoAprobacion);
     $('btn-csv-confirmar-directo')?.addEventListener('click', confirmarCsvDirectoEnInventario);
+    $('btn-csv-desde-texto')?.addEventListener('click', previsualizarCsvDesdeTexto);
 
     // 16. Importador IA de Listas
     $('btn-ejemplo-proveedor')?.addEventListener('click', () => {
@@ -3118,9 +3186,17 @@ Flete y entrega a local: $4500`;
 
     $('form-importacion-ia')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        estadoApp.csvParseadoActual = null;
         const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Mayorista Café del Litoral';
         const textoLista = $('textarea-lista-ia')?.value.trim() || '';
+        const evalCsv = evaluarTextoComoCsvDirecto(textoLista);
+        if (evalCsv.compatible) {
+            estadoApp.csvContingenciaFallback = evalCsv.resultado;
+        } else if (
+            !(estadoApp.csvParseadoActual?.items?.length > 0 &&
+            estadoApp.csvParseadoActual.textoParaIa === textoLista)
+        ) {
+            estadoApp.csvContingenciaFallback = null;
+        }
         const estadoPill = $('estado-importacion-ia');
 
         if (estadoPill) estadoPill.textContent = 'Analizando con IA...';
