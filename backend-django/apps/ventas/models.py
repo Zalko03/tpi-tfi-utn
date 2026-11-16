@@ -15,6 +15,7 @@ class Venta(models.Model):
     ORIGENES = (
         ("propio", "Cobro propio en caja"),
         ("importado", "Importado de POS externo"),
+        ("offline", "Sincronizado de cola offline"),
     )
 
     turno_caja = models.ForeignKey(
@@ -40,6 +41,12 @@ class Venta(models.Model):
         choices=ORIGENES,
         default="propio",
         verbose_name="Origen de la venta",
+    )
+    id_operacion = models.UUIDField(
+        unique=True,
+        null=True,
+        blank=True,
+        verbose_name="ID de operación idempotente",
     )
     total = models.DecimalField(
         max_digits=12,

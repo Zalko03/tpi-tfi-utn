@@ -3,6 +3,7 @@ let ioInstancia = null;
 export const SALA_LOCAL = 'local';
 export const SALA_VER_COSTOS = 'permiso:recetas.ver_costos';
 export const SALA_ALERTAS_STOCK = 'rol:stock_alertas';
+export const SALA_VER_ARQUEO = 'permiso:caja.ver_efectivo_esperado';
 
 export const registrarInstanciaSocket = (io) => {
     ioInstancia = io;
@@ -13,24 +14,45 @@ export const obtenerInstanciaSocket = () => {
 };
 
 /**
- * Emite el evento 'venta.registrada' a la sala 'local' y, si existe turnoId,
- * también a la sala 'turno:{id}' (T3.5).
+ * Emite el evento 'venta.registrada':
+ * - Con total y medio_pago/metodoPago únicamente a usuarios en SALA_VER_ARQUEO (arqueo ciego estricto).
+ * - Sin montos ni medios de pago a la sala 'local' y 'turno:{id}' para no filtrar el arqueo a CAJERO.
  */
 export const emitirVentaRegistrada = (datosVenta) => {
     if (!ioInstancia || !datosVenta) {
         return false;
     }
 
-    const payload = {
+    const emitidoEn = new Date().toISOString();
+    const {
+        total: _total,
+        medio_pago: _medioPago,
+        metodoPago: _metodoPago,
+        ...datosPublicos
+    } = datosVenta;
+
+    const payloadPrivilegiado = {
         ...datosVenta,
-        emitidoEn: new Date().toISOString(),
+        emitidoEn,
+    };
+    const payloadPublico = {
+        ...datosPublicos,
+        emitidoEn,
     };
 
     const turnoId = datosVenta.turnoId ?? datosVenta.turno_caja ?? null;
+    ioInstancia.to(SALA_VER_ARQUEO).emit('venta.registrada', payloadPrivilegiado);
+
     if (turnoId) {
-        ioInstancia.to([SALA_LOCAL, `turno:${turnoId}`]).emit('venta.registrada', payload);
+        ioInstancia
+            .to([SALA_LOCAL, `turno:${turnoId}`])
+            .except(SALA_VER_ARQUEO)
+            .emit('venta.registrada', payloadPublico);
     } else {
-        ioInstancia.to(SALA_LOCAL).emit('venta.registrada', payload);
+        ioInstancia
+            .to(SALA_LOCAL)
+            .except(SALA_VER_ARQUEO)
+            .emit('venta.registrada', payloadPublico);
     }
 
     return true;

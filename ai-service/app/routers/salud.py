@@ -38,9 +38,12 @@ async def obtener_estado_salud() -> RespuestaSalud:
     description="Devuelve el estado operativo junto con la configuración activa del adapter de IA.",
 )
 async def obtener_estado_salud_profundo() -> Dict[str, Any]:
-    modelo_activo = (
-        config.gemini_modelo if config.proveedor_activo == "gemini" else config.ollama_modelo
-    )
+    if config.proveedor_activo == "groq":
+        modelo_activo = config.groq_modelo
+    elif config.proveedor_activo == "gemini":
+        modelo_activo = config.gemini_modelo
+    else:
+        modelo_activo = config.ollama_modelo
     return {
         "estado": "ok",
         "servicio": "ai-service",

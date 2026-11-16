@@ -110,6 +110,7 @@ async def generar_resumen_semanal(
                 timeout=timeout,
             )
             salida_validada = SalidaIAResumenSemanal.model_validate(salida_cruda)
+            es_contingencia = bool(salida_cruda.get("contingencia", False))
             latencia_ms = int((time.perf_counter() - inicio) * 1000)
 
             return RespuestaResumenSemanal(
@@ -118,10 +119,14 @@ async def generar_resumen_semanal(
                 sugerencias_rotacion=salida_validada.sugerencias_rotacion,
                 alertas_costos=salida_validada.alertas_costos,
                 version_prompt=solicitud.version_prompt,
-                proveedor_ia=nombre_proveedor,
+                proveedor_ia="contingencia" if es_contingencia else nombre_proveedor,
                 latencia_ms=max(0, latencia_ms),
-                contingencia=False,
-                mensaje_contingencia=None,
+                contingencia=es_contingencia,
+                mensaje_contingencia=(
+                    "Resumen generado mediante contingencia heurística sin proveedor LLM activo."
+                    if es_contingencia
+                    else None
+                ),
             )
         except asyncio.TimeoutError:
             ultimo_error = (

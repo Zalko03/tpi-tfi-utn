@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
 from apps.caja.serializers import MovimientoCajaSerializer, TurnoCajaSerializer
-from apps.usuarios.permissions import PermisoObjetoTurnoCaja, TienePermiso
+from apps.usuarios.permissions import PermisoObjetoTurnoCaja, TienePermiso, usuario_tiene_permiso
 
 
 class TurnoCajaViewSet(viewsets.ModelViewSet):
@@ -87,17 +87,7 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         turno.cierre = timezone.now()
         turno.save()
 
-        puede_ver_esperado = False
-        if request.user.is_superuser:
-            puede_ver_esperado = True
-        elif hasattr(request.user, "perfil") and request.user.perfil:
-            puede_ver_esperado = request.user.perfil.tiene_permiso("caja.ver_efectivo_esperado")
-        else:
-            payload = getattr(request.auth, "payload", None)
-            if payload is None and hasattr(request.auth, "get"):
-                payload = request.auth
-            token_permisos = payload.get("permisos", []) if payload else []
-            puede_ver_esperado = "caja.ver_efectivo_esperado" in token_permisos
+        puede_ver_esperado = usuario_tiene_permiso(request, "caja.ver_efectivo_esperado")
 
         return Response(
             {

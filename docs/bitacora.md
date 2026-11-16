@@ -21,6 +21,160 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-15
+Tarea: Idempotencia en ventas, arqueo ciego estricto, cola offline y eliminación de credenciales hardcodeadas
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **Ventas e idempotencia (`backend-django`):** Se agregó `Venta.id_operacion` (`UUIDField(unique=True, null=True, blank=True)`, migración `0004_venta_id_operacion.py`) y se declaró sin `UniqueValidator` en `VentaSerializer` para que `registrar_venta` devuelva la venta existente ante reintentos idempotentes; se validó `precio_bd > Decimal("0.00")`, producto activo/existente y `turno_caja.estado == "ABIERTO"` con `ValidationError` (HTTP 400).
+- **Cola offline PWA (`web/`):** `cobrarTicketVenta` y `encolarVentaOffline` adjuntan `id_operacion` UUID v4; la sincronización usa `ejecutarSincronizacionConLock` (`navigator.locks` con `ifAvailable: true` y fallback en memoria), conserva `turno_caja` abierto o usa el turno abierto del usuario actual enviando `origen: 'offline'`, y mueve errores `4xx` definitivos (excepto `401`/`408`/`429`) a `cafe_cola_ventas_rechazadas` sin trabar el resto de la cola.
+- **Arqueo ciego estricto (`backend-django` y `backend-node`):** Se extrajo `usuario_tiene_permiso`; `TurnoCajaSerializer` oculta también `efectivo_inicial`, `cantidad_tickets` y `movimientos` (`[]`) sin `caja.ver_efectivo_esperado`; `VentaSerializer`/`VentaViewSet` redactan en `GET` `total`, `medio_pago`, `costo_total_snapshot` y precios de ítems (y deshabilitan filtro `medio_pago`/orden por `total`) sin ese permiso; en Socket.IO se exige rol no `CAJERO` o `turnoId` verificado en JWT para unirse a salas de turno y se emite `total`/`medio_pago` solo a `permiso:caja.ver_efectivo_esperado`.
+- **Credenciales (`web/`, `seed_demo.py`, `README.md`):** Se eliminó `Demo1234!` del HTML/JS (autocompletado demo solo rellena usuario); `seed_demo` lee `SEED_DEMO_PASSWORD` (o asigna clave inusable) y bloquea ejecución con `DEBUG=False` salvo `--force-production` o `SEED_DEMO_ALLOW_PRODUCTION=True`; se retiró `seed_demo` de la guía productiva en `README.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `POST /api/ventas/` admite `id_operacion` (UUID opcional); `GET /api/ventas/` y evento `venta.registrada` de Socket.IO omiten montos y medio de pago cuando el consumidor no posee `caja.ver_efectivo_esperado`.
+Problemas y decisiones técnicas:
+- Se declaró explícitamente `id_operacion` en `VentaSerializer` para evitar que el `UniqueValidator` automático de DRF rechace con 400 el segundo envío idempotente antes de alcanzar `registrar_venta`.
+- La redacción en `VentaSerializer` se aplica en lecturas (`method != "POST"`) para preservar el comprobante inmediato de creación sin permitir reconstruir el arqueo vía `GET /api/ventas/`.
+Archivos tocados:
+- `backend-django/apps/ventas/{models.py,migrations/0004_venta_id_operacion.py,serializers.py,services.py,views.py}`
+- `backend-django/apps/caja/{serializers.py,views.py}`, `backend-django/apps/usuarios/permissions.py`
+- `backend-django/apps/insumos/management/commands/seed_demo.py`
+- `backend-node/src/sockets/{emitter.js,index.js,middleware/auth.socket.middleware.js}`
+- `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`, `README.md`, `docs/bitacora.md`
+- Suites de test: `test_unit_ventas_services.py`, `test_api_ventas.py`, `test_api_permisos_negativos.py`, `test_unit_seed_demo.py`, `logicaPwa.unit.test.js`, `socketAuth.unit.test.js`, `socketio.integration.test.js`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check backend-django/ ai-service/`
+---
+
+---
+Fecha: 2026-11-15
+Tarea: Enforzar `producto.precio_venta` desde BD en `ventas`, auditoría offline y revisión de descuentos
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- Se agregó `NORMAS.md` en la raíz del repositorio con reglas de commits, fronteras de servicios, negocio/seguridad y comandos de verificación.
+- En `backend-django/apps/ventas/services.py` (`registrar_venta`), se ignoró siempre el `precio_unitario` enviado por el cliente y se calculó el cobro exclusivamente desde `producto.precio_venta` (`Decimal`).
+- Ante un `precio_unitario` recibido distinto de `producto.precio_venta` (ej. ventas offline sincronizadas tras cambio de precio), la venta no se rechaza, se cobra el precio vigente de BD y se registra la diferencia en un log estructurado (`logger.warning` con `venta_id`, `producto_id`, `producto_nombre`, `origen`, `precio_cliente`, `precio_bd`, `diferencia`).
+- En `backend-django/apps/ventas/models.py` (`0003_alter_venta_origen`) y `serializers.py`, se incorporó `"offline"` a `Venta.ORIGENES` y `allow_null=True` en `VentaItemInputSerializer.precio_unitario`.
+- Se verificó `backend-django/` y `web/` confirmando que no existen descuentos implementados en el POS ni en `Venta`/`VentaItem` (solo existe la clave de permiso `ventas.aplicar_descuento` en el catálogo RBAC).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Sin cambios de endpoints ni contratos de respuesta; `POST /api/ventas/` continúa aceptando `precio_unitario` opcionalmente y admite ahora `origen="offline"`.
+Problemas y decisiones técnicas:
+- `Venta` no posee campo `observaciones`/`notas`; para no alterar contratos existentes ni agregar columnas innecesarias, la discrepancia de precio offline se audita vía `logger.warning` estructurado compatible con `FormateadorJson`.
+Archivos tocados:
+- `NORMAS.md`
+- `backend-django/apps/ventas/models.py`, `backend-django/apps/ventas/migrations/0003_alter_venta_origen.py`, `backend-django/apps/ventas/serializers.py`, `backend-django/apps/ventas/services.py`
+- `backend-django/apps/ventas/tests/unit/test_unit_ventas_services.py`, `backend-django/apps/ventas/tests/api/test_api_ventas.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check backend-django/ ai-service/`
+---
+
+---
+Fecha: 2026-11-14
+Tarea: Remediación integral de hallazgos funcionales, seguridad, IA y despliegue en `feature/pos-comercial-sapori-stock`
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **POS, Ventas y Cola Offline:** Se corrigió el envío de precios unitarios reales desde el carrito de `web/js/app.js` y el respaldo de servidor en `registrar_venta` (`backend-django/apps/ventas/services.py`) cuando llega `0` o `None`. Se eliminaron fallbacks silenciosos (`turno || 1`, `producto || 1`, apertura automática con `$10000`) y se agregó confirmación/borrado individual en `web/js/logicaPwa.js` (`eliminarVentaOffline`) para evitar cobros duplicados tras cortes parciales.
+- **Seguridad, Arqueo Ciego y XSS:** Se ocultó `ventas_efectivo_total` en `TurnoCajaSerializer` cuando el usuario no tiene permiso de arqueo esperado; se eliminaron credenciales hardcodeadas (`cafe_pwd`, `duenio_demo`/`Demo1234!`) en `web/js/app.js`, restringiendo el reingreso offline a JWT vigente en caché sin elevar roles por nombre de usuario; se incorporó `escaparHtml` en todas las tablas y reportes HTML dinámicos; y se eliminó el fallback silencioso a `confirmar-importacion` de Django o CSV previo al fallar `/aprobar` o devolver 0 ítems.
+- **Consultor IA, Node y ai-service:** Se implementó `POST /v1/resumen-semanal` en `backend-node` (protegido con JWT, permiso `reportes.ver_operativos`, rate limit y `express-validator`), conectado desde `web/js/app.js` con `?limite=100` y métricas reales de `ganancia-diaria` y `ranking-productos`. Se cambió `socket.io.js` en `web/index.html` a ruta relativa `/socket.io/socket.io.js`. En `ai-service`, `normalizar_monto` y el parser heurístico usan `Decimal` en lugar de `float`, el fallback heurístico marca `contingencia: True` y los `.env.example` dejan `GROQ_API_KEY=` vacío.
+- **Seed, CORS, Serializador, Symlink y README:** En `seed_demo.py` se evitó forzar `TurnoCaja(id=1)` y se protegió `costo_unitario`/compras previas si el insumo ya tenía `Compra`. En `backend-django/config/settings/base.py` los orígenes `localhost` por defecto en CORS se suman solo con `DEBUG=True`. En `VentaSerializer` la normalización de `origen` pasó a `to_internal_value`. Se removió el symlink recursivo `web/app` (agregando `location /app/` en `web/nginx.conf`) y se alineó `README.md` con `localStorage`, atajos reales (`F4`, `Enter`, `F2`, `Esc`) y conteo de 582 tests.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Nuevo endpoint autenticado `POST /v1/resumen-semanal` en `backend-node` delegando a `ai.client.js` (`POST /v1/resumen-semanal` en `ai-service`) y proxied en `web/nginx.conf`.
+- Mapeo Nginx `location /app/` a `/usr/share/nginx/html/` tras eliminar el symlink `web/app`.
+Problemas y decisiones técnicas:
+- Se mantuvo `/app/...` en URLs de `web/index.html` usando Nginx alias para compatibilidad simultánea con Express static (`/app`) y Docker Nginx sin mantener symlinks recursivos en Git.
+- Al no existir `Compra` con supplier coincidente o si existe compra previa con otro proveedor, `seed_demo.py` ahora comprueba `Compra.objects.filter(insumo=ins).exists()` antes de alterar costos.
+Archivos tocados:
+- `backend-django/apps/ventas/services.py`, `backend-django/apps/ventas/serializers.py`, `backend-django/apps/caja/serializers.py`, `backend-django/apps/insumos/management/commands/seed_demo.py`, `backend-django/config/settings/base.py`
+- `backend-node/app.js`, `backend-node/src/routes/resumenSemanal.routes.js`, `backend-node/src/controllers/resumenSemanal.controller.js`, `backend-node/src/services/resumenSemanal.service.js`
+- `ai-service/app/services/proveedor_ia.py`, `ai-service/app/services/extraccion.py`, `ai-service/app/services/resumen.py`, `.env.example`, `ai-service/.env.example`
+- `web/js/app.js`, `web/js/logicaPwa.js`, `web/index.html`, `web/nginx.conf`, eliminación de `web/app`
+- Tests nuevos/actualizados en Django (`test_unit_ventas_services.py`, `test_api_permisos_negativos.py`, `test_unit_seed_demo.py`), Node (`logicaPwa.unit.test.js`, `resumenSemanal.integration.test.js`) y `ai-service` (`test_unit_adapters_y_servicios.py`)
+- `README.md`, `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/` (375 passed)
+- `cd backend-node && npm test` (140 passed)
+- `ai-service/.venv/bin/pytest ai-service/` (67 passed)
+- `.venv/bin/ruff check backend-django/ ai-service/` y `cd backend-node && npm run lint`
+---
+
+---
+Fecha: 2026-11-09
+Tarea: Incorporación de GroqAdapter en ai-service (LPU Cloud) y fallback determinista de demostración
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- Incorporación de `GroqAdapter` en `ai-service/app/services/proveedor_ia.py` siguiendo el Patrón Adapter (ADR-0002):
+  - Conexión con endpoint oficial compatible con OpenAI de Groq Cloud (`https://api.groq.com/openai/v1/chat/completions`) mediante `httpx.AsyncClient` con cabecera `Authorization: Bearer <GROQ_API_KEY>` y `response_format={"type": "json_object"}`.
+  - Modelo por defecto: `llama-3.3-70b-versatile` para procesamiento ultrarrápido sin consumo de hardware local en la máquina cliente.
+- Implementación de `fallback_determinista_demostracion` y `parsear_lista_precios_heuristica`:
+  - Mecanismo determinista inteligente de contingencia que analiza expresiones regulares y patrones gastronómicos de listas de precios (formatos WhatsApp/PDF, packs, alícuotas, fletes y montos argentinos con puntos/comas) en 1 milisegundo con 0 consumo de GPU/RAM.
+  - Asegura que en entornos de demostración sin credenciales o sin internet la extracción de precios y generación de resúmenes siempre responda con éxito al instante.
+- Configuración centralizada:
+  - Adición de variables `GROQ_API_KEY`, `GROQ_MODEL=llama-3.3-70b-versatile` y `GROQ_BASE_URL` en `ai-service/app/config.py` y `.env.example`.
+  - Soporte para `AI_PROVIDER=groq` en `/health/profundo` y fábrica `obtener_proveedor_ia`.
+- Tests unitarios completos:
+  - Agregadas pruebas para `GroqAdapter` en `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py` validando cabeceras Bearer, payload JSON, fallback determinista y selección en fábrica.
+  - 66 tests de `ai-service` pasando al 100% en 0.8s.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `ai-service` habilitado para operar vía Groq Cloud LPU o modo fallback instantáneo conectado al endpoint `POST /v1/extraer-precios`.
+Problemas y decisiones técnicas:
+- **Zero-Hardware Footprint:** Groq Cloud procesa los tokens en la nube con LPUs evitando cualquier saturación de RAM en la máquina de desarrollo o del comerciante. En ausencia de clave, el parser heurístico local atiende la demo con latencia prácticamente nula.
+- **Respeto a contratos existentes:** Se mantuvo estricto el esquema Pydantic v2 `SalidaIAExtraccionPrecios` y `RespuestaExtraccionPrecios`, garantizando que Node.js y el frontend reciban datos completamente normalizados y tipados.
+Archivos tocados:
+- `.env.example`
+- `ai-service/app/config.py`
+- `ai-service/app/routers/salud.py`
+- `ai-service/app/services/proveedor_ia.py`
+- `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar `curl -s http://localhost:8001/health/profundo` verificando `"proveedor": "groq"`.
+- Probar `curl -s -X POST http://localhost:8001/v1/extraer-precios -H "Content-Type: application/json" -d '{"texto_lista": "..."}'` verificando extracción inmediata (latencia 1ms, 4 ítems).
+- Correr las suites de tests: `ai-service/.venv/bin/pytest ai-service/` (66 tests), `backend-django/.venv/bin/pytest backend-django/` (370 tests), `cd backend-node && npm test` (130 tests). Monorepo con 566 tests en verde.
+
+---
+Fecha: 2026-11-06
+Tarea: Rediseño comercial y arquitectura frontend de nivel producto para "Sapori Stock" (Specialty Coffee POS)
+Rama: main
+Cambios realizados:
+- Rediseño integral de la interfaz web en `web/` (`index.html`, `css/estilos.css`, `js/app.js`) transformándola en un software comercial gastronómico de alta gama (estilo Fudo / Toast POS / Square) para cafeterías de especialidad de alta demanda.
+- Identidad visual gastronómica profesional: Sidebar fijo y elegante en Espresso Oscuro (`#1E1410`) con tipografía crema suave (`#F5EBE6`), área de trabajo en Leche/Crema cálido (`#F8F5F0`), tarjetas blancas puras (`#FFFFFF`), bordes sutiles (`#E6DFD5`), acentos en Caramelo/Ámbar tostado (`#C86D1F`) y estados semafóricos (Verde Esmeralda `#10B981`, Ámbar `#F59E0B`, Rojo `#EF4444`).
+- Erradicación total de jerga técnica en la UI visible (eliminando menciones a POST, GET, 202, JWT, RS256, HU, CA, Socket.IO) y adopción del 100% de lenguaje de negocio gastronómico.
+- Pantalla de inicio de sesión comercial con selector de demostración rápida en 1 clic para Dueño (`duenio_demo`), Encargado (`encargado_demo`) y Cajero (`cajero_demo`).
+- Módulo 1 (Punto de Venta / POS): Buscador instantáneo, input activo con foco automático para lector láser de código de barras (F4), catálogo visual con emojis y avatares según el ítem, comanda con controles táctiles de cantidad, selector visual de medios de pago, cobro con F2 y modal de comprobante térmico de 80mm con opción de impresión (`window.print()`).
+- Módulo 2 (Caja y Arqueo Ciego): Tarjetas de estado de turno, apertura de caja, registro de movimientos de caja chica e interfaz adaptativa por rol (Cajero opera en Arqueo Ciego con saldo esperado oculto; Dueño/Encargado auditan turnos con tabla comparativa de efectivo esperado, contado y diferencias en semáforo verde/rojo).
+- Módulo 3 (Compras e Importador con IA): Extracción inteligente de listas de precios de distribuidores (WhatsApp/PDF) asistida por IA, botón para cargar ejemplo realista, panel de revisión y aprobación humana (`/api/importaciones/:id/aprobar` o rechazar), e inventario de insumos con costeo unitario base y compras manuales.
+- Módulo 4 (Ingeniería de Recetas y Rentabilidad): Carta comercial con costo exacto de receta, ganancia neta en $ por unidad, barras de rentabilidad semafóricas (Saludable >= 50%, Atención 30-49%, Crítico < 30%), protección de confidencialidad para cajeros (`🔒 Confidencial`) y botón de recálculo masivo de toda la carta.
+- Módulo 5 (Finanzas, Ganancia Real y Metas): KPIs ejecutivos en vivo (facturación bruta, costo de mercadería vendida congelado, ganancia neta real de bolsillo), ranking visual de productos estrella y alerta comercial de productos sin rotación (0 ventas), y simulador comercial de Punto de Equilibrio interactivo con metas diarias y semanales.
+- Módulo 6 (Personal, Permisos y Monitor en Vivo): Gestión de equipo de trabajo con visor de los 30 permisos granulares categorizados, activación/desactivación de empleados y demostración interactiva de la Regla de Supervivencia del Dueño. Panel lateral deslizable con feed de eventos en vivo y contadores en tiempo real por Socket.IO.
+- Compatibilidad total: Preservación de `logicaPwa.js`, enlaces `/app/manifest.webmanifest`, `/app/js/app.js` y selectores/IDs requeridos, manteniendo los 563 tests del monorepo pasando al 100% en verde.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Integración completa del cliente web en puerto 5173 hacia `http://localhost:8000` (Django REST Framework), `http://localhost:3000` (Node Express y Socket.IO) y `http://localhost:8001` (FastAPI AI Service).
+- Normalización en `VentaItemInputSerializer` para admitir indistintamente `producto` y `producto_id` y tolerancia en el origen `propio`/`local`.
+Problemas y decisiones técnicas:
+- **Doble soporte de rutas estáticas (/app/ y raíz):** La configuración de enlace simbólico `web/app -> .` permite servir la PWA tanto bajo el prefijo `/app/` de Express en el puerto 3000 como directamente en el servidor de desarrollo en el puerto 5173 sin alterar los tests unitarios y de integración de Jest.
+- **Aritmética en centavos y congelamiento de snapshots:** Se integró la lógica de centavos de `logicaPwa.js` en el cliente para no utilizar floats en montos monetarios en el frontend, delegando en el backend Django el cálculo de costos congelados en cada venta para garantizar inmutabilidad histórica.
+Archivos tocados:
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/app.js`
+- `web/app` (enlace simbólico para compatibilidad de rutas)
+- `backend-django/apps/ventas/serializers.py`
+- `backend-django/apps/insumos/management/commands/seed_demo.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ingresar a `http://localhost:5173` en el navegador.
+- Probar el ingreso rápido en 1 clic con los perfiles Dueño, Encargado y Cajero.
+- En POS, agregar productos, cambiar cantidades, seleccionar medio de pago y presionar "Cobrar y Emitir Ticket (F2)" para visualizar el ticket térmico de 80mm.
+- En Compras IA, presionar "Cargar Ejemplo Real de Proveedor" y "Analizar Lista con Inteligencia Artificial" para aprobar la propuesta.
+- Ejecutar `cd backend-node && npm test` (130 tests), `cd backend-django && pytest` (370 tests) y `cd ai-service && pytest` (63 tests) verificando 563 tests en verde.
+
+---
 Fecha: 2026-11-03
 Tarea: Alineación institucional definitiva, estandarización IEEE 830 y sincronización técnica con código real
 Rama: docs/informe-final-tfi
@@ -955,5 +1109,109 @@ Cómo probarlo:
 - Validar sintaxis y configuración de Docker Compose con `docker compose config`.
 - Verificar sintaxis de scripts con `bash -n scripts/*.sh`.
 ---
+Fecha: 2026-11-09
+Tarea: Evolución comercial de Sapori Stock POS — Formalidad sin emojis, Importador CSV Drag & Drop, Operación Híbrida Cloud/LAN/Offline y Despliegue (Vercel + Render + Aiven)
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **1. Formalidad estricta (Cero emojis en toda la interfaz):**
+  - Se eliminó el 100 % de los emojis en `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js` y `web/css/estilos.css`.
+  - Se reemplazaron exclusivamente por íconos vectoriales SVG monocromáticos (`stroke="currentColor"`) y etiquetas tipográficas corporativas.
+- **2. Importación de archivos `.csv` / `.txt` de proveedores y precios:**
+  - En el módulo de Compras e Importación de Listas se incorporó una zona *Drag & Drop* y el botón **"Descargar Plantilla CSV Modelo"** (`plantilla_lista_proveedor.csv` con columnas `insumo,cantidad,unidad,precio_total,alicuota_iva,envio`).
+  - Se implementó `parsearCsvProveedor` en `web/js/logicaPwa.js` con soporte automático para coma (`,`) y punto y coma (`;`, estándar de Excel en español), previsualización tabular y botones para enviar al circuito de aprobación (`POST /api/importaciones`) o confirmar directamente en inventario (`POST /api/compras/confirmar-importacion/`) recalculando costos en cascada.
+- **3. Arquitectura híbrida (Modo Web Cloud + Modo Local LAN + Contingencia Offline):**
+  - Resolución dinámica de `DJANGO_API_URL` y `NODE_API_URL` en `web/js/app.js` con modal de **"Configuración de Servidor / Modo de Conexión"** accesible en el login y en la barra superior.
+  - Persistencia local automática en `localStorage` del catálogo de productos y estado del turno.
+  - Implementación de la **Cola de Sincronización Offline** (`localStorage` clave `sapori_cola_ventas_offline`) mediante `encolarVentaOffline`, `obtenerVentasOffline` y `limpiarColaOffline`: ante caída de red o `navigator.onLine === false`, el cajero cobra sin bloqueo, emite el Ticket Térmico de 80mm con leyenda *"Comprobante Emitido en Modo Offline - Pendiente de Sincronización"* y visualiza el indicador *"Modo Sin Internet Activo — X ventas en cola local"*.
+  - Detección automática de reconexión (`window.addEventListener('online', ...)`) y botón **"Sincronizar Ventas Pendientes"** para enviar en orden las ventas encoladas a `POST /api/ventas/`.
+  - Actualización de `web/sw.js` con estrategia *Network-First con Fallback a Caché* para todos los recursos de la cáscara PWA.
+- **4. Configuración de despliegue Cloud (Vercel + Render + Aiven):**
+  - Creación de `vercel.json` para servir la PWA (`web/`) con cabeceras de seguridad y Service Worker habilitado.
+  - Creación de `render.yaml` definiendo los 3 servicios (`sapori-backend-django`, `sapori-backend-node` y `sapori-ai-service` con `AI_PROVIDER=groq`).
+  - Actualización de `backend-django/config/settings/base.py` para lectura dinámica de `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS` y `DATABASE_URL` (PostgreSQL en Aiven), preservando compatibilidad local.
+- **5. Tests unitarios:**
+  - Incorporación de pruebas unitarias en `backend-node/tests/unit/logicaPwa.unit.test.js` para `parsearCsvProveedor` (coma y punto y coma) y para la cola de ventas offline (`encolarVentaOffline`, `obtenerVentasOffline`, `limpiarColaOffline`).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Cliente PWA (`web/`) ↔ `backend-django` (`POST /api/compras/confirmar-importacion/`, `POST /api/ventas/` con cola offline en `localStorage`) y `backend-node` (`POST /api/importaciones`), más descriptores de despliegue `vercel.json` y `render.yaml`.
+Archivos tocados:
+- `web/index.html`
+- `web/js/app.js`
+- `web/js/logicaPwa.js`
+- `web/css/estilos.css`
+- `web/sw.js`
+- `backend-django/config/settings/base.py`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `vercel.json`
+- `render.yaml`
+- `docs/CONNECTIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar las 3 suites de pruebas (`backend-django`, `backend-node` y `ai-service`).
+- Probar la interfaz en `http://localhost:5173` (o `/app/`), verificando la ausencia total de emojis, la descarga e importación de `plantilla_lista_proveedor.csv`, el modal de modo de conexión y el cobro de tickets en modo sin internet.
+---
+Fecha: 2026-11-09
+Tarea: Corrección de alineación tabular, circuito de aprobación IA/CSV, sincronización de cola de ventas offline y auditoría E2E de las 6 secciones
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **1. Alineación simétrica de encabezados (`<th>`) y celdas (`<td>`) en todas las tablas:**
+  - En `web/css/estilos.css`, `web/index.html` y `web/js/app.js` se aplicaron las clases explícitas `.col-texto` (`text-align: left`), `.col-centro` (`text-align: center`) y `.col-numero` (`text-align: right; font-variant-numeric: tabular-nums`) con idéntica especificidad tanto en `<th>` como en `<td>` para las tablas de Punto de Venta, Turnos de Caja, Movimientos de Caja Chica, Previsualización CSV, Revisión de Importación IA, Inventario de Insumos, Recetas y Rentabilidad, Desglose de Receta y Ticket Térmico 80mm.
+- **2. Corrección de tabla vacía en el Importador IA y circuito CSV → Aprobación:**
+  - Se ajustó `consultarDetalleImportacion` en `web/js/app.js` con polling automático (hasta 12 reintentos cada 350 ms mientras el documento en MongoDB esté en estado `PENDIENTE` o `PROCESANDO`) para esperar la respuesta asíncrona de `ai-service` antes de renderizar la tabla del Paso 2.
+  - Se actualizó `renderizarPropuestaIAComercial` para leer `doc.salida?.items || doc.items || []`, mapear todas las variantes de nombres de campos (`nombreInsumo` / `nombre_insumo` / `insumo_nombre` / `nombre` / `insumo`, `cantidad`, `unidad`, `precioTotal` / `precio_total` / `precio`, `confianza`) y aplicar fallback determinístico mediante `extraerItemsDesdeTextoLista` en `web/js/logicaPwa.js`.
+  - Se amplió `parsear_lista_precios_heuristica` en `ai-service/app/services/proveedor_ia.py` para extraer también filas con formato CSV (`insumo,cantidad,unidad,precio_total,alicuota_iva,envio`).
+  - Se conectó el botón **"Enviar al Circuito de Aprobación"** del cargador CSV con el análisis y renderizado inmediato del Paso 2, y se verificó que **"Aprobar e Impactar Costos en Recetas"** (`POST /api/importaciones/:id/aprobar` con fallback transaccional a `POST /api/compras/confirmar-importacion/`) actualice insumos/compras, recalcule recetas y notifique la cantidad exacta de registros impactados.
+- **3. Corrección de sincronización de ventas offline (`sapori_cola_ventas_offline`):**
+  - Al pulsar **"Sincronizar Ventas Pendientes"**, `sincronizarVentasPendientes()` conmuta automáticamente el modo de conexión a Online (`local` en `localhost`), valida o renueva la sesión JWT si se había iniciado en modo contingencia (`offline-token-...`), resuelve o abre un `TurnoCaja` activo para el operador y envía cada venta encolada a `POST /api/ventas/` con el contrato exacto de `VentaSerializer` (`turno_caja`, `medio_pago`, `origen: "propio"`, `items_entrada: [{ producto_id, cantidad }]`), vaciando la cola, ocultando el banner y refrescando las métricas.
+- **4. Auditoría E2E de las 6 secciones:**
+  - Se agregó la acción colectiva `POST /api/productos/recalcular/` en `ProductoViewSet` (`backend-django/apps/recetas/views.py`) para el botón **"Recalcular Toda la Carta"**, además del recálculo individual `POST /api/productos/:id/recalcular/`.
+  - Se normalizó el campo `tipo` en `MovimientoCajaSerializer` (`backend-django/apps/caja/serializers.py`) y en `#select-movimiento-tipo` (`web/index.html`) para soportar `ENTRADA` y `SALIDA` (y sus alias `INGRESO` / `EGRESO`), y se agregaron `usuario_nombre`, `ventas_efectivo_total` y `cantidad_tickets` a `TurnoCajaSerializer`.
+  - Se verificaron de punta a punta contra los servidores activos las 6 vistas (POS online/offline/ticket 80mm, Caja apertura/movimiento/arqueo ciego, Compras CSV/IA/manual, Recetas recálculo individual y masivo, Finanzas ganancia diaria/ranking/punto de equilibrio y Personal con regla de supervivencia del Dueño).
+Archivos tocados:
+- `web/css/estilos.css`
+- `web/index.html`
+- `web/js/app.js`
+- `web/js/logicaPwa.js`
+- `ai-service/app/services/proveedor_ia.py`
+- `backend-django/apps/caja/serializers.py`
+- `backend-django/apps/recetas/views.py`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Ejecutar las 3 suites de tests (`backend-django`, `backend-node`, `ai-service`) y linters (`ruff`, `eslint`).
+- Ingresar en `http://localhost:5173`, verificar la alineación de columnas en todas las tablas, subir un CSV o analizar con IA verificando las filas en el Paso 2 y su aprobación, cobrar una venta en modo offline y sincronizarla con el botón del banner superior.
+---
+Fecha: 2026-11-14
+Tarea: Propagación de variables GroqAdapter en Docker Compose/env, ampliación de catálogo gastronómico en seed_demo y documentación técnica para entrega TFI
+Rama: feature/pos-comercial-sapori-stock
+Cambios realizados:
+- **1. Propagación de variables de entorno para GroqAdapter:**
+  - Se actualizaron `docker-compose.yml`, `docker-compose.prod.yml`, `.env.example` y se creó `ai-service/.env.example` para inyectar `GROQ_API_KEY`, `GROQ_MODEL` y `GROQ_BASE_URL` al contenedor `ai-service` junto con las configuraciones de Gemini y Ollama, estableciendo `groq` como proveedor activo por defecto.
+- **2. Catálogo gastronómico de especialidad y panadería artesanal en seed_demo:**
+  - Se enriqueció `backend-django/apps/insumos/management/commands/seed_demo.py` con 10 productos comerciales (espresso, latte, flat white, filtrado geisha, capuccino, cold brew, chipá, croissant artesanal, cookie doble chocolate, tostado en pan de masa madre) con códigos/SKUs de barras EAN-13, precios reales y minutos de mano de obra.
+  - Se configuraron 12 insumos gastronómicos con desglose completo en recetas y dos casos clave de stock crítico (`Café Geisha Panamá Lote Especial` por costo/exclusividad y `Manteca Calidad Extra 82%` por aumento reciente) para análisis con el Consultor IA de Stock.
+  - Se estructuraron compras iniciales para costeo unitario exacto, turno de caja abierto con movimientos de caja chica en efectivo (entradas y salidas) y 7 ventas registradas en diversos medios de pago (EFECTIVO, TRANSFERENCIA, TARJETA), manteniendo idempotencia estricta mediante `get_or_create` / `update_or_create`.
+- **3. Documentación técnica de entrega de TFI:**
+  - Se actualizaron `README.md` y `docs/despliegue.md` detallando las capacidades comerciales y de resiliencia del sistema: POS con estética editorial Impeccable UI, atajos de teclado y escáner de códigos de barras, cola offline en IndexedDB con autosincronización, importador híbrido de precios (IA multimodal + CSV determinista), Consultor IA de Stock y Arqueo de Caja con Groq LPU API y fallback local, y métricas consolidadas de calidad: 570 tests automatizados pasando.
+Archivos tocados:
+- `.env.example`
+- `docker-compose.yml`
+- `docker-compose.prod.yml`
+- `ai-service/.env.example`
+- `backend-django/apps/insumos/management/commands/seed_demo.py`
+- `README.md`
+- `docs/despliegue.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- En `backend-django`: ejecutar `python manage.py seed_demo`.
+- Ejecutar las 3 suites de tests:
+  - `backend-django/.venv/bin/pytest backend-django/` (370 tests)
+  - `cd backend-node && npm test` (134 tests)
+  - `ai-service/.venv/bin/pytest ai-service/` (66 tests)
+- Ejecutar linters:
+  - `.venv/bin/ruff check backend-django/ ai-service/`
+  - `cd backend-node && npm run lint`
+---
+
 
 

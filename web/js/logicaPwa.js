@@ -1,4 +1,19 @@
 /**
+ * Escapa caracteres HTML especiales para prevenir XSS al renderizar texto externo en innerHTML.
+ */
+export const escaparHtml = (valor) => {
+    if (valor === null || valor === undefined) {
+        return '';
+    }
+    return String(valor)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+/**
  * Convierte un monto decimal (string o número) a entero en centavos
  * para evitar errores de punto flotante en cálculos de caja (AGENTS.md).
  */
@@ -136,13 +151,16 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
 
     switch (nombreEvento) {
         case 'venta.registrada': {
-            const total = payload.total ?? '0.00';
             const turno = payload.turnoId ?? payload.turno_caja ?? 'Local';
+            const tieneTotal = payload.total !== undefined && payload.total !== null;
+            const metodo = payload.metodoPago || payload.medio_pago;
             return {
                 evento: nombreEvento,
                 nivel: 'exito',
                 titulo: `Venta #${payload.ventaId ?? '-'} registrada`,
-                detalle: `Total $${total} · Turno #${turno} (${payload.metodoPago || 'EFECTIVO'})`,
+                detalle: tieneTotal
+                    ? `Total $${payload.total} · Turno #${turno}${metodo ? ` (${metodo})` : ''}`
+                    : `Turno #${turno} · Operación confirmada`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
             };
@@ -197,3 +215,655 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
             };
     }
 };
+
+/**
+ * Contenido oficial para descargar la plantilla CSV modelo de proveedor.
+ */
+export const obtenerContenidoPlantillaCsv = () => {
+    return [
+        'insumo,cantidad,unidad,precio_total,alicuota_iva,envio',
+        'Café Tostado en Grano Especial,5,kg,115000.00,21.00,4500.00',
+        'Leche Entera Barista,12,l,16200.00,21.00,0.00',
+        'Azúcar Orgánica,10,kg,14500.00,21.00,0.00',
+        'Vasos Polipapel 8oz,100,un,12000.00,21.00,0.00',
+    ].join('\n');
+};
+
+/**
+ * Parsea un archivo CSV/TXT de lista de precios de proveedor soportando tanto coma (,)
+ * como punto y coma (;), estándar de Excel en español.
+ */
+export const parsearCsvProveedor = (contenidoCsv = '') => {
+    const texto = String(contenidoCsv || '').trim();
+    if (!texto) {
+        return { items: [], envioTotal: '0.00', textoParaIa: '' };
+    }
+
+    const lineas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+    if (lineas.length === 0) {
+        return { items: [], envioTotal: '0.00', textoParaIa: '' };
+    }
+
+    const primeraLinea = lineas[0];
+    const delimitador = primeraLinea.includes(';') ? ';' : ',';
+
+    const separarColumnas = (linea) => {
+        const resultado = [];
+        let actual = '';
+        let enComillas = false;
+        for (let i = 0; i < linea.length; i++) {
+            const char = linea[i];
+            if (char === '"') {
+                enComillas = !enComillas;
+            } else if (char === delimitador && !enComillas) {
+                resultado.push(actual.trim());
+                actual = '';
+            } else {
+                actual += char;
+            }
+        }
+        resultado.push(actual.trim());
+        return resultado;
+    };
+
+    const normalizarNumeroTexto = (val, defecto = '0.00') => {
+        if (val === undefined || val === null || String(val).trim() === '') {
+            return defecto;
+        }
+        let limpio = String(val).replace(/[$\s"]/g, '');
+        if (delimitador === ';' && limpio.includes(',')) {
+            limpio = limpio.replace(/\./g, '').replace(',', '.');
+        } else {
+            limpio = limpio.replace(',', '.');
+        }
+        const num = Number(limpio);
+        return Number.isFinite(num) && num >= 0 ? num.toFixed(2) : defecto;
+    };
+
+    const normalizarCantidadTexto = (val) => {
+        if (val === undefined || val === null || String(val).trim() === '') {
+            return '1';
+        }
+        const limpio = String(val).replace(/["\s]/g, '').replace(',', '.');
+        const num = Number(limpio);
+        return Number.isFinite(num) && num > 0 ? String(num) : '1';
+    };
+
+    const colsCabecera = separarColumnas(primeraLinea).map((c) =>
+        c
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+    );
+
+    const tieneCabecera = colsCabecera.some(
+        (c) =>
+            c.includes('insumo') ||
+            c.includes('producto') ||
+            c.includes('cantidad') ||
+            c.includes('precio')
+    );
+
+    const indiceInicio = tieneCabecera ? 1 : 0;
+    const idxInsumo = tieneCabecera
+        ? Math.max(0, colsCabecera.findIndex((c) => c.includes('insumo') || c.includes('producto') || c.includes('nombre')))
+        : 0;
+    const idxCantidad = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('cant'))
+        : 1;
+    const idxUnidad = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('unid'))
+        : 2;
+    const idxPrecio = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('precio') || c.includes('total') || c.includes('importe'))
+        : 3;
+    const idxAlicuota = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('iva') || c.includes('alicuota'))
+        : 4;
+    const idxEnvio = tieneCabecera
+        ? colsCabecera.findIndex((c) => c.includes('envio') || c.includes('flete'))
+        : 5;
+
+    const items = [];
+    let envioTotalCentavos = 0;
+
+    for (let i = indiceInicio; i < lineas.length; i++) {
+        const cols = separarColumnas(lineas[i]);
+        if (cols.length < 2) continue;
+
+        const nombreInsumo = String(cols[idxInsumo >= 0 ? idxInsumo : 0] || '').trim();
+        if (!nombreInsumo) continue;
+
+        const cantidad = normalizarCantidadTexto(cols[idxCantidad >= 0 ? idxCantidad : 1]);
+        const unidad = String(cols[idxUnidad >= 0 ? idxUnidad : 2] || 'un')
+            .trim()
+            .toLowerCase() || 'un';
+        const precioTotal = normalizarNumeroTexto(cols[idxPrecio >= 0 ? idxPrecio : 3], '0.00');
+        const alicuotaIva = normalizarNumeroTexto(
+            idxAlicuota >= 0 ? cols[idxAlicuota] : '21.00',
+            '21.00'
+        );
+        const envioFila = normalizarNumeroTexto(
+            idxEnvio >= 0 ? cols[idxEnvio] : '0.00',
+            '0.00'
+        );
+
+        if (Number(precioTotal) <= 0) continue;
+
+        envioTotalCentavos += convertirMontoACentavos(envioFila);
+
+        items.push({
+            nombre_insumo: nombreInsumo,
+            nombreInsumo,
+            cantidad,
+            unidad,
+            precio_total: precioTotal,
+            precioTotal,
+            iva_incluido: true,
+            alicuota: alicuotaIva,
+            alicuotaIva,
+            envio: envioFila,
+        });
+    }
+
+    const envioTotal = formatearCentavosADecimal(envioTotalCentavos);
+    const lineasTextoIa = items.map(
+        (it) => `${it.nombre_insumo} ${it.cantidad} ${it.unidad}: $${it.precio_total}`
+    );
+    if (envioTotalCentavos > 0) {
+        lineasTextoIa.push(`Envío: $${envioTotal}`);
+    }
+
+    return {
+        items,
+        envioTotal,
+        delimitadorDetectado: delimitador,
+        textoParaIa: lineasTextoIa.join('\n'),
+    };
+};
+
+/**
+ * Extrae ítems de precios desde texto libre o CSV en el cliente cuando se requiere
+ * previsualización o respaldo local ante listas pegadas manualmente.
+ */
+export const extraerItemsDesdeTextoLista = (textoCrudo = '') => {
+    const texto = String(textoCrudo || '').trim();
+    if (!texto) {
+        return { items: [], envioDetectado: '0.00' };
+    }
+
+    const resultadoCsv = parsearCsvProveedor(texto);
+    if (
+        resultadoCsv.items.length > 0 &&
+        (texto.includes(',') || texto.includes(';')) &&
+        !texto.includes('$')
+    ) {
+        return {
+            items: resultadoCsv.items.map((it) => ({
+                nombreInsumo: it.nombre_insumo,
+                nombre_insumo: it.nombre_insumo,
+                cantidad: it.cantidad,
+                unidad: it.unidad,
+                precioTotal: it.precio_total,
+                precio_total: it.precio_total,
+                ivaIncluido: true,
+                alicuota: it.alicuota || '21.00',
+                confianza: '0.99',
+            })),
+            envioDetectado: resultadoCsv.envioTotal,
+        };
+    }
+
+    const lineas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+    const normalizarMonto = (str) => {
+        let s = String(str || '')
+            .replace(/\$/g, '')
+            .trim();
+        if (s.includes('.') && s.includes(',')) {
+            s = s.replace(/\./g, '').replace(',', '.');
+        } else if (s.includes('.') && s.split('.').pop().length === 3) {
+            s = s.replace(/\./g, '');
+        } else if (s.includes(',')) {
+            s = s.replace(',', '.');
+        }
+        const n = Number(s);
+        return Number.isFinite(n) && n >= 0 ? n.toFixed(2) : '0.00';
+    };
+
+    let envioDetectado = '0.00';
+    const items = [];
+
+    for (const linea of lineas) {
+        if (/(?:env[ií]o|flete)/i.test(linea)) {
+            const mEnv = linea.match(/\$?\s*([\d.,]+)/);
+            if (mEnv) {
+                envioDetectado = normalizarMonto(mEnv[1]);
+                continue;
+            }
+        }
+
+        const mPrecio = linea.match(/\$\s*([\d.,]+)/) || linea.match(/:\s*([\d.,]+)\s*$/);
+        if (!mPrecio) continue;
+
+        const precioTotal = normalizarMonto(mPrecio[1]);
+        if (Number(precioTotal) <= 0) continue;
+
+        const sub = linea
+            .slice(0, mPrecio.index)
+            .replace(/^[-*•\s]+|[-*:\s]+$/g, '')
+            .trim();
+        let cantidad = '1';
+        let unidad = 'un';
+        let nombre = sub;
+
+        const mCant = sub.match(
+            /(?:x\s*)?(\d+(?:[.,]\d+)?)\s*(kg|kilo|kilos|g|gr|gramos|l|lt|litro|litros|ml|cc|un|u|unidad|unidades|docena)\b/i
+        );
+        if (mCant) {
+            cantidad = mCant[1].replace(',', '.');
+            const uRaw = mCant[2].toLowerCase();
+            if (uRaw.startsWith('kil')) unidad = 'kg';
+            else if (uRaw.startsWith('gr')) unidad = 'g';
+            else if (uRaw.startsWith('l')) unidad = 'l';
+            else if (uRaw.startsWith('u')) unidad = 'un';
+            else unidad = uRaw;
+
+            nombre = sub
+                .slice(0, mCant.index)
+                .replace(/(?:pack|caja|bolsa|x)\s*$/i, '')
+                .replace(/^[-*•\s,]+|[-*:\s,]+$/g, '')
+                .trim();
+        }
+
+        if (!nombre) nombre = sub;
+
+        items.push({
+            nombreInsumo: nombre,
+            nombre_insumo: nombre,
+            cantidad,
+            unidad,
+            precioTotal,
+            precio_total: precioTotal,
+            ivaIncluido: true,
+            alicuota: '21.00',
+            confianza: '0.98',
+        });
+    }
+
+    return { items, envioDetectado };
+};
+
+export const CLAVE_COLA_VENTAS_OFFLINE = 'sapori_cola_ventas_offline';
+export const CLAVE_COLA_VENTAS_RECHAZADAS = 'cafe_cola_ventas_rechazadas';
+
+/**
+ * Genera un UUID v4 usando crypto.randomUUID() con fallback determinista en estructura v4.
+ */
+export const generarIdOperacion = () => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+};
+
+const obtenerStorageSeguro = (storagePersonalizado = null) => {
+    if (storagePersonalizado) return storagePersonalizado;
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
+    if (typeof globalThis !== 'undefined' && globalThis.localStorage) return globalThis.localStorage;
+    return null;
+};
+
+/**
+ * Obtiene la lista de ventas pendientes almacenadas en la cola offline.
+ */
+export const obtenerVentasOffline = (storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (!storage) return [];
+    try {
+        const crudo = storage.getItem(CLAVE_COLA_VENTAS_OFFLINE);
+        if (!crudo) return [];
+        const parseado = JSON.parse(crudo);
+        return Array.isArray(parseado) ? parseado : [];
+    } catch {
+        return [];
+    }
+};
+
+/**
+ * Obtiene la lista de ventas offline rechazadas definitivamente (errores 4xx de validación).
+ */
+export const obtenerVentasRechazadasOffline = (storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (!storage) return [];
+    try {
+        const crudo = storage.getItem(CLAVE_COLA_VENTAS_RECHAZADAS);
+        if (!crudo) return [];
+        const parseado = JSON.parse(crudo);
+        return Array.isArray(parseado) ? parseado : [];
+    } catch {
+        return [];
+    }
+};
+
+/**
+ * Encola una venta en localStorage cuando no hay conexión a internet o el backend no responde.
+ */
+export const encolarVentaOffline = (ventaPayload, storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    const colaActual = obtenerVentasOffline(storage);
+    const payloadConId = {
+        ...(ventaPayload || {}),
+        id_operacion: ventaPayload?.id_operacion || generarIdOperacion(),
+    };
+
+    const registroOffline = {
+        idTemporal: `OFF-${Date.now()}-${colaActual.length + 1}`,
+        creadoEn: new Date().toISOString(),
+        sincronizada: false,
+        payload: payloadConId,
+    };
+
+    const nuevaCola = [...colaActual, registroOffline];
+    if (storage) {
+        storage.setItem(CLAVE_COLA_VENTAS_OFFLINE, JSON.stringify(nuevaCola));
+    }
+
+    return {
+        ventaEncolada: registroOffline,
+        totalEnCola: nuevaCola.length,
+        cola: nuevaCola,
+    };
+};
+
+/**
+ * Elimina una venta específica de la cola offline apenas se confirma su envío exitoso.
+ */
+export const eliminarVentaOffline = (idTemporal, storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    const colaActual = obtenerVentasOffline(storage);
+    const nuevaCola = colaActual.filter((item) => item?.idTemporal !== idTemporal);
+    if (storage) {
+        if (nuevaCola.length === 0) {
+            storage.removeItem(CLAVE_COLA_VENTAS_OFFLINE);
+        } else {
+            storage.setItem(CLAVE_COLA_VENTAS_OFFLINE, JSON.stringify(nuevaCola));
+        }
+    }
+    return nuevaCola;
+};
+
+/**
+ * Mueve una venta encolada con rechazo definitivo 4xx a una clave separada de rechazadas
+ * y la elimina de la cola activa para no bloquear la sincronización del resto.
+ */
+export const moverVentaARechazadas = (
+    itemCola,
+    motivoError = '',
+    statusHttp = null,
+    storagePersonalizado = null
+) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    const rechazadasActual = obtenerVentasRechazadasOffline(storage);
+    const registroRechazado = {
+        ...itemCola,
+        rechazadaEn: new Date().toISOString(),
+        statusHttp,
+        motivoError: String(motivoError || 'Rechazada por el servidor'),
+    };
+    const nuevasRechazadas = [...rechazadasActual, registroRechazado];
+    if (storage) {
+        storage.setItem(CLAVE_COLA_VENTAS_RECHAZADAS, JSON.stringify(nuevasRechazadas));
+    }
+    eliminarVentaOffline(itemCola?.idTemporal, storage);
+    return nuevasRechazadas;
+};
+
+/**
+ * Vacía la cola de ventas offline una vez sincronizadas con el servidor.
+ */
+export const limpiarColaOffline = (storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (storage) {
+        storage.removeItem(CLAVE_COLA_VENTAS_OFFLINE);
+    }
+    return [];
+};
+
+/**
+ * Ejecuta una rutina de sincronización protegida por Web Locks API (`sync-ventas`)
+ * con fallback seguro mediante flag en memoria cuando `navigator.locks` no existe.
+ */
+export const ejecutarSincronizacionConLock = async (
+    fnSincronizacion,
+    estadoLockFallback = { enCurso: false },
+    locksApi = null
+) => {
+    const locks =
+        locksApi ??
+        (typeof navigator !== 'undefined' && navigator?.locks ? navigator.locks : null);
+
+    if (locks && typeof locks.request === 'function') {
+        return locks.request('sync-ventas', { ifAvailable: true }, async (lock) => {
+            if (!lock) {
+                return { omitidoPorLock: true };
+            }
+            return fnSincronizacion();
+        });
+    }
+
+    if (estadoLockFallback.enCurso) {
+        return { omitidoPorLock: true };
+    }
+
+    estadoLockFallback.enCurso = true;
+    try {
+        return await fnSincronizacion();
+    } finally {
+        estadoLockFallback.enCurso = false;
+    }
+};
+
+/**
+ * Determina el turno_caja para sincronizar una venta offline:
+ * conserva el turno original guardado en el ítem si sigue ABIERTO,
+ * o usa el turno abierto del propio usuario actual sin pisar con el turno de otro cajero.
+ */
+export const resolverTurnoParaVentaOffline = ({
+    turnoOriginalId = null,
+    listaTurnos = [],
+    turnoActivo = null,
+    usuario = null,
+} = {}) => {
+    const miId = Number(usuario?.id || 0);
+    const esDuenioOEncargado = ['DUENIO', 'ENCARGADO'].includes(
+        String(usuario?.rol || '').toUpperCase()
+    );
+    const turnos = Array.isArray(listaTurnos) ? listaTurnos : [];
+
+    const turnoPropioAbierto = turnos.find(
+        (t) => t && t.estado === 'ABIERTO' && (miId > 0 ? Number(t.usuario) === miId : true)
+    );
+
+    if (turnoOriginalId !== null && turnoOriginalId !== undefined && Number(turnoOriginalId) > 0) {
+        const idBuscado = Number(turnoOriginalId);
+        if (turnos.length > 0) {
+            const turnoOriginal = turnos.find((t) => Number(t.id) === idBuscado);
+            if (
+                turnoOriginal &&
+                turnoOriginal.estado === 'ABIERTO' &&
+                (Number(turnoOriginal.usuario) === miId || esDuenioOEncargado)
+            ) {
+                return turnoOriginal.id;
+            }
+            return turnoPropioAbierto ? turnoPropioAbierto.id : null;
+        }
+
+        if (
+            turnoActivo &&
+            turnoActivo.estado === 'ABIERTO' &&
+            Number(turnoActivo.id) === idBuscado &&
+            (!turnoActivo.usuario || Number(turnoActivo.usuario) === miId || esDuenioOEncargado)
+        ) {
+            return turnoActivo.id;
+        }
+    }
+
+    if (turnoPropioAbierto) {
+        return turnoPropioAbierto.id;
+    }
+
+    if (
+        turnoActivo &&
+        turnoActivo.estado === 'ABIERTO' &&
+        (!turnoActivo.usuario || Number(turnoActivo.usuario) === miId)
+    ) {
+        return turnoActivo.id;
+    }
+
+    return null;
+};
+
+/**
+ * Procesa los ítems de la cola offline contra POST /api/ventas/:
+ * - Envía origen: 'offline' e id_operacion para garantizar idempotencia.
+ * - Errores 4xx definitivos (excepto 401/408/429) mueven el ítem a cafe_cola_ventas_rechazadas.
+ * - Errores de red, 5xx o 401/408/429 interrumpen la cola para reintentar luego.
+ */
+export const procesarColaVentasOffline = async ({
+    fetchFn,
+    djangoUrl,
+    tokenJwt,
+    usuario = null,
+    turnoActivo = null,
+    listaTurnos = [],
+    storage = null,
+    onItemSincronizado = null,
+    onItemRechazado = null,
+} = {}) => {
+    const cola = obtenerVentasOffline(storage);
+    let sincronizadas = 0;
+    let rechazadas = 0;
+    let sinTurnoAbierto = false;
+    let interrumpidoPorRedOServidor = false;
+
+    for (const itemCola of cola) {
+        const raw = itemCola.payload || {};
+        const itemsRaw = raw.items_entrada || raw.items || [];
+        const medioPago = raw.medio_pago || raw.metodo_pago || 'EFECTIVO';
+
+        let itemsMapeados = [];
+        let errorMapeo = '';
+        try {
+            itemsMapeados = itemsRaw.map((it) => {
+                const prodId = Number(it.producto || it.producto_id || it.id);
+                if (!Number.isInteger(prodId) || prodId <= 0) {
+                    throw new Error('Producto faltante o inválido en una venta de la cola offline.');
+                }
+                const itemObj = {
+                    producto: prodId,
+                    producto_id: prodId,
+                    cantidad: String(it.cantidad || 1),
+                };
+                if (it.precio_unitario && Number(it.precio_unitario) > 0) {
+                    itemObj.precio_unitario = String(it.precio_unitario);
+                }
+                return itemObj;
+            });
+        } catch (errItem) {
+            errorMapeo = errItem.message;
+        }
+
+        if (errorMapeo || itemsMapeados.length === 0) {
+            const motivo = errorMapeo || 'Una venta en cola offline no contiene productos válidos.';
+            moverVentaARechazadas(itemCola, motivo, 400, storage);
+            rechazadas += 1;
+            if (typeof onItemRechazado === 'function') onItemRechazado(itemCola, motivo, 400);
+            continue;
+        }
+
+        const turnoParaVenta = resolverTurnoParaVentaOffline({
+            turnoOriginalId: raw.turno_caja,
+            listaTurnos,
+            turnoActivo,
+            usuario,
+        });
+
+        if (!turnoParaVenta) {
+            sinTurnoAbierto = true;
+            break;
+        }
+
+        const payloadNormalizado = {
+            turno_caja: turnoParaVenta,
+            medio_pago: String(medioPago).toUpperCase(),
+            origen: 'offline',
+            id_operacion: raw.id_operacion || generarIdOperacion(),
+            items: itemsMapeados,
+            items_entrada: itemsMapeados,
+        };
+
+        try {
+            const res = await fetchFn(`${djangoUrl}/api/ventas/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${tokenJwt}`,
+                },
+                body: JSON.stringify(payloadNormalizado),
+            });
+
+            if (res.ok) {
+                sincronizadas += 1;
+                eliminarVentaOffline(itemCola.idTemporal, storage);
+                if (typeof onItemSincronizado === 'function') onItemSincronizado(itemCola);
+            } else {
+                const esErrorClienteDefinitivo =
+                    res.status >= 400 &&
+                    res.status < 500 &&
+                    ![401, 408, 429].includes(res.status);
+
+                if (esErrorClienteDefinitivo) {
+                    let motivo = `Error HTTP ${res.status}`;
+                    try {
+                        const errBody = await res.json();
+                        motivo = errBody?.mensaje || errBody?.detail || motivo;
+                    } catch {
+                        // Mantener motivo por defecto
+                    }
+                    moverVentaARechazadas(itemCola, motivo, res.status, storage);
+                    rechazadas += 1;
+                    if (typeof onItemRechazado === 'function') {
+                        onItemRechazado(itemCola, motivo, res.status);
+                    }
+                } else {
+                    interrumpidoPorRedOServidor = true;
+                    break;
+                }
+            }
+        } catch {
+            interrumpidoPorRedOServidor = true;
+            break;
+        }
+    }
+
+    return {
+        sincronizadas,
+        rechazadas,
+        restantes: obtenerVentasOffline(storage).length,
+        sinTurnoAbierto,
+        interrumpidoPorRedOServidor,
+    };
+};
+

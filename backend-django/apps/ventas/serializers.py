@@ -4,14 +4,25 @@ from decimal import Decimal
 
 from rest_framework import exceptions, serializers
 
+from apps.usuarios.permissions import usuario_tiene_permiso
 from apps.ventas.models import Venta, VentaItem
 from apps.ventas.services import registrar_venta
 
 
 class VentaItemInputSerializer(serializers.Serializer):
-    producto_id = serializers.IntegerField()
+    producto_id = serializers.IntegerField(required=False)
+    producto = serializers.IntegerField(required=False)
     cantidad = serializers.DecimalField(max_digits=8, decimal_places=2, default=Decimal("1.00"))
-    precio_unitario = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    precio_unitario = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True
+    )
+
+    def validate(self, attrs):
+        if "producto_id" not in attrs and "producto" not in attrs:
+            raise serializers.ValidationError("Debe indicar 'producto_id' o 'producto'.")
+        if "producto_id" not in attrs:
+            attrs["producto_id"] = attrs["producto"]
+        return attrs
 
 
 class VentaItemDetailSerializer(serializers.ModelSerializer):
@@ -32,11 +43,13 @@ class VentaItemDetailSerializer(serializers.ModelSerializer):
 class VentaSerializer(serializers.ModelSerializer):
     items = VentaItemDetailSerializer(many=True, read_only=True)
     items_entrada = VentaItemInputSerializer(many=True, write_only=True, required=True)
+    id_operacion = serializers.UUIDField(required=False, allow_null=True)
 
     class Meta:
         model = Venta
         fields = [
             "id",
+            "id_operacion",
             "turno_caja",
             "fecha",
             "medio_pago",
@@ -49,32 +62,71 @@ class VentaSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "fecha", "total", "costo_total_snapshot", "creado_en"]
 
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = dict(data)
+            if "items" in data and "items_entrada" not in data:
+                data["items_entrada"] = data["items"]
+            if "origen" in data and data["origen"] is not None:
+                origen_norm = str(data["origen"]).strip().lower()
+                if origen_norm in ("local", "caja", "propio"):
+                    data["origen"] = "propio"
+                elif origen_norm in ("importado", "offline"):
+                    data["origen"] = origen_norm
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
         turno = attrs.get("turno_caja")
         request = self.context.get("request")
         if turno and request and hasattr(request, "user"):
             user = request.user
             if not getattr(user, "is_superuser", False):
-                perfil = getattr(user, "perfil", None)
-                puede_ajenos = (
-                    perfil.tiene_permiso("caja.gestionar_turnos_ajenos") if perfil else False
-                )
-                if not puede_ajenos:
-                    payload = getattr(request.auth, "payload", None)
-                    if payload is None and hasattr(request.auth, "get"):
-                        payload = request.auth
-                    puede_ajenos = "caja.gestionar_turnos_ajenos" in (
-                        payload.get("permisos", []) if payload else []
-                    )
+                puede_ajenos = usuario_tiene_permiso(request, "caja.gestionar_turnos_ajenos")
                 if turno.usuario_id and turno.usuario_id != user.id and not puede_ajenos:
                     raise exceptions.PermissionDenied("Debe pertenecer al turno abierto del cajero")
+
+        if turno and turno.estado != "ABIERTO":
+            raise serializers.ValidationError(
+                {"turno_caja": "No se puede registrar una venta en un turno de caja cerrado."}
+            )
+
+        if not attrs.get("items_entrada"):
+            raise serializers.ValidationError(
+                {"items_entrada": "La venta debe contener al menos un producto."}
+            )
+
         return attrs
 
     def create(self, validated_data):
         items_data = validated_data.pop("items_entrada")
-        return registrar_venta(
-            items_data=items_data,
-            medio_pago=validated_data.get("medio_pago", "EFECTIVO"),
-            origen=validated_data.get("origen", "propio"),
-            turno_caja=validated_data.get("turno_caja"),
-        )
+        try:
+            return registrar_venta(
+                items_data=items_data,
+                medio_pago=validated_data.get("medio_pago", "EFECTIVO"),
+                origen=validated_data.get("origen", "propio"),
+                turno_caja=validated_data.get("turno_caja"),
+                id_operacion=validated_data.get("id_operacion"),
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get("request")
+        if (
+            request
+            and getattr(request, "method", "GET") != "POST"
+            and not usuario_tiene_permiso(request, "caja.ver_efectivo_esperado")
+        ):
+            # Arqueo ciego estricto: un usuario sin caja.ver_efectivo_esperado no puede
+            # consultar montos ni medios de pago históricos para reconstruir el arqueo.
+            ret["total"] = None
+            ret["medio_pago"] = None
+            ret["costo_total_snapshot"] = None
+            for item in ret.get("items") or []:
+                if isinstance(item, dict):
+                    item["precio_unitario"] = None
+                    item["costo_unitario_snapshot"] = None
+                    if "subtotal" in item:
+                        item["subtotal"] = None
+        return ret

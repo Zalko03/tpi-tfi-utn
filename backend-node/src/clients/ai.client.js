@@ -118,3 +118,51 @@ export const extraerPreciosIA = async (
         };
     }
 };
+
+/**
+ * Consume POST /v1/resumen-semanal de ai-service para consultoría de métricas y rendimiento.
+ */
+export const generarResumenSemanalIA = async (
+    payload,
+    timeoutMs = 12000,
+    correlationId = null
+) => {
+    const inicio = Date.now();
+    try {
+        const headers = {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        };
+        if (correlationId) {
+            headers['X-Request-ID'] = correlationId;
+        }
+
+        const respuesta = await fetch(`${aiServiceUrl}/v1/resumen-semanal`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+
+        if (!respuesta.ok) {
+            throw new Error(`ai-service respondió con estado HTTP ${respuesta.status}`);
+        }
+
+        return await respuesta.json();
+    } catch (error) {
+        const latenciaMs = Math.max(0, Date.now() - inicio);
+        return {
+            resumen_ejecutivo: `Análisis de contingencia: Rendimiento evaluado sobre facturación de $${payload?.total_ventas || '0.00'}. Operación comercial conforme.`,
+            productos_destacados: Array.isArray(payload?.productos)
+                ? payload.productos.slice(0, 3).map((p) => p.nombre)
+                : [],
+            sugerencias_rotacion: [],
+            alertas_costos: [`Aviso técnico: ${error.message}`],
+            version_prompt: payload?.version_prompt || 'v1',
+            proveedor_ia: 'contingencia',
+            latencia_ms: latenciaMs,
+            contingencia: true,
+            mensaje_contingencia: 'Servicio de IA en contingencia local.',
+        };
+    }
+};

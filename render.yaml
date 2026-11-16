@@ -1,0 +1,78 @@
+services:
+  # 1. Backend Transaccional (Django 5 + DRF + PostgreSQL en Aiven)
+  - type: web
+    name: sapori-backend-django
+    runtime: docker
+    rootDir: backend-django
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh -c "python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 60"
+    healthCheckPath: /api/health/
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: POSTGRES_DB
+        sync: false
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_HOST
+        sync: false
+      - key: POSTGRES_PORT
+        value: "5432"
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DJANGO_JWT_PRIVATE_KEY
+        sync: false
+      - key: DJANGO_JWT_PUBLIC_KEY
+        sync: false
+
+  # 2. Backend Tiempo Real & Proyecciones (Express + Socket.IO + MongoDB Atlas)
+  - type: web
+    name: sapori-backend-node
+    runtime: docker
+    rootDir: backend-node
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_PORT
+        value: "3000"
+      - key: MONGO_URI
+        sync: false
+      - key: DJANGO_BASE_URL
+        sync: false
+      - key: AI_SERVICE_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+
+  # 3. Microservicio de Inteligencia Artificial (FastAPI + Groq LPU)
+  - type: web
+    name: sapori-ai-service
+    runtime: docker
+    rootDir: ai-service
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: AI_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: AI_PROMPT_VERSION
+        value: v1
+      - key: AI_TIMEOUT_SECONDS
+        value: "10.0"
+      - key: AI_MAX_RETRIES
+        value: "2"

@@ -149,19 +149,33 @@ describe('Middleware y Helpers de Socket.IO (T3.5)', () => {
     });
 
     describe('validarAccesoSalaTurno', () => {
-        it('permite unirse al titular del turno aunque sea CAJERO sin permisos de turnos ajenos', () => {
-            const usuarioCajero = {
+        it('permite unirse al CAJERO solo si el turno coincide con su JWT o fue verificado por servidor', () => {
+            const usuarioCajeroConTurnoJwt = {
                 id: 12,
                 rol: 'CAJERO',
-                permisos: ['ventas.crear'],
+                turnoId: 45,
+                permisos: ['ventas.cobrar_ticket'],
             };
 
-            const res = validarAccesoSalaTurno(usuarioCajero, { turnoId: 45, titularId: 12 });
-            expect(res).toEqual({
+            const resJwt = validarAccesoSalaTurno(usuarioCajeroConTurnoJwt, { turnoId: 45 });
+            expect(resJwt).toEqual({
                 permitido: true,
                 codigo: 200,
                 sala: 'turno:45',
             });
+
+            // Sin verificación de servidor, no confía en titularId enviado por el cliente
+            const cajeroSinTurnoJwt = {
+                id: 12,
+                rol: 'CAJERO',
+                permisos: ['ventas.cobrar_ticket'],
+            };
+            const resSpoof = validarAccesoSalaTurno(cajeroSinTurnoJwt, {
+                turnoId: 45,
+                titularId: 12,
+            });
+            expect(resSpoof.permitido).toBe(false);
+            expect(resSpoof.codigo).toBe(403);
         });
 
         it('rechaza con 403 a un CAJERO que intenta unirse al turno de otro cajero', () => {
