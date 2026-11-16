@@ -10,6 +10,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('Tablero en Tiempo Real');
         expect(res.text).toContain('Importación de Precios con IA');
         expect(res.text).toContain('Caja Rápida y Turno');
+        expect(res.text).toContain('filtro-fecha-desde');
+        expect(res.text).toContain('filtro-fecha-hasta');
+        expect(res.text).toContain('tabla-trazabilidad-reportes');
         expect(res.text).toContain('/app/manifest.webmanifest');
         expect(res.text).toContain('/app/js/app.js');
     });

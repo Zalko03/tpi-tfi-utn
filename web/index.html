@@ -193,7 +193,7 @@
 
                 <button type="button" class="nav-item" data-seccion="finanzas">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
-                    <span>Finanzas & Metas</span>
+                    <span>Reportes & Finanzas</span>
                 </button>
 
                 <button type="button" class="nav-item" data-seccion="personal">
@@ -773,10 +773,42 @@ Envío: $2000</textarea>
                 </section>
 
                 <!-- ============================================================
-                     5. MÓDULO FINANZAS, GANANCIA REAL Y METAS
+                     5. MÓDULO REPORTES, TRAZABILIDAD, FINANZAS Y METAS
                      ============================================================ -->
                 <section id="vista-finanzas" class="vista-modulo">
                     <div id="finanzas-contenido-gerencia" class="finanzas-layout">
+                        <!-- Barra de Filtro por Rango de Fechas (Reportes y Trazabilidad) -->
+                        <div class="tarjeta-panel-blanca barra-filtro-fechas" id="barra-filtro-fechas-reportes">
+                            <div class="filtro-fechas-cabecera">
+                                <div>
+                                    <h3>Reportes y Trazabilidad por Período</h3>
+                                    <p class="text-muted">Filtre ventas, movimientos de stock, cierres de caja y métricas financieras por rango de fechas.</p>
+                                </div>
+                                <div id="indicador-rango-reportes" class="indicador-rango-activo">
+                                    Mostrando todo el historial · 0 registros
+                                </div>
+                            </div>
+                            <div class="filtro-fechas-controles">
+                                <div class="campo-grupo filtro-fecha-campo">
+                                    <label for="filtro-fecha-desde">Desde</label>
+                                    <input type="date" id="filtro-fecha-desde" />
+                                </div>
+                                <div class="campo-grupo filtro-fecha-campo">
+                                    <label for="filtro-fecha-hasta">Hasta</label>
+                                    <input type="date" id="filtro-fecha-hasta" />
+                                </div>
+                                <div class="filtro-fechas-atajos" aria-label="Atajos de período">
+                                    <button type="button" class="btn-refrescar-mini btn-atajo-fecha" data-atajo="hoy">Hoy</button>
+                                    <button type="button" class="btn-refrescar-mini btn-atajo-fecha" data-atajo="7dias">Últimos 7 días</button>
+                                    <button type="button" class="btn-refrescar-mini btn-atajo-fecha" data-atajo="mes">Este mes</button>
+                                </div>
+                                <div class="filtro-fechas-acciones">
+                                    <button type="button" id="btn-filtrar-fechas" class="btn-primario-comercial">Filtrar</button>
+                                    <button type="button" id="btn-limpiar-fechas" class="btn-secundario-comercial">Limpiar</button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Fila 1: KPIs Financieros Ejecutivos en Vivo -->
                         <div class="kpis-financieros-grilla">
                             <div class="tarjeta-kpi">
@@ -809,6 +841,47 @@ Envío: $2000</textarea>
                                     <strong id="fin-unidades-totales" class="kpi-monto">0</strong>
                                 </div>
                                 <span class="kpi-subtexto">Artículos entregados en barra</span>
+                            </div>
+                        </div>
+
+                        <!-- Trazabilidad Unificada: Ventas, Movimientos de Stock y Cierres de Caja -->
+                        <div class="tarjeta-panel-blanca" id="panel-trazabilidad-reportes">
+                            <div class="panel-cabecera-linea">
+                                <div>
+                                    <h3>Trazabilidad de Ventas, Movimientos de Stock y Cierres de Caja</h3>
+                                    <p class="text-muted">Historial auditable unificado ordenado cronológicamente para el período seleccionado.</p>
+                                </div>
+                                <div class="trazabilidad-resumen-pills">
+                                    <span class="trazabilidad-pill" id="pill-conteo-ventas">Ventas: 0</span>
+                                    <span class="trazabilidad-pill" id="pill-conteo-stock">Stock: 0</span>
+                                    <span class="trazabilidad-pill" id="pill-conteo-cierres">Cierres de Caja: 0</span>
+                                </div>
+                            </div>
+
+                            <div class="trazabilidad-tabs" role="tablist" aria-label="Filtrar categoría de trazabilidad">
+                                <button type="button" class="btn-trazabilidad-tab activa" data-categoria="todos">Todos (<span id="tab-count-todos">0</span>)</button>
+                                <button type="button" class="btn-trazabilidad-tab" data-categoria="venta">Ventas (<span id="tab-count-ventas">0</span>)</button>
+                                <button type="button" class="btn-trazabilidad-tab" data-categoria="stock">Movimientos de Stock (<span id="tab-count-stock">0</span>)</button>
+                                <button type="button" class="btn-trazabilidad-tab" data-categoria="caja">Cierres de Caja (<span id="tab-count-caja">0</span>)</button>
+                            </div>
+
+                            <div class="tabla-contenedor-responsive">
+                                <table class="tabla-comercial" id="tabla-trazabilidad-reportes">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-centro">Fecha / Hora</th>
+                                            <th class="col-centro">Tipo</th>
+                                            <th class="col-texto">Detalle</th>
+                                            <th class="col-numero">Monto / Cantidad</th>
+                                            <th class="col-texto">Usuario / Responsable</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tabla-trazabilidad-body">
+                                        <tr>
+                                            <td colspan="5" class="col-centro text-muted py-4">Cargando registros de trazabilidad...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 

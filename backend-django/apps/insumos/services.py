@@ -349,3 +349,124 @@ def registrar_lote_compras_importacion(
         "compras_creadas": compras_creadas,
         "productos_recalculados": productos_recalculados,
     }
+
+
+def _convertir_seguro_a_base(cantidad: Decimal, unidad: str, unidad_base: str) -> Decimal:
+    """Convierte a unidad base si es compatible; si no, retorna la cantidad original."""
+    try:
+        return convertir_a_unidad_base(cantidad, unidad, unidad_base)
+    except ValueError:
+        return Decimal(str(cantidad)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+
+def obtener_movimientos_stock_trazabilidad(
+    fecha_desde=None,
+    fecha_hasta=None,
+    insumo_id: int | None = None,
+    tipo: str | None = None,
+    incluir_costos: bool = True,
+) -> list[dict]:
+    """
+    Construye la trazabilidad real de movimientos de insumos/stock combinando:
+    - INGRESO (COMPRA): compras registradas a proveedores (Compra).
+    - EGRESO (VENTA_RECETA): consumo teórico por recetas de ítems vendidos (VentaItem -> RecetaItem).
+    """
+    from apps.insumos.models import Compra
+    from apps.ventas.models import VentaItem
+
+    tipo_norm = str(tipo or "").strip().upper()
+    movimientos: list[dict] = []
+
+    if tipo_norm in ("", "INGRESO"):
+        qs_compras = Compra.objects.select_related("proveedor", "insumo").all()
+        if fecha_desde is not None:
+            qs_compras = qs_compras.filter(fecha__gte=fecha_desde)
+        if fecha_hasta is not None:
+            qs_compras = qs_compras.filter(fecha__lte=fecha_hasta)
+        if insumo_id is not None:
+            qs_compras = qs_compras.filter(insumo_id=insumo_id)
+
+        for compra in qs_compras:
+            cant_base = _convertir_seguro_a_base(
+                compra.cantidad, compra.unidad, compra.insumo.unidad_base
+            )
+            movimientos.append(
+                {
+                    "id": f"compra-{compra.id}",
+                    "origen_id": compra.id,
+                    "fecha": compra.fecha.isoformat(),
+                    "tipo": "INGRESO",
+                    "subtipo": "COMPRA",
+                    "insumo_id": compra.insumo_id,
+                    "insumo_nombre": compra.insumo.nombre,
+                    "cantidad": str(compra.cantidad),
+                    "unidad": compra.unidad,
+                    "cantidad_base": str(cant_base),
+                    "unidad_base": compra.insumo.unidad_base,
+                    "monto": str(compra.precio_total) if incluir_costos else None,
+                    "detalle": f"Compra a {compra.proveedor.nombre}",
+                    "usuario_nombre": "Gerencia / Compras",
+                }
+            )
+
+    if tipo_norm in ("", "EGRESO"):
+        qs_items = VentaItem.objects.select_related(
+            "venta",
+            "venta__turno_caja__usuario",
+            "producto",
+        ).prefetch_related("producto__receta_items__insumo")
+
+        if fecha_desde is not None:
+            qs_items = qs_items.filter(venta__fecha__gte=fecha_desde)
+        if fecha_hasta is not None:
+            qs_items = qs_items.filter(venta__fecha__lte=fecha_hasta)
+        if insumo_id is not None:
+            qs_items = qs_items.filter(producto__receta_items__insumo_id=insumo_id).distinct()
+
+        for venta_item in qs_items:
+            venta = venta_item.venta
+            usuario_nombre = (
+                venta.turno_caja.usuario.username
+                if venta.turno_caja and venta.turno_caja.usuario
+                else "Mostrador"
+            )
+            for receta_item in venta_item.producto.receta_items.all():
+                if insumo_id is not None and receta_item.insumo_id != insumo_id:
+                    continue
+                cant_consumida = (receta_item.cantidad * venta_item.cantidad).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_UP
+                )
+                cant_base = _convertir_seguro_a_base(
+                    cant_consumida, receta_item.unidad, receta_item.insumo.unidad_base
+                )
+                costo_consumo = (
+                    (cant_base * receta_item.insumo.costo_unitario).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
+                    if incluir_costos
+                    else None
+                )
+                movimientos.append(
+                    {
+                        "id": f"venta-{venta.id}-item-{venta_item.id}-receta-{receta_item.id}",
+                        "origen_id": venta.id,
+                        "fecha": venta.fecha.isoformat(),
+                        "tipo": "EGRESO",
+                        "subtipo": "VENTA_RECETA",
+                        "insumo_id": receta_item.insumo_id,
+                        "insumo_nombre": receta_item.insumo.nombre,
+                        "cantidad": str(cant_consumida),
+                        "unidad": receta_item.unidad,
+                        "cantidad_base": str(cant_base),
+                        "unidad_base": receta_item.insumo.unidad_base,
+                        "monto": str(costo_consumo) if costo_consumo is not None else None,
+                        "detalle": (
+                            f"Consumo venta #{venta.id} "
+                            f"({venta_item.cantidad}x {venta_item.producto.nombre})"
+                        ),
+                        "usuario_nombre": usuario_nombre,
+                    }
+                )
+
+    movimientos.sort(key=lambda m: (m["fecha"], str(m["id"])), reverse=True)
+    return movimientos

@@ -2,20 +2,29 @@
 
 from decimal import Decimal
 
+from django.db.models import Q
 from django.utils import timezone
-from rest_framework import status, viewsets
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
 from apps.caja.serializers import MovimientoCajaSerializer, TurnoCajaSerializer
+from apps.comun.filtros import extraer_rango_fechas, filtrar_queryset_por_rango_fechas
 from apps.usuarios.permissions import PermisoObjetoTurnoCaja, TienePermiso, usuario_tiene_permiso
 
 
 class TurnoCajaViewSet(viewsets.ModelViewSet):
-    queryset = TurnoCaja.objects.prefetch_related("movimientos", "ventas").all()
+    queryset = (
+        TurnoCaja.objects.select_related("usuario").prefetch_related("movimientos", "ventas").all()
+    )
     serializer_class = TurnoCajaSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["estado"]
+    ordering_fields = ["apertura", "cierre", "id"]
+    ordering = ["-apertura", "-id"]
 
     def get_permissions(self):
         if self.action == "create":
@@ -58,6 +67,27 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             return qs.filter(usuario=user)
         return qs
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        if self.action != "list":
+            return qs
+
+        dt_desde, dt_hasta = extraer_rango_fechas(self.request.query_params)
+        if dt_desde is None and dt_hasta is None:
+            return qs
+
+        # Turnos cerrados se filtran por fecha de cierre; turnos aún abiertos por fecha de apertura.
+        q_cierre = Q(cierre__isnull=False)
+        q_apertura = Q(cierre__isnull=True)
+        if dt_desde is not None:
+            q_cierre &= Q(cierre__gte=dt_desde)
+            q_apertura &= Q(apertura__gte=dt_desde)
+        if dt_hasta is not None:
+            q_cierre &= Q(cierre__lte=dt_hasta)
+            q_apertura &= Q(apertura__lte=dt_hasta)
+
+        return qs.filter(q_cierre | q_apertura)
 
     @action(detail=True, methods=["post"], url_path="cerrar")
     def cerrar(self, request, pk=None):
@@ -105,7 +135,18 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
 class MovimientoCajaViewSet(viewsets.ModelViewSet):
     queryset = MovimientoCaja.objects.all()
     serializer_class = MovimientoCajaSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["turno_caja", "tipo"]
+    ordering_fields = ["fecha", "monto", "id"]
+    ordering = ["-fecha", "-id"]
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        if self.action == "list":
+            qs = filtrar_queryset_por_rango_fechas(
+                qs, self.request.query_params, campo_fecha="fecha"
+            )
+        return qs
 
     def get_permissions(self):
         if self.action in ("list", "retrieve", "create"):

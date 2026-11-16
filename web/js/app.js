@@ -8,17 +8,22 @@ import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularResumenCarrito,
+    construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
     encolarVentaOffline,
     escaparHtml,
     extraerItemsDesdeTextoLista,
+    filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
+    formatearFechaLocalInput,
     generarIdOperacion,
     obtenerContenidoPlantillaCsv,
     obtenerVentasOffline,
     parsearCsvProveedor,
     procesarColaVentasOffline,
+    unificarTrazabilidadRegistros,
+    validarRangoFechas,
 } from './logicaPwa.js';
 
 const CLAVE_CATALOGO_CACHE = 'sapori_catalogo_cache';
@@ -116,6 +121,11 @@ export const estadoApp = {
     turnosHistorial: [],
     usuariosEquipo: [],
     filtroCategoriaActual: 'todos',
+    trazabilidad: {
+        registros: [],
+        conteos: { total: 0, ventas: 0, stock: 0, caja: 0 },
+        categoriaActiva: 'todos',
+    },
     contadores: {
         ventas: 0,
         alertasMargen: 0,
@@ -1780,15 +1790,186 @@ const recalcularTodaLaCarta = async () => {
 };
 
 // ============================================================
-// MÓDULO 5: FINANZAS Y PUNTO DE EQUILIBRIO
+// MÓDULO 5: REPORTES, TRAZABILIDAD, FINANZAS Y PUNTO DE EQUILIBRIO
 // ============================================================
+const obtenerRangoFechasSeleccionado = () => {
+    const fechaDesde = ($('filtro-fecha-desde')?.value || '').trim();
+    const fechaHasta = ($('filtro-fecha-hasta')?.value || '').trim();
+    return { fechaDesde, fechaHasta };
+};
+
+const formatearFechaCortaEtiqueta = (fechaYmd) => {
+    const m = String(fechaYmd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return fechaYmd;
+    return `${m[3]}/${m[2]}/${m[1]}`;
+};
+
+const actualizarIndicadorRangoReportes = (fechaDesde, fechaHasta, totalRegistros) => {
+    const el = $('indicador-rango-reportes');
+    if (!el) return;
+    let textoRango = 'Mostrando todo el historial';
+    if (fechaDesde && fechaHasta) {
+        textoRango = `Rango activo: ${formatearFechaCortaEtiqueta(fechaDesde)} al ${formatearFechaCortaEtiqueta(fechaHasta)}`;
+    } else if (fechaDesde) {
+        textoRango = `Desde: ${formatearFechaCortaEtiqueta(fechaDesde)}`;
+    } else if (fechaHasta) {
+        textoRango = `Hasta: ${formatearFechaCortaEtiqueta(fechaHasta)}`;
+    }
+    el.textContent = `${textoRango} · ${totalRegistros} registro${totalRegistros !== 1 ? 's' : ''}`;
+};
+
+const renderizarTablaTrazabilidad = () => {
+    const tbody = $('tabla-trazabilidad-body');
+    const { registros, conteos, categoriaActiva } = estadoApp.trazabilidad;
+
+    if ($('pill-conteo-ventas')) $('pill-conteo-ventas').textContent = `Ventas: ${conteos.ventas}`;
+    if ($('pill-conteo-stock')) $('pill-conteo-stock').textContent = `Stock: ${conteos.stock}`;
+    if ($('pill-conteo-cierres')) $('pill-conteo-cierres').textContent = `Cierres de Caja: ${conteos.caja}`;
+
+    if ($('tab-count-todos')) $('tab-count-todos').textContent = String(conteos.total);
+    if ($('tab-count-ventas')) $('tab-count-ventas').textContent = String(conteos.ventas);
+    if ($('tab-count-stock')) $('tab-count-stock').textContent = String(conteos.stock);
+    if ($('tab-count-caja')) $('tab-count-caja').textContent = String(conteos.caja);
+
+    const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado();
+    actualizarIndicadorRangoReportes(fechaDesde, fechaHasta, conteos.total);
+
+    if (!tbody) return;
+    const filtrados = categoriaActiva === 'todos'
+        ? registros
+        : registros.filter((r) => r.categoria === categoriaActiva);
+
+    if (filtrados.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="col-centro text-muted py-4">No se encontraron movimientos en el rango de fechas seleccionado.</td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = '';
+    for (const item of filtrados) {
+        const tr = document.createElement('tr');
+        const fechaTexto = item.fechaIso
+            ? new Date(item.fechaIso).toLocaleString('es-AR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            })
+            : '-';
+
+        tr.innerHTML = `
+            <td class="col-centro">${escaparHtml(fechaTexto)}</td>
+            <td class="col-centro"><span class="badge-traza ${escaparHtml(item.nivelBadge)}">${escaparHtml(item.tipoEtiqueta)}</span></td>
+            <td class="col-texto">${escaparHtml(item.detalle)}</td>
+            <td class="col-numero font-bold">${escaparHtml(item.montoCantidad)}</td>
+            <td class="col-texto">${escaparHtml(item.responsable)}</td>
+        `;
+        tbody.appendChild(tr);
+    }
+};
+
+export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '') => {
+    const queryFechas = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
+    const queryMovs = construirQueryRangoFechas(fechaDesde, fechaHasta);
+    const headers = { 'Authorization': `Bearer ${estadoApp.tokenJwt}` };
+
+    const extraerLista = async (res) => {
+        if (!res || !res.ok) return null;
+        const data = await res.json();
+        return Array.isArray(data) ? data : (data.datos || data.results || []);
+    };
+
+    let ventas = [];
+    let movimientosStock = [];
+    let comprasFallback = [];
+    let cierresCaja = [];
+
+    try {
+        const [resVentas, resMovStock, resTurnos] = await Promise.all([
+            fetch(`${estadoApp.djangoUrl}/api/ventas/?${queryFechas}`, { headers }).catch(() => null),
+            fetch(
+                `${estadoApp.djangoUrl}/api/insumos/movimientos/${queryMovs ? `?${queryMovs}` : ''}`,
+                { headers }
+            ).catch(() => null),
+            fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?${queryFechas}`, { headers }).catch(() => null),
+        ]);
+
+        const ventasData = await extraerLista(resVentas);
+        if (ventasData !== null) ventas = ventasData;
+
+        const movStockData = await extraerLista(resMovStock);
+        if (movStockData !== null) {
+            movimientosStock = movStockData;
+        } else {
+            const resCompras = await fetch(
+                `${estadoApp.djangoUrl}/api/compras/?${queryFechas}`,
+                { headers }
+            ).catch(() => null);
+            const comprasData = await extraerLista(resCompras);
+            if (comprasData !== null) comprasFallback = comprasData;
+        }
+
+        const turnosData = await extraerLista(resTurnos);
+        if (turnosData !== null) {
+            cierresCaja = turnosData;
+        } else {
+            cierresCaja = filtrarRegistrosPorRangoFechas(
+                estadoApp.turnosHistorial,
+                ['cierre', 'apertura'],
+                fechaDesde,
+                fechaHasta
+            );
+        }
+    } catch {
+        cierresCaja = filtrarRegistrosPorRangoFechas(
+            estadoApp.turnosHistorial,
+            ['cierre', 'apertura'],
+            fechaDesde,
+            fechaHasta
+        );
+    }
+
+    const ventasOffline = obtenerVentasOffline();
+    const resultado = unificarTrazabilidadRegistros({
+        ventas,
+        movimientosStock,
+        comprasFallback,
+        cierresCaja,
+        ventasOffline,
+        fechaDesde,
+        fechaHasta,
+    });
+
+    estadoApp.trazabilidad = {
+        ...estadoApp.trazabilidad,
+        registros: resultado.registros,
+        conteos: resultado.conteos,
+    };
+    renderizarTablaTrazabilidad();
+};
+
 export const cargarFinanzas = async () => {
     if (estadoApp.usuario?.rol === 'CAJERO') return;
 
+    const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado();
+    const validacion = validarRangoFechas(fechaDesde, fechaHasta);
+    if (!validacion.valido) {
+        mostrarToast(validacion.mensaje, 'advertencia');
+        return;
+    }
+
+    const queryFechas = construirQueryRangoFechas(fechaDesde, fechaHasta);
+    const queryRanking = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
+
     try {
-        const resGanancia = await fetch(`${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/`, {
-            headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` },
-        });
+        const resGanancia = await fetch(
+            `${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/${queryFechas ? `?${queryFechas}` : ''}`,
+            { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
+        );
         if (resGanancia.ok) {
             const data = await resGanancia.json();
             if ($('fin-facturacion-bruta')) $('fin-facturacion-bruta').textContent = formatearMoneda(data.ingresos_totales);
@@ -1801,17 +1982,21 @@ export const cargarFinanzas = async () => {
             if ($('fin-margen-promedio')) $('fin-margen-promedio').textContent = `Margen neto promedio: ${margenPct}%`;
         }
 
-        const resRanking = await fetch(`${estadoApp.djangoUrl}/api/ventas/ranking-productos/?limite=100`, {
-            headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` },
-        });
+        const resRanking = await fetch(
+            `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?${queryRanking}`,
+            { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
+        );
         if (resRanking.ok) {
             const ranking = await resRanking.json();
             renderizarRankingProductos(ranking);
         }
 
-        await calcularPuntoEquilibrio();
+        await Promise.all([
+            calcularPuntoEquilibrio(fechaDesde, fechaHasta),
+            cargarTrazabilidadReportes(fechaDesde, fechaHasta),
+        ]);
     } catch {
-        // Fallback
+        await cargarTrazabilidadReportes(fechaDesde, fechaHasta);
     }
 };
 
@@ -1866,10 +2051,27 @@ const renderizarRankingProductos = (ranking) => {
     }
 };
 
-const calcularPuntoEquilibrio = async () => {
+const calcularPuntoEquilibrio = async (fechaDesdeParam = null, fechaHastaParam = null) => {
     const costosFijos = $('input-pe-costos-fijos')?.value || '1500000';
     const diasOp = $('input-pe-dias-op')?.value || '26';
     const diasSem = $('input-pe-dias-sem')?.value || '6';
+    const rango = obtenerRangoFechasSeleccionado();
+    const fechaDesde = fechaDesdeParam !== null ? fechaDesdeParam : rango.fechaDesde;
+    const fechaHasta = fechaHastaParam !== null ? fechaHastaParam : rango.fechaHasta;
+
+    const payload = {
+        costos_fijos: costosFijos,
+        dias_operativos: Number(diasOp),
+        dias_semana: Number(diasSem),
+    };
+    if (fechaDesde) {
+        payload.fecha_desde = fechaDesde;
+        payload.fecha_inicio = fechaDesde;
+    }
+    if (fechaHasta) {
+        payload.fecha_hasta = fechaHasta;
+        payload.fecha_fin = fechaHasta;
+    }
 
     try {
         const res = await fetch(`${estadoApp.djangoUrl}/api/ventas/punto-equilibrio/`, {
@@ -1878,11 +2080,7 @@ const calcularPuntoEquilibrio = async () => {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                costos_fijos: costosFijos,
-                dias_operativos: Number(diasOp),
-                dias_semana: Number(diasSem),
-            }),
+            body: JSON.stringify(payload),
         });
 
         if (res.ok) {
@@ -1955,17 +2153,23 @@ const consultarDiagnosticoStockIA = async () => {
         );
 
         let dictamenIa = null;
+        const rangoSel = obtenerRangoFechasSeleccionado();
+        const hoyLocal = formatearFechaLocalInput(new Date());
+        const hace7Local = formatearFechaLocalInput(new Date(Date.now() - 7 * 86400000));
+        const fechaDesde = rangoSel.fechaDesde || hace7Local;
+        const fechaHasta = rangoSel.fechaHasta || hoyLocal;
+
         try {
-            const fechaDesde = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-            const fechaHasta = new Date().toISOString().split('T')[0];
+            const queryIa = construirQueryRangoFechas(fechaDesde, fechaHasta);
+            const queryIaRanking = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
 
             const [resGanancia, resRanking] = await Promise.all([
                 fetch(
-                    `${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/?fecha_inicio=${fechaDesde}&fecha_fin=${fechaHasta}`,
+                    `${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/?${queryIa}`,
                     { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
                 ).catch(() => null),
                 fetch(
-                    `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?fecha_inicio=${fechaDesde}&fecha_fin=${fechaHasta}&limite=100`,
+                    `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?${queryIaRanking}`,
                     { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
                 ).catch(() => null),
             ]);
@@ -2047,7 +2251,7 @@ const consultarDiagnosticoStockIA = async () => {
 
         cuerpo.innerHTML = `
             <h4>INFORME EJECUTIVO: DIAGNÓSTICO DE INVENTARIO Y REPOSICIÓN ESTRATÉGICA</h4>
-            <p><strong>Fecha y Hora de Emisión:</strong> ${fechaDictamen} · <strong>Perfil Solicitante:</strong> Propietario / Gerencia General</p>
+            <p><strong>Fecha y Hora de Emisión:</strong> ${fechaDictamen} · <strong>Período Evaluado:</strong> ${formatearFechaCortaEtiqueta(fechaDesde)} al ${formatearFechaCortaEtiqueta(fechaHasta)} · <strong>Perfil Solicitante:</strong> Propietario / Gerencia General</p>
             
             <div class="ia-bloque">
                 <div class="ia-bloque-titulo">1. Estado General del Inventario</div>
@@ -2092,8 +2296,15 @@ const auditarCierreCajaIA = async () => {
     `;
 
     try {
-        let turnos = estadoApp.turnosHistorial || [];
-        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
+        const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado();
+        const queryTurnos = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
+        let turnos = filtrarRegistrosPorRangoFechas(
+            estadoApp.turnosHistorial || [],
+            ['cierre', 'apertura'],
+            fechaDesde,
+            fechaHasta
+        );
+        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?${queryTurnos}`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -2102,22 +2313,28 @@ const auditarCierreCajaIA = async () => {
         if (resTurnos.ok) {
             const dataTurnos = await resTurnos.json();
             turnos = Array.isArray(dataTurnos) ? dataTurnos : (dataTurnos.datos || dataTurnos.results || []);
-            estadoApp.turnosHistorial = turnos;
+            if (!fechaDesde && !fechaHasta) {
+                estadoApp.turnosHistorial = turnos;
+            }
         }
 
-        const turnoAuditado = turnos[0] || estadoApp.turnoActivo;
+        const turnoAuditado = turnos[0] || (!fechaDesde && !fechaHasta ? estadoApp.turnoActivo : null);
         if (!turnoAuditado || !turnoAuditado.id) {
             cuerpo.innerHTML = `
                 <h4>AUDITORÍA DE CAJA Y RENTABILIDAD</h4>
-                <p class="text-muted">No hay turnos registrados ni activos en el servidor para auditar.</p>
+                <p class="text-muted">No hay turnos registrados en el período seleccionado para auditar.</p>
             `;
-            mostrarToast('No hay ningún turno disponible para auditar.', 'advertencia');
+            mostrarToast('No hay ningún turno disponible en el rango seleccionado.', 'advertencia');
             return;
         }
 
         let movimientos = [];
         try {
-            const resMovs = await fetch(`${estadoApp.djangoUrl}/api/caja/movimientos/?turno_caja=${turnoAuditado.id}&limite=100`, {
+            const queryMovs = construirQueryRangoFechas(fechaDesde, fechaHasta, {
+                turno_caja: turnoAuditado.id,
+                limite: 100,
+            });
+            const resMovs = await fetch(`${estadoApp.djangoUrl}/api/caja/movimientos/?${queryMovs}`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -2133,7 +2350,11 @@ const auditarCierreCajaIA = async () => {
 
         let ventasTurno = [];
         try {
-            const resVentas = await fetch(`${estadoApp.djangoUrl}/api/ventas/?turno_caja=${turnoAuditado.id}&limite=100`, {
+            const queryVentas = construirQueryRangoFechas(fechaDesde, fechaHasta, {
+                turno_caja: turnoAuditado.id,
+                limite: 100,
+            });
+            const resVentas = await fetch(`${estadoApp.djangoUrl}/api/ventas/?${queryVentas}`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -2420,7 +2641,7 @@ const cambiarSeccion = (nombreSeccion) => {
         caja: { titulo: 'Caja & Arqueo Ciego', sub: 'Control de turnos, arqueo ciego y auditoría de fondos' },
         compras: { titulo: 'Compras & Listas IA', sub: 'Importación CSV y extracción inteligente de listas de distribuidores' },
         recetas: { titulo: 'Ingeniería de Recetas & Rentabilidad', sub: 'Costeo dinámico por insumos, descartables y mano de obra' },
-        finanzas: { titulo: 'Finanzas & Metas', sub: 'Facturación real, margen neto y punto de equilibrio' },
+        finanzas: { titulo: 'Reportes, Trazabilidad & Finanzas', sub: 'Trazabilidad por fechas, facturación real, margen neto y punto de equilibrio' },
         personal: { titulo: 'Equipo & Permisos', sub: 'Gobernanza de personal y control granular de accesos' },
     };
 
@@ -2432,6 +2653,8 @@ const cambiarSeccion = (nombreSeccion) => {
     if (nombreSeccion === 'pos') {
         const input = $('input-codigo-barras');
         if (input) setTimeout(() => input.focus(), 100);
+    } else if (nombreSeccion === 'finanzas' && estadoApp.tokenJwt && estadoApp.usuario?.rol !== 'CAJERO') {
+        cargarFinanzas();
     }
 };
 
@@ -2949,6 +3172,52 @@ Flete y entrega a local: $4500`;
     // 21b. Consultor IA de Stock y Cierre de Caja para el Dueño
     $('btn-ia-diagnostico-stock')?.addEventListener('click', consultarDiagnosticoStockIA);
     $('btn-ia-auditar-caja')?.addEventListener('click', auditarCierreCajaIA);
+
+    // 21c. Filtro de Fechas y Trazabilidad en Reportes y Finanzas
+    const aplicarFiltroFechasReportes = () => {
+        document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
+        cargarFinanzas();
+    };
+    $('filtro-fecha-desde')?.addEventListener('change', aplicarFiltroFechasReportes);
+    $('filtro-fecha-hasta')?.addEventListener('change', aplicarFiltroFechasReportes);
+    $('btn-filtrar-fechas')?.addEventListener('click', aplicarFiltroFechasReportes);
+    $('btn-limpiar-fechas')?.addEventListener('click', () => {
+        if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = '';
+        if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = '';
+        document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
+        cargarFinanzas();
+    });
+
+    document.querySelectorAll('.btn-atajo-fecha').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const atajo = btn.dataset.atajo;
+            const ahora = new Date();
+            let desde = formatearFechaLocalInput(ahora);
+            const hasta = formatearFechaLocalInput(ahora);
+
+            if (atajo === '7dias') {
+                desde = formatearFechaLocalInput(new Date(ahora.getTime() - 6 * 86400000));
+            } else if (atajo === 'mes') {
+                desde = formatearFechaLocalInput(new Date(ahora.getFullYear(), ahora.getMonth(), 1));
+            }
+
+            if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = desde;
+            if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = hasta;
+
+            document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
+            btn.classList.add('activo');
+            cargarFinanzas();
+        });
+    });
+
+    document.querySelectorAll('.btn-trazabilidad-tab').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.btn-trazabilidad-tab').forEach((b) => b.classList.remove('activa'));
+            btn.classList.add('activa');
+            estadoApp.trazabilidad.categoriaActiva = btn.dataset.categoria || 'todos';
+            renderizarTablaTrazabilidad();
+        });
+    });
 
     window.addEventListener('online', () => {
         actualizarIndicadorColaOffline();

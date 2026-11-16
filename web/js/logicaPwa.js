@@ -867,3 +867,294 @@ export const procesarColaVentasOffline = async ({
     };
 };
 
+/**
+ * Formatea una fecha Date a 'YYYY-MM-DD' usando la zona horaria local.
+ */
+export const formatearFechaLocalInput = (fecha = new Date()) => {
+    const d = fecha instanceof Date ? fecha : new Date(fecha);
+    if (Number.isNaN(d.getTime())) return '';
+    const anio = d.getFullYear();
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const dia = String(d.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+};
+
+const parsearFechaSoloDiaLocal = (valor, esFin = false) => {
+    const match = String(valor || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const anio = Number(match[1]);
+    const mes = Number(match[2]) - 1;
+    const dia = Number(match[3]);
+    const d = esFin
+        ? new Date(anio, mes, dia, 23, 59, 59, 999)
+        : new Date(anio, mes, dia, 0, 0, 0, 0);
+    return Number.isNaN(d.getTime()) ? null : d.getTime();
+};
+
+/**
+ * Valida que el rango [fechaDesde, fechaHasta] sea consistente (YYYY-MM-DD y desde <= hasta).
+ */
+export const validarRangoFechas = (fechaDesde = '', fechaHasta = '') => {
+    const desde = String(fechaDesde || '').trim();
+    const hasta = String(fechaHasta || '').trim();
+
+    if (desde && parsearFechaSoloDiaLocal(desde, false) === null) {
+        return { valido: false, mensaje: 'La fecha "Desde" no tiene un formato válido.' };
+    }
+    if (hasta && parsearFechaSoloDiaLocal(hasta, true) === null) {
+        return { valido: false, mensaje: 'La fecha "Hasta" no tiene un formato válido.' };
+    }
+    if (desde && hasta && desde > hasta) {
+        return {
+            valido: false,
+            mensaje: 'La fecha "Desde" no puede ser posterior a la fecha "Hasta".',
+        };
+    }
+    return { valido: true, mensaje: '' };
+};
+
+/**
+ * Determina de forma inclusiva si un timestamp ISO o YYYY-MM-DD cae dentro de [fechaDesde, fechaHasta].
+ */
+export const estaFechaEnRango = (fechaValor, fechaDesde = '', fechaHasta = '') => {
+    const desde = String(fechaDesde || '').trim();
+    const hasta = String(fechaHasta || '').trim();
+    if (!desde && !hasta) return true;
+    if (!fechaValor) return false;
+
+    const texto = String(fechaValor).trim();
+    let ms = null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
+        const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        ms = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0).getTime();
+    } else {
+        ms = new Date(texto).getTime();
+    }
+    if (Number.isNaN(ms)) return false;
+
+    if (desde) {
+        const inicioMs = parsearFechaSoloDiaLocal(desde, false);
+        if (inicioMs !== null && ms < inicioMs) return false;
+    }
+    if (hasta) {
+        const finMs = parsearFechaSoloDiaLocal(hasta, true);
+        if (finMs !== null && ms > finMs) return false;
+    }
+    return true;
+};
+
+/**
+ * Filtra una lista de registros locales/offline por rango de fechas usando uno o varios campos candidatos.
+ */
+export const filtrarRegistrosPorRangoFechas = (
+    registros = [],
+    camposFecha = 'fecha',
+    fechaDesde = '',
+    fechaHasta = ''
+) => {
+    const lista = Array.isArray(registros) ? registros : [];
+    const desde = String(fechaDesde || '').trim();
+    const hasta = String(fechaHasta || '').trim();
+    if (!desde && !hasta) return [...lista];
+
+    const campos = Array.isArray(camposFecha) ? camposFecha : [camposFecha];
+    return lista.filter((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const valor = campos.map((c) => item[c]).find((v) => v !== null && v !== undefined && v !== '');
+        return estaFechaEnRango(valor, desde, hasta);
+    });
+};
+
+/**
+ * Construye query string con fecha_desde, fecha_hasta y parámetros adicionales sin omitir compatibilidad.
+ */
+export const construirQueryRangoFechas = (fechaDesde = '', fechaHasta = '', paramsExtra = {}) => {
+    const params = new URLSearchParams();
+    const desde = String(fechaDesde || '').trim();
+    const hasta = String(fechaHasta || '').trim();
+
+    if (desde) params.set('fecha_desde', desde);
+    if (hasta) params.set('fecha_hasta', hasta);
+
+    if (paramsExtra && typeof paramsExtra === 'object') {
+        for (const [clave, valor] of Object.entries(paramsExtra)) {
+            if (valor !== undefined && valor !== null && String(valor) !== '') {
+                params.set(clave, String(valor));
+            }
+        }
+    }
+    return params.toString();
+};
+
+const formatearMontoSimple = (valor) => {
+    const num = Number(valor);
+    if (!Number.isFinite(num)) return '-';
+    return `$ ${num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+/**
+ * Unifica y ordena cronológicamente Ventas, Movimientos de Stock (o Compras fallback),
+ * Cierres de Caja y Ventas Offline pendientes dentro del rango de fechas seleccionado.
+ */
+export const unificarTrazabilidadRegistros = ({
+    ventas = [],
+    movimientosStock = [],
+    comprasFallback = [],
+    cierresCaja = [],
+    ventasOffline = [],
+    fechaDesde = '',
+    fechaHasta = '',
+} = {}) => {
+    const ventasFiltradas = filtrarRegistrosPorRangoFechas(ventas, 'fecha', fechaDesde, fechaHasta);
+    const ventasOfflineFiltradas = filtrarRegistrosPorRangoFechas(
+        ventasOffline,
+        ['creadoEn', 'fecha'],
+        fechaDesde,
+        fechaHasta
+    );
+
+    const fuenteStock = Array.isArray(movimientosStock) && movimientosStock.length > 0
+        ? movimientosStock
+        : (Array.isArray(comprasFallback)
+            ? comprasFallback.map((c) => ({
+                id: `compra-${c.id}`,
+                fecha: c.fecha,
+                tipo: 'INGRESO',
+                subtipo: 'COMPRA',
+                insumo_nombre: c.insumo_nombre || `Insumo #${c.insumo}`,
+                cantidad: c.cantidad,
+                unidad: c.unidad,
+                monto: c.precio_total,
+                detalle: `Compra a ${c.proveedor_nombre || 'Proveedor'}`,
+                usuario_nombre: 'Gerencia / Compras',
+            }))
+            : []);
+    const stockFiltrado = filtrarRegistrosPorRangoFechas(
+        fuenteStock,
+        'fecha',
+        fechaDesde,
+        fechaHasta
+    );
+
+    const cierresFiltrados = filtrarRegistrosPorRangoFechas(
+        cierresCaja,
+        ['cierre', 'apertura'],
+        fechaDesde,
+        fechaHasta
+    );
+
+    const registros = [];
+
+    for (const v of ventasFiltradas) {
+        const items = Array.isArray(v.items) ? v.items : [];
+        const resumenItems = items.length > 0
+            ? items.map((it) => `${Number(it.cantidad || 1)}x ${it.producto_nombre || `Prod #${it.producto}`}`).join(', ')
+            : 'Ticket de mostrador';
+        const medio = v.medio_pago ? ` · ${v.medio_pago}` : '';
+        registros.push({
+            id: `venta-${v.id}`,
+            categoria: 'venta',
+            fechaIso: v.fecha || v.creado_en || '',
+            tipoEtiqueta: v.origen === 'offline' ? 'Venta (Sync Offline)' : 'Venta',
+            nivelBadge: 'exito',
+            detalle: `Ticket #${v.id}${medio} · ${resumenItems}`,
+            montoCantidad: v.total !== null && v.total !== undefined
+                ? formatearMontoSimple(v.total)
+                : 'Confidencial',
+            responsable: v.usuario_nombre || (v.turno_caja ? `Turno #${v.turno_caja}` : 'Mostrador'),
+        });
+    }
+
+    for (const vo of ventasOfflineFiltradas) {
+        const payload = vo.payload || {};
+        const items = payload.items_entrada || payload.items || [];
+        const cantItems = items.reduce((acc, it) => acc + (Number(it.cantidad) || 1), 0);
+        registros.push({
+            id: `offline-${vo.idTemporal || vo.creadoEn}`,
+            categoria: 'venta',
+            fechaIso: vo.creadoEn || '',
+            tipoEtiqueta: 'Venta (Cola Offline)',
+            nivelBadge: 'advertencia',
+            detalle: `Pendiente sync (${payload.medio_pago || 'EFECTIVO'}) · ${cantItems} unidad(es)`,
+            montoCantidad: 'Pendiente sync',
+            responsable: 'Terminal Local',
+        });
+    }
+
+    for (const m of stockFiltrado) {
+        const esIngreso = String(m.tipo || '').toUpperCase() === 'INGRESO';
+        const signo = esIngreso ? '+' : '-';
+        const cantNum = Number(m.cantidad || 0);
+        const cantStr = Number.isFinite(cantNum)
+            ? `${signo}${cantNum.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${m.unidad || m.unidad_base || ''}`.trim()
+            : `${signo}${m.cantidad || 0} ${m.unidad || ''}`.trim();
+        const montoTexto = m.monto !== null && m.monto !== undefined
+            ? ` (${formatearMontoSimple(m.monto)})`
+            : '';
+
+        registros.push({
+            id: `stock-${m.id}`,
+            categoria: 'stock',
+            fechaIso: m.fecha || '',
+            tipoEtiqueta: esIngreso ? 'Stock · Ingreso' : 'Stock · Consumo',
+            nivelBadge: esIngreso ? 'info' : 'advertencia',
+            detalle: `${m.insumo_nombre || 'Insumo'} · ${m.detalle || m.subtipo || 'Movimiento'}`,
+            montoCantidad: `${cantStr}${montoTexto}`,
+            responsable: m.usuario_nombre || 'Sistema',
+        });
+    }
+
+    for (const t of cierresFiltrados) {
+        const esCerrado = t.estado === 'CERRADO' || Boolean(t.cierre);
+        const fechaTurno = t.cierre || t.apertura || '';
+        const difNum = t.diferencia !== null && t.diferencia !== undefined ? Number(t.diferencia) : null;
+        let difTexto = 'En curso';
+        let nivel = 'info';
+        if (esCerrado && difNum !== null) {
+            if (difNum > 0) {
+                difTexto = `Sobrante +${formatearMontoSimple(difNum)}`;
+                nivel = 'exito';
+            } else if (difNum < 0) {
+                difTexto = `Faltante ${formatearMontoSimple(difNum)}`;
+                nivel = 'peligro';
+            } else {
+                difTexto = 'Arqueo exacto ($ 0,00)';
+                nivel = 'exito';
+            }
+        }
+        const montoCaja = esCerrado
+            ? (t.efectivo_contado !== null && t.efectivo_contado !== undefined
+                ? `Declarado: ${formatearMontoSimple(t.efectivo_contado)}`
+                : 'Cerrado')
+            : (t.efectivo_inicial !== null && t.efectivo_inicial !== undefined
+                ? `Fondo: ${formatearMontoSimple(t.efectivo_inicial)}`
+                : 'Abierto');
+
+        registros.push({
+            id: `caja-${t.id}`,
+            categoria: 'caja',
+            fechaIso: fechaTurno,
+            tipoEtiqueta: esCerrado ? 'Cierre de Caja' : 'Turno Abierto',
+            nivelBadge: nivel,
+            detalle: `Turno #${t.id} · ${difTexto} (${t.cantidad_tickets ?? 0} tickets)`,
+            montoCantidad: montoCaja,
+            responsable: t.usuario_nombre || 'Operador',
+        });
+    }
+
+    registros.sort((a, b) => {
+        const ta = new Date(a.fechaIso).getTime() || 0;
+        const tb = new Date(b.fechaIso).getTime() || 0;
+        return tb - ta;
+    });
+
+    const conteos = {
+        total: registros.length,
+        ventas: ventasFiltradas.length + ventasOfflineFiltradas.length,
+        stock: stockFiltrado.length,
+        caja: cierresFiltrados.length,
+    };
+
+    return { registros, conteos };
+};
+

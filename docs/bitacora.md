@@ -1212,6 +1212,39 @@ Cómo probarlo:
   - `.venv/bin/ruff check backend-django/ ai-service/`
   - `cd backend-node && npm run lint`
 ---
-
-
+Fecha: 2026-11-16
+Tarea: Filtro visual por rango de fechas (Desde / Hasta) en Reportes y Trazabilidad (Punto 1)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **1. Backend (`backend-django`) — Filtrado inclusivo por `fecha_desde` y `fecha_hasta`:**
+  - Se creó `backend-django/apps/comun/filtros.py` con utilidades reutilizables (`parsear_parametro_fecha`, `extraer_rango_fechas`, `filtrar_queryset_por_rango_fechas`) que normalizan `YYYY-MM-DD` desde `00:00:00` hasta `23:59:59.999999` en la zona horaria activa (`America/Argentina/Buenos_Aires`), manteniendo compatibilidad hacia atrás con `fecha_inicio`/`fecha_fin` y sin parámetros.
+  - Se extendieron `VentaViewSet` (`/api/ventas/`, `/api/ventas/ganancia-diaria/`, `/api/ventas/ranking-productos/`, `/api/ventas/reporte-por-producto/`, `/api/ventas/punto-equilibrio/`), `CompraViewSet` (`/api/compras/`), `TurnoCajaViewSet` (`/api/caja/turnos/` por `cierre` o `apertura` si está abierto), `MovimientoCajaViewSet` (`/api/caja/movimientos/`) y `RegistroAuditoriaViewSet` (`/api/usuarios/auditoria/`).
+  - Se agregó `usuario_nombre` en `VentaSerializer` y el endpoint `GET /api/insumos/movimientos/` (`obtener_movimientos_stock_trazabilidad`) que unifica ingresos por compras y egresos por consumo de recetas en ventas filtrados por rango de fechas y protegidos por `insumos.ver`.
+- **2. Frontend PWA (`web/`):**
+  - Se incorporó en `#vista-finanzas` (`web/index.html`, `web/css/estilos.css`) la barra de filtro con `<input type="date" id="filtro-fecha-desde">`, `<input type="date" id="filtro-fecha-hasta">`, atajos rápidos (`Hoy`, `Últimos 7 días`, `Este mes`), botones `Filtrar` y `Limpiar`, indicador de rango activo/cantidad de registros y tabla unificada de trazabilidad con pestañas (`Todos`, `Ventas`, `Movimientos de Stock`, `Cierres de Caja`).
+  - Se agregaron utilidades puras en `web/js/logicaPwa.js` (`validarRangoFechas`, `estaFechaEnRango`, `filtrarRegistrosPorRangoFechas`, `construirQueryRangoFechas`, `unificarTrazabilidadRegistros`) para filtrar tanto las respuestas del backend como la cola offline/caché local, y se integró el rango seleccionado en KPIs, punto de equilibrio y botones de diagnóstico/auditoría IA.
+- **3. Tests:**
+  - Se agregaron pruebas de API en `backend-django/apps/comun/tests/api/test_api_filtros_fechas_trazabilidad.py` y pruebas unitarias/integración PWA en `backend-node/tests/unit/logicaPwa.unit.test.js` y `backend-node/tests/integration/clientePwa.integration.test.js`.
+Archivos tocados:
+- `backend-django/apps/comun/filtros.py`
+- `backend-django/apps/ventas/views.py`
+- `backend-django/apps/ventas/serializers.py`
+- `backend-django/apps/insumos/services.py`
+- `backend-django/apps/insumos/views.py`
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/usuarios/views.py`
+- `backend-django/apps/comun/tests/api/test_api_filtros_fechas_trazabilidad.py`
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test`
+- `.venv/bin/ruff check backend-django/ && .venv/bin/ruff format --check backend-django/ && cd backend-node && npm run lint`
+---
 

@@ -4,14 +4,18 @@ import {
     buscarProductoPorCodigoOTexto,
     calcularResumenCarrito,
     CLAVE_COLA_VENTAS_RECHAZADAS,
+    construirQueryRangoFechas,
     convertirMontoACentavos,
     ejecutarSincronizacionConLock,
     eliminarVentaOffline,
     encolarVentaOffline,
     escaparHtml,
+    estaFechaEnRango,
     extraerItemsDesdeTextoLista,
+    filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
     formatearEventoTiempoReal,
+    formatearFechaLocalInput,
     generarIdOperacion,
     limpiarColaOffline,
     obtenerContenidoPlantillaCsv,
@@ -19,6 +23,8 @@ import {
     obtenerVentasRechazadasOffline,
     parsearCsvProveedor,
     procesarColaVentasOffline,
+    unificarTrazabilidadRegistros,
+    validarRangoFechas,
 } from '../../../web/js/logicaPwa.js';
 
 describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () => {
@@ -399,6 +405,141 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(res503.interrumpidoPorRedOServidor).toBe(true);
             expect(res503.restantes).toBe(1);
             expect(obtenerVentasRechazadasOffline(storage)).toEqual([]);
+        });
+    });
+
+    describe('Filtro por rango de fechas y trazabilidad unificada (Reportes)', () => {
+        it('valida rangos Desde/Hasta y construye query params compatibles', () => {
+            expect(validarRangoFechas('2026-11-12', '2026-11-14')).toEqual({
+                valido: true,
+                mensaje: '',
+            });
+            expect(validarRangoFechas('', '2026-11-14').valido).toBe(true);
+            expect(validarRangoFechas('2026-11-15', '2026-11-12').valido).toBe(false);
+            expect(validarRangoFechas('invalida', '2026-11-12').valido).toBe(false);
+
+            expect(
+                construirQueryRangoFechas('2026-11-12', '2026-11-14', { limite: 100 })
+            ).toBe('fecha_desde=2026-11-12&fecha_hasta=2026-11-14&limite=100');
+            expect(construirQueryRangoFechas('', '')).toBe('');
+            expect(formatearFechaLocalInput(new Date(2026, 10, 12, 23, 45))).toBe('2026-11-12');
+        });
+
+        it('filtra fechas inclusivamente de 00:00:00 a 23:59:59.999 en estado local/offline', () => {
+            const isoInicioDia12 = new Date(2026, 10, 12, 0, 0, 0, 0).toISOString();
+            const isoFinDia14 = new Date(2026, 10, 14, 23, 59, 59, 999).toISOString();
+            const isoAntes = new Date(2026, 10, 11, 23, 59, 59, 999).toISOString();
+            const isoDespues = new Date(2026, 10, 15, 0, 0, 0, 0).toISOString();
+
+            expect(estaFechaEnRango(isoInicioDia12, '2026-11-12', '2026-11-14')).toBe(true);
+            expect(estaFechaEnRango(isoFinDia14, '2026-11-12', '2026-11-14')).toBe(true);
+            expect(estaFechaEnRango(isoAntes, '2026-11-12', '2026-11-14')).toBe(false);
+            expect(estaFechaEnRango(isoDespues, '2026-11-12', '2026-11-14')).toBe(false);
+
+            const registros = [
+                { id: 1, cierre: isoAntes, apertura: isoAntes },
+                { id: 2, cierre: null, apertura: isoInicioDia12 },
+                { id: 3, cierre: isoFinDia14, apertura: isoAntes },
+                { id: 4, cierre: isoDespues, apertura: isoDespues },
+            ];
+            const filtrados = filtrarRegistrosPorRangoFechas(
+                registros,
+                ['cierre', 'apertura'],
+                '2026-11-12',
+                '2026-11-14'
+            );
+            expect(filtrados.map((r) => r.id)).toEqual([2, 3]);
+        });
+
+        it('unifica y ordena ventas, movimientos de stock, cierres de caja y cola offline dentro del rango', () => {
+            const fechaDia12 = new Date(2026, 10, 12, 10, 30, 0).toISOString();
+            const fechaDia13 = new Date(2026, 10, 13, 14, 0, 0).toISOString();
+            const fechaDia14 = new Date(2026, 10, 14, 19, 15, 0).toISOString();
+            const fechaFuera = new Date(2026, 10, 10, 12, 0, 0).toISOString();
+
+            const resultado = unificarTrazabilidadRegistros({
+                ventas: [
+                    {
+                        id: 10,
+                        fecha: fechaDia12,
+                        medio_pago: 'EFECTIVO',
+                        total: '5000.00',
+                        usuario_nombre: 'cajero_demo',
+                        items: [{ producto_nombre: 'Espresso', cantidad: 2 }],
+                    },
+                    {
+                        id: 11,
+                        fecha: fechaFuera,
+                        medio_pago: 'TARJETA',
+                        total: '3000.00',
+                    },
+                ],
+                movimientosStock: [
+                    {
+                        id: 'compra-1',
+                        fecha: fechaDia13,
+                        tipo: 'INGRESO',
+                        insumo_nombre: 'Café Colombia',
+                        cantidad: '5',
+                        unidad: 'kg',
+                        monto: '115000.00',
+                        detalle: 'Compra a Distribuidora Central',
+                        usuario_nombre: 'Gerencia / Compras',
+                    },
+                    {
+                        id: 'compra-2',
+                        fecha: fechaFuera,
+                        tipo: 'INGRESO',
+                        insumo_nombre: 'Leche',
+                        cantidad: '12',
+                        unidad: 'l',
+                    },
+                ],
+                cierresCaja: [
+                    {
+                        id: 4,
+                        estado: 'CERRADO',
+                        apertura: fechaDia14,
+                        cierre: fechaDia14,
+                        efectivo_contado: '25000.00',
+                        diferencia: '0.00',
+                        cantidad_tickets: 8,
+                        usuario_nombre: 'encargado_demo',
+                    },
+                ],
+                ventasOffline: [
+                    {
+                        idTemporal: 'OFF-1',
+                        creadoEn: fechaDia13,
+                        payload: {
+                            medio_pago: 'EFECTIVO',
+                            items_entrada: [{ producto_id: 1, cantidad: 2 }],
+                        },
+                    },
+                    {
+                        idTemporal: 'OFF-2',
+                        creadoEn: fechaFuera,
+                        payload: { medio_pago: 'EFECTIVO', items_entrada: [] },
+                    },
+                ],
+                fechaDesde: '2026-11-12',
+                fechaHasta: '2026-11-14',
+            });
+
+            expect(resultado.conteos).toEqual({
+                total: 4,
+                ventas: 2,
+                stock: 1,
+                caja: 1,
+            });
+            expect(resultado.registros.map((r) => r.id)).toEqual([
+                'caja-4',
+                'offline-OFF-1',
+                'stock-compra-1',
+                'venta-10',
+            ]);
+            expect(resultado.registros[0].tipoEtiqueta).toBe('Cierre de Caja');
+            expect(resultado.registros[2].tipoEtiqueta).toBe('Stock · Ingreso');
         });
     });
 });
