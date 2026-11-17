@@ -59,6 +59,17 @@ class ProveedorIA(ABC):
         (sin concatenarlos) y devuelve el diccionario JSON de respuesta.
         """
 
+    async def generar_json_con_imagen(
+        self,
+        instrucciones_sistema: str,
+        datos_usuario: str,
+        imagen_base64: str,
+        imagen_mime: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        """Procesa una imagen junto con instrucciones y datos del usuario."""
+        raise ErrorProveedorIA(f"El proveedor '{self.nombre}' no puede leer imágenes.")
+
 
 class GeminiAdapter(ProveedorIA):
     """Adaptador para Google Gemini API (REST v1beta generateContent)."""
@@ -77,10 +88,10 @@ class GeminiAdapter(ProveedorIA):
     def nombre(self) -> str:
         return "gemini"
 
-    async def generar_json(
+    async def _enviar_generate_content(
         self,
         instrucciones_sistema: str,
-        datos_usuario: str,
+        partes_usuario: list[dict[str, Any]],
         timeout: float,
     ) -> dict[str, Any]:
         if not self.api_key:
@@ -100,7 +111,7 @@ class GeminiAdapter(ProveedorIA):
             "contents": [
                 {
                     "role": "user",
-                    "parts": [{"text": datos_usuario}],
+                    "parts": partes_usuario,
                 }
             ],
             "generationConfig": {
@@ -127,6 +138,40 @@ class GeminiAdapter(ProveedorIA):
             raise ErrorProveedorIA("Estructura de respuesta inesperada desde Gemini API.") from exc
 
         return extraer_objeto_json(texto_respuesta)
+
+    async def generar_json(
+        self,
+        instrucciones_sistema: str,
+        datos_usuario: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        return await self._enviar_generate_content(
+            instrucciones_sistema=instrucciones_sistema,
+            partes_usuario=[{"text": datos_usuario}],
+            timeout=timeout,
+        )
+
+    async def generar_json_con_imagen(
+        self,
+        instrucciones_sistema: str,
+        datos_usuario: str,
+        imagen_base64: str,
+        imagen_mime: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        return await self._enviar_generate_content(
+            instrucciones_sistema=instrucciones_sistema,
+            partes_usuario=[
+                {"text": datos_usuario},
+                {
+                    "inline_data": {
+                        "mime_type": imagen_mime,
+                        "data": imagen_base64,
+                    }
+                },
+            ],
+            timeout=timeout,
+        )
 
 
 class OllamaAdapter(ProveedorIA):
@@ -419,17 +464,76 @@ class GroqAdapter(ProveedorIA):
         self,
         api_key: Optional[str] = None,
         modelo: Optional[str] = None,
+        modelo_vision: Optional[str] = None,
         base_url: Optional[str] = None,
         fallback_demo: bool = True,
     ) -> None:
         self.api_key = api_key if api_key is not None else config.groq_api_key
         self.modelo = modelo or config.groq_modelo
+        self.modelo_vision = modelo_vision or config.groq_vision_modelo
         self.base_url = (base_url or config.groq_base_url).rstrip("/")
         self.fallback_demo = fallback_demo
 
     @property
     def nombre(self) -> str:
         return "groq"
+
+    def _contingencia_imagen_sin_inventar(self, datos_usuario: str, motivo: str) -> dict[str, Any]:
+        proveedor = None
+        try:
+            data = json.loads(datos_usuario) if isinstance(datos_usuario, str) else datos_usuario
+            if isinstance(data, dict):
+                proveedor = data.get("proveedor_informado")
+        except Exception:
+            proveedor = None
+        return {
+            "proveedor_detectado": proveedor,
+            "envio_detectado": "0.00",
+            "moneda": "ARS",
+            "items": [],
+            "advertencias": [motivo],
+            "contingencia": True,
+        }
+
+    async def _enviar_chat_completions(
+        self,
+        modelo: str,
+        instrucciones_sistema: str,
+        contenido_usuario: Any,
+        timeout: float,
+    ) -> dict[str, Any]:
+        url = f"{self.base_url}/chat/completions"
+        cabeceras = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+        cuerpo = {
+            "model": modelo,
+            "messages": [
+                {"role": "system", "content": instrucciones_sistema},
+                {"role": "user", "content": contenido_usuario},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.1,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as cliente:
+                respuesta = await cliente.post(url, headers=cabeceras, json=cuerpo)
+                respuesta.raise_for_status()
+                payload = respuesta.json()
+        except httpx.TimeoutException as exc:
+            raise ErrorProveedorIA("Tiempo de espera agotado al consultar Groq API.") from exc
+        except httpx.HTTPError as exc:
+            raise ErrorProveedorIA("Fallo de comunicación HTTP con Groq API.") from exc
+
+        try:
+            elecciones = payload.get("choices") or []
+            texto_respuesta = elecciones[0]["message"]["content"]
+        except (IndexError, KeyError, TypeError) as exc:
+            raise ErrorProveedorIA("Estructura de respuesta inesperada desde Groq API.") from exc
+
+        return extraer_objeto_json(texto_respuesta)
 
     async def generar_json(
         self,
@@ -445,48 +549,59 @@ class GroqAdapter(ProveedorIA):
                 )
             raise ErrorProveedorIA("GROQ_API_KEY no está configurada en el entorno.")
 
-        url = f"{self.base_url}/chat/completions"
-        cabeceras = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-        cuerpo = {
-            "model": self.modelo,
-            "messages": [
-                {"role": "system", "content": instrucciones_sistema},
-                {"role": "user", "content": datos_usuario},
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.1,
-        }
-
         try:
-            async with httpx.AsyncClient(timeout=timeout) as cliente:
-                respuesta = await cliente.post(url, headers=cabeceras, json=cuerpo)
-                respuesta.raise_for_status()
-                payload = respuesta.json()
-        except (httpx.TimeoutException, httpx.HTTPError) as exc:
-            motivo = (
-                "Tiempo de espera agotado al consultar Groq API."
-                if isinstance(exc, httpx.TimeoutException)
-                else "Fallo de comunicación HTTP con Groq API."
+            return await self._enviar_chat_completions(
+                modelo=self.modelo,
+                instrucciones_sistema=instrucciones_sistema,
+                contenido_usuario=datos_usuario,
+                timeout=timeout,
             )
+        except ErrorProveedorIA as exc:
+            if (
+                self.fallback_demo
+                and "no es JSON válido" not in str(exc)
+                and "debe ser un objeto" not in str(exc)
+                and "respuesta vacía" not in str(exc)
+            ):
+                return fallback_determinista_demostracion(datos_usuario, motivo=str(exc))
+            raise
+
+    async def generar_json_con_imagen(
+        self,
+        instrucciones_sistema: str,
+        datos_usuario: str,
+        imagen_base64: str,
+        imagen_mime: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        if not self.api_key:
+            motivo = "GROQ_API_KEY no está configurada en el entorno."
             if self.fallback_demo:
-                return fallback_determinista_demostracion(datos_usuario, motivo=motivo)
-            raise ErrorProveedorIA(motivo) from exc
+                return self._contingencia_imagen_sin_inventar(datos_usuario, motivo=motivo)
+            raise ErrorProveedorIA(motivo)
+
+        data_url = f"data:{imagen_mime};base64,{imagen_base64}"
+        contenido_usuario = [
+            {"type": "text", "text": datos_usuario},
+            {"type": "image_url", "image_url": {"url": data_url}},
+        ]
 
         try:
-            elecciones = payload.get("choices") or []
-            texto_respuesta = elecciones[0]["message"]["content"]
-        except (IndexError, KeyError, TypeError) as exc:
-            if self.fallback_demo:
-                return fallback_determinista_demostracion(
-                    datos_usuario,
-                    motivo="Estructura de respuesta inesperada desde Groq API.",
-                )
-            raise ErrorProveedorIA("Estructura de respuesta inesperada desde Groq API.") from exc
-
-        return extraer_objeto_json(texto_respuesta)
+            return await self._enviar_chat_completions(
+                modelo=self.modelo_vision,
+                instrucciones_sistema=instrucciones_sistema,
+                contenido_usuario=contenido_usuario,
+                timeout=timeout,
+            )
+        except ErrorProveedorIA as exc:
+            if (
+                self.fallback_demo
+                and "no es JSON válido" not in str(exc)
+                and "debe ser un objeto" not in str(exc)
+                and "respuesta vacía" not in str(exc)
+            ):
+                return self._contingencia_imagen_sin_inventar(datos_usuario, motivo=str(exc))
+            raise
 
 
 def obtener_proveedor_ia(nombre_proveedor: Optional[str] = None) -> ProveedorIA:

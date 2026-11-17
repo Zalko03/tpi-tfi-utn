@@ -1,11 +1,12 @@
 """Tests de API sobre los endpoints de ai-service (/health, /v1/extraer-precios, /v1/resumen-semanal)."""
 
-from unittest.mock import patch
+import base64
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.proveedor_ia import ErrorProveedorIA
+from app.services.proveedor_ia import ErrorProveedorIA, GroqAdapter
 from app.tests.unit.test_unit_adapters_y_servicios import AdaptadorMockExitoso
 
 cliente = TestClient(app)
@@ -129,6 +130,89 @@ class TestApiEndpointsAIService:
         cuerpo = respuesta.json()
         assert cuerpo["mensaje"] == "Datos de entrada inválidos"
         assert "texto_lista" in cuerpo["detalles"]
+
+    def test_post_extraer_precios_con_imagen_exitoso_y_contingencia_sin_clave(self, monkeypatch):
+        img_b64 = base64.b64encode(b"\xff\xd8\xff\xe0foto-lista").decode("ascii")
+
+        respuesta_http_mock = MagicMock()
+        respuesta_http_mock.raise_for_status = MagicMock()
+        respuesta_http_mock.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": (
+                            '{"proveedor_detectado": "Foto Mayorista", "envio_detectado": "0.00", '
+                            '"moneda": "ARS", "items": [{"nombre_insumo": "Café en grano", '
+                            '"cantidad": "1", "unidad": "kg", "precio_total": "24000.00"}], '
+                            '"advertencias": []}'
+                        ),
+                    }
+                }
+            ]
+        }
+        cliente_mock = AsyncMock()
+        cliente_mock.post.return_value = respuesta_http_mock
+        cliente_mock.__aenter__.return_value = cliente_mock
+        cliente_mock.__aexit__.return_value = None
+
+        adaptador_groq = GroqAdapter(api_key="gsk-test-vision", fallback_demo=False)
+        with (
+            patch("app.services.extraccion.obtener_proveedor_ia", return_value=adaptador_groq),
+            patch("httpx.AsyncClient", return_value=cliente_mock),
+        ):
+            res_ok = cliente.post(
+                "/v1/extraer-precios",
+                json={
+                    "proveedor_nombre": "Foto Mayorista",
+                    "origen_archivo": "imagen",
+                    "imagen_base64": img_b64,
+                    "imagen_mime": "image/jpeg",
+                },
+            )
+
+        assert res_ok.status_code == 200
+        datos_ok = res_ok.json()
+        assert datos_ok["contingencia"] is False
+        assert datos_ok["proveedor_ia"] == "groq"
+        assert len(datos_ok["items"]) == 1
+        assert datos_ok["items"][0]["nombre_insumo"] == "Café en grano"
+        assert datos_ok["items"][0]["precio_total"] == "24000.00"
+        cuerpo_enviado = cliente_mock.post.call_args.kwargs["json"]
+        assert "foto" in cuerpo_enviado["messages"][0]["content"].lower()
+
+        # Sin clave devuelve contingencia honesta sin inventar ítems
+        monkeypatch.setenv("AI_PROVIDER", "groq")
+        monkeypatch.setenv("GROQ_API_KEY", "")
+        res_sin_clave = cliente.post(
+            "/v1/extraer-precios",
+            json={
+                "proveedor_nombre": "Foto Mayorista",
+                "origen_archivo": "imagen",
+                "imagen_base64": img_b64,
+                "imagen_mime": "image/jpeg",
+            },
+        )
+        assert res_sin_clave.status_code == 200
+        datos_sin_clave = res_sin_clave.json()
+        assert datos_sin_clave["contingencia"] is True
+        assert datos_sin_clave["items"] == []
+        assert datos_sin_clave["proveedor_ia"] == "contingencia"
+
+    def test_post_extraer_precios_imagen_invalida_responde_400(self):
+        respuesta = cliente.post(
+            "/v1/extraer-precios",
+            json={
+                "origen_archivo": "imagen",
+                "imagen_base64": "no-valido!!!",
+                "imagen_mime": "image/gif",
+            },
+        )
+        assert respuesta.status_code == 400
+        cuerpo = respuesta.json()
+        assert cuerpo["mensaje"] == "Datos de entrada inválidos"
+        assert "imagen_base64" in cuerpo["detalles"]
+        assert "imagen_mime" in cuerpo["detalles"]
 
     def test_post_resumen_semanal_exitoso(self):
         adaptador_mock = AdaptadorMockExitoso(

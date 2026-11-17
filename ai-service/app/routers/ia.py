@@ -15,9 +15,9 @@ router = APIRouter(prefix="/v1", tags=["Inteligencia Artificial"])
     "/extraer-precios",
     response_model=RespuestaExtraccionPrecios,
     status_code=status.HTTP_200_OK,
-    summary="Extraer insumos y precios desde texto de proveedor (HU7)",
+    summary="Extraer insumos y precios desde texto o foto de proveedor (HU7)",
     description=(
-        "Recibe el texto desestructurado de una lista de precios de proveedor, "
+        "Recibe el texto desestructurado o una foto en base64 de una lista de precios de proveedor, "
         "lo procesa mediante el adaptador de IA configurado con el prompt versionado, "
         "valida cada ítem con Pydantic v2 (cantidades y precios en Decimal) y retorna "
         "la propuesta normalizada. Si el proveedor de IA falla o supera el timeout, "

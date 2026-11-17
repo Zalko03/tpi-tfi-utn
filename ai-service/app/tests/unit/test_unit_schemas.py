@@ -1,11 +1,13 @@
 """Tests unitarios de validación de esquemas Pydantic v2 (app/schemas/)."""
 
+import base64
 from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
 
 from app.schemas.extraccion import (
+    MAX_IMAGEN_BYTES,
     ItemPrecioExtraido,
     SalidaIAExtraccionPrecios,
     SolicitudExtraccionPrecios,
@@ -39,6 +41,56 @@ class TestUnitSchemasExtraccion:
             SolicitudExtraccionPrecios(
                 texto_lista="Leche entera 1 l $1200",
                 version_prompt="../v1",
+            )
+
+    def test_solicitud_extraccion_valida_con_imagen_sin_texto(self):
+        img_b64 = base64.b64encode(b"\xff\xd8\xff\xe0imagen-jpeg-falsa").decode("ascii")
+        solicitud = SolicitudExtraccionPrecios(
+            imagen_base64=img_b64,
+            imagen_mime="IMAGE/JPEG",
+            origen_archivo="imagen",
+            proveedor_nombre="Distribuidora Foto",
+        )
+        assert solicitud.texto_lista is None
+        assert solicitud.imagen_base64 == img_b64
+        assert solicitud.imagen_mime == "image/jpeg"
+        assert solicitud.origen_archivo == "imagen"
+
+    def test_solicitud_extraccion_requiere_texto_o_imagen(self):
+        with pytest.raises(ValidationError):
+            SolicitudExtraccionPrecios(proveedor_nombre="Sin datos")
+
+    def test_solicitud_extraccion_imagen_requiere_mime_y_base64(self):
+        img_b64 = base64.b64encode(b"contenido-png").decode("ascii")
+        with pytest.raises(ValidationError):
+            SolicitudExtraccionPrecios(imagen_base64=img_b64)
+        with pytest.raises(ValidationError):
+            SolicitudExtraccionPrecios(imagen_mime="image/png")
+
+    @pytest.mark.parametrize("mime_invalido", ["image/gif", "application/pdf", "text/plain"])
+    def test_solicitud_extraccion_rechaza_mime_imagen_invalido(self, mime_invalido):
+        img_b64 = base64.b64encode(b"contenido").decode("ascii")
+        with pytest.raises(ValidationError):
+            SolicitudExtraccionPrecios(imagen_base64=img_b64, imagen_mime=mime_invalido)
+
+    @pytest.mark.parametrize(
+        "base64_invalido",
+        ["", "   ", "no-es-base64!!!", "data:image/jpeg;base64,/9j/4AAQ"],
+    )
+    def test_solicitud_extraccion_rechaza_base64_invalido(self, base64_invalido):
+        with pytest.raises(ValidationError):
+            SolicitudExtraccionPrecios(
+                imagen_base64=base64_invalido,
+                imagen_mime="image/jpeg",
+            )
+
+    def test_solicitud_extraccion_rechaza_imagen_que_supera_tamano_maximo(self):
+        bytes_excedidos = b"a" * (MAX_IMAGEN_BYTES + 1)
+        b64_grande = base64.b64encode(bytes_excedidos).decode("ascii")
+        with pytest.raises(ValidationError):
+            SolicitudExtraccionPrecios(
+                imagen_base64=b64_grande,
+                imagen_mime="image/jpeg",
             )
 
     def test_item_precio_extraido_convierte_a_decimal_y_normaliza_unidad(self):

@@ -81,27 +81,45 @@ async def extraer_precios_de_lista(
             motivo=str(exc),
         )
 
-    # El texto del usuario se pasa como un objeto de datos estructurado independiente
-    datos_usuario = json.dumps(
-        {
-            "proveedor_informado": solicitud.proveedor_nombre,
-            "texto_lista_precios": solicitud.texto_lista,
-        },
-        ensure_ascii=False,
-    )
+    tiene_imagen = bool(solicitud.imagen_base64)
+    if tiene_imagen:
+        instrucciones_sistema = (
+            f"{instrucciones_sistema}\n\n"
+            "Nota: El contenido de la lista de precios viene en una foto adjunta; "
+            "extraé los ítems y precios visibles en la imagen."
+        )
 
-    timeout = config.timeout_segundos
+    # El texto del usuario se pasa como un objeto de datos estructurado independiente
+    payload_usuario: dict[str, Optional[str]] = {
+        "proveedor_informado": solicitud.proveedor_nombre,
+    }
+    if solicitud.texto_lista:
+        payload_usuario["texto_lista_precios"] = solicitud.texto_lista
+    datos_usuario = json.dumps(payload_usuario, ensure_ascii=False)
+
+    timeout = config.timeout_segundos * 2 if tiene_imagen else config.timeout_segundos
     max_reintentos = config.max_reintentos
     ultimo_error = "Error desconocido al consultar el proveedor de IA."
 
     for _intento in range(max_reintentos + 1):
         try:
-            salida_cruda = await asyncio.wait_for(
-                proveedor.generar_json(
+            llamada_ia = (
+                proveedor.generar_json_con_imagen(
+                    instrucciones_sistema=instrucciones_sistema,
+                    datos_usuario=datos_usuario,
+                    imagen_base64=solicitud.imagen_base64 or "",
+                    imagen_mime=solicitud.imagen_mime or "image/jpeg",
+                    timeout=timeout,
+                )
+                if tiene_imagen
+                else proveedor.generar_json(
                     instrucciones_sistema=instrucciones_sistema,
                     datos_usuario=datos_usuario,
                     timeout=timeout,
-                ),
+                )
+            )
+            salida_cruda = await asyncio.wait_for(
+                llamada_ia,
                 timeout=timeout,
             )
             salida_validada = SalidaIAExtraccionPrecios.model_validate(salida_cruda)

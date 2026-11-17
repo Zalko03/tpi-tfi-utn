@@ -26,6 +26,13 @@ class ConfiguracionIA:
         return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
 
     @property
+    def groq_vision_modelo(self) -> str:
+        return os.getenv(
+            "GROQ_VISION_MODEL",
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+        ).strip()
+
+    @property
     def groq_base_url(self) -> str:
         return (
             os.getenv(
