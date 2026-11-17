@@ -16,6 +16,7 @@ import {
     esArchivoDocx,
     esArchivoExcel,
     esArchivoPdf,
+    esCargaVigente,
     escaparHtml,
     evaluarCsvPlantillaDirecta,
     evaluarEstadoImportacionIA,
@@ -37,6 +38,7 @@ import {
     obtenerVentasOffline,
     parsearCsvProveedor,
     procesarColaVentasOffline,
+    siguienteIdCarga,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
     validarRangoFechas,
@@ -141,10 +143,13 @@ export const estadoApp = {
     usuariosEquipo: [],
     productoDesgloseId: null,
     filtroCategoriaActual: 'todos',
+    idCargaReportes: 0,
     trazabilidad: {
         registros: [],
         conteos: { total: 0, ventas: 0, stock: 0, caja: 0 },
         categoriaActiva: 'todos',
+        fechaDesde: '',
+        fechaHasta: '',
     },
     contadores: {
         ventas: 0,
@@ -2531,7 +2536,7 @@ const actualizarIndicadorRangoReportes = (fechaDesde, fechaHasta, totalRegistros
 
 const renderizarTablaTrazabilidad = () => {
     const tbody = $('tabla-trazabilidad-body');
-    const { registros, conteos, categoriaActiva } = estadoApp.trazabilidad;
+    const { registros, conteos, categoriaActiva, fechaDesde = '', fechaHasta = '' } = estadoApp.trazabilidad;
 
     if ($('pill-conteo-ventas')) $('pill-conteo-ventas').textContent = `Ventas: ${conteos.ventas}`;
     if ($('pill-conteo-stock')) $('pill-conteo-stock').textContent = `Stock: ${conteos.stock}`;
@@ -2542,7 +2547,6 @@ const renderizarTablaTrazabilidad = () => {
     if ($('tab-count-stock')) $('tab-count-stock').textContent = String(conteos.stock);
     if ($('tab-count-caja')) $('tab-count-caja').textContent = String(conteos.caja);
 
-    const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado();
     actualizarIndicadorRangoReportes(fechaDesde, fechaHasta, conteos.total);
 
     if (!tbody) return;
@@ -2583,7 +2587,29 @@ const renderizarTablaTrazabilidad = () => {
     }
 };
 
-export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '') => {
+const limpiarTarjetasFinanzas = () => {
+    if ($('fin-facturacion-bruta')) $('fin-facturacion-bruta').textContent = '-';
+    if ($('fin-costo-congelado')) $('fin-costo-congelado').textContent = '-';
+    if ($('fin-ganancia-neta')) $('fin-ganancia-neta').textContent = '-';
+    if ($('fin-tickets-cant')) $('fin-tickets-cant').textContent = '-';
+    if ($('fin-unidades-totales')) $('fin-unidades-totales').textContent = '-';
+    if ($('fin-margen-promedio')) $('fin-margen-promedio').textContent = '-';
+};
+
+const limpiarTarjetasPuntoEquilibrio = () => {
+    if ($('pe-monto-mensual')) $('pe-monto-mensual').textContent = '-';
+    if ($('pe-monto-diario')) $('pe-monto-diario').textContent = '-';
+    if ($('pe-monto-semanal')) $('pe-monto-semanal').textContent = '-';
+    if ($('pe-barra-progreso')) $('pe-barra-progreso').style.width = '0%';
+    if ($('pe-porcentaje-texto')) $('pe-porcentaje-texto').textContent = '-';
+};
+
+export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '', idCargaParam = null) => {
+    const idCarga = idCargaParam !== null ? idCargaParam : siguienteIdCarga(estadoApp.idCargaReportes);
+    if (idCargaParam === null) {
+        estadoApp.idCargaReportes = idCarga;
+    }
+
     const queryFechas = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
     const queryMovs = construirQueryRangoFechas(fechaDesde, fechaHasta);
     const headers = { 'Authorization': `Bearer ${estadoApp.tokenJwt}` };
@@ -2608,11 +2634,14 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
             ).catch(() => null),
             fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?${queryFechas}`, { headers }).catch(() => null),
         ]);
+        if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
 
         const ventasData = await extraerLista(resVentas);
+        if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
         if (ventasData !== null) ventas = ventasData;
 
         const movStockData = await extraerLista(resMovStock);
+        if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
         if (movStockData !== null) {
             movimientosStock = movStockData;
         } else {
@@ -2620,11 +2649,14 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
                 `${estadoApp.djangoUrl}/api/compras/?${queryFechas}`,
                 { headers }
             ).catch(() => null);
+            if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
             const comprasData = await extraerLista(resCompras);
+            if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
             if (comprasData !== null) comprasFallback = comprasData;
         }
 
         const turnosData = await extraerLista(resTurnos);
+        if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
         if (turnosData !== null) {
             cierresCaja = turnosData;
         } else {
@@ -2636,6 +2668,7 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
             );
         }
     } catch {
+        if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
         cierresCaja = filtrarRegistrosPorRangoFechas(
             estadoApp.turnosHistorial,
             ['cierre', 'apertura'],
@@ -2643,6 +2676,8 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
             fechaHasta
         );
     }
+
+    if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
 
     const ventasOffline = obtenerVentasOffline();
     const resultado = unificarTrazabilidadRegistros({
@@ -2659,6 +2694,8 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
         ...estadoApp.trazabilidad,
         registros: resultado.registros,
         conteos: resultado.conteos,
+        fechaDesde,
+        fechaHasta,
     };
     renderizarTablaTrazabilidad();
 };
@@ -2673,16 +2710,29 @@ export const cargarFinanzas = async () => {
         return;
     }
 
+    const idCarga = siguienteIdCarga(estadoApp.idCargaReportes);
+    estadoApp.idCargaReportes = idCarga;
+
     const queryFechas = construirQueryRangoFechas(fechaDesde, fechaHasta);
     const queryRanking = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
+    const headers = { 'Authorization': `Bearer ${estadoApp.tokenJwt}` };
 
-    try {
-        const resGanancia = await fetch(
-            `${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/${queryFechas ? `?${queryFechas}` : ''}`,
-            { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
-        );
-        if (resGanancia.ok) {
+    const cargarTarjetasGanancia = async () => {
+        try {
+            const resGanancia = await fetch(
+                `${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/${queryFechas ? `?${queryFechas}` : ''}`,
+                { headers }
+            );
+            if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return true;
+
+            if (!resGanancia.ok) {
+                limpiarTarjetasFinanzas();
+                return false;
+            }
+
             const data = await resGanancia.json();
+            if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return true;
+
             if ($('fin-facturacion-bruta')) $('fin-facturacion-bruta').textContent = formatearMoneda(data.ingresos_totales);
             if ($('fin-costo-congelado')) $('fin-costo-congelado').textContent = formatearMoneda(data.costo_total_congelado);
             if ($('fin-ganancia-neta')) $('fin-ganancia-neta').textContent = formatearMoneda(data.ganancia_bruta_diaria);
@@ -2691,33 +2741,65 @@ export const cargarFinanzas = async () => {
 
             const margenPct = (Number(data.margen_bruto_promedio || 0) * 100).toFixed(1);
             if ($('fin-margen-promedio')) $('fin-margen-promedio').textContent = `Margen bruto promedio: ${margenPct}%`;
+            return true;
+        } catch {
+            if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return true;
+            limpiarTarjetasFinanzas();
+            return false;
         }
+    };
 
-        const resRanking = await fetch(
-            `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?${queryRanking}`,
-            { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
-        );
-        if (resRanking.ok) {
+    const cargarRanking = async () => {
+        try {
+            const resRanking = await fetch(
+                `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?${queryRanking}`,
+                { headers }
+            );
+            if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return true;
+
+            if (!resRanking.ok) {
+                renderizarRankingProductos({ mas_vendidos: [], menos_vendidos: [] }, true);
+                return false;
+            }
+
             const ranking = await resRanking.json();
-            renderizarRankingProductos(ranking);
-        }
+            if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return true;
 
-        await Promise.all([
-            calcularPuntoEquilibrio(fechaDesde, fechaHasta),
-            cargarTrazabilidadReportes(fechaDesde, fechaHasta),
-        ]);
-    } catch {
-        await cargarTrazabilidadReportes(fechaDesde, fechaHasta);
+            renderizarRankingProductos(ranking);
+            return true;
+        } catch {
+            if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return true;
+            renderizarRankingProductos({ mas_vendidos: [], menos_vendidos: [] }, true);
+            return false;
+        }
+    };
+
+    const [okGanancia, okRanking, okPuntoEquilibrio] = await Promise.all([
+        cargarTarjetasGanancia(),
+        cargarRanking(),
+        calcularPuntoEquilibrio(fechaDesde, fechaHasta, idCarga),
+        cargarTrazabilidadReportes(fechaDesde, fechaHasta, idCarga),
+    ]);
+
+    if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
+    if (!okGanancia || !okRanking || !okPuntoEquilibrio) {
+        mostrarToast('No se pudieron cargar algunas métricas del período.', 'advertencia');
     }
 };
 
-const renderizarRankingProductos = (ranking) => {
+const renderizarRankingProductos = (ranking, conError = false) => {
     const contenedorMas = $('ranking-mas-vendidos-lista');
     const contenedorSin = $('ranking-sin-rotacion-lista');
     if (!contenedorMas || !contenedorSin) return;
 
     contenedorMas.innerHTML = '';
     contenedorSin.innerHTML = '';
+
+    if (conError) {
+        contenedorMas.innerHTML = '<p class="text-muted">-</p>';
+        contenedorSin.innerHTML = '<p class="text-muted">-</p>';
+        return;
+    }
 
     const masVendidos = ranking.mas_vendidos || [];
     const menosVendidos = ranking.menos_vendidos || [];
@@ -2762,13 +2844,22 @@ const renderizarRankingProductos = (ranking) => {
     }
 };
 
-const calcularPuntoEquilibrio = async (fechaDesdeParam = null, fechaHastaParam = null) => {
+const calcularPuntoEquilibrio = async (fechaDesdeParam = null, fechaHastaParam = null, idCargaParam = null) => {
+    const idCargaEsperado = idCargaParam !== null ? idCargaParam : estadoApp.idCargaReportes;
     const costosFijos = $('input-pe-costos-fijos')?.value || '1500000';
     const diasOp = $('input-pe-dias-op')?.value || '26';
     const diasSem = $('input-pe-dias-sem')?.value || '6';
     const rango = obtenerRangoFechasSeleccionado();
     const fechaDesde = fechaDesdeParam !== null ? fechaDesdeParam : rango.fechaDesde;
     const fechaHasta = fechaHastaParam !== null ? fechaHastaParam : rango.fechaHasta;
+
+    if (fechaDesdeParam === null && fechaHastaParam === null) {
+        const validacion = validarRangoFechas(fechaDesde, fechaHasta);
+        if (!validacion.valido) {
+            mostrarToast(validacion.mensaje, 'advertencia');
+            return false;
+        }
+    }
 
     const payload = {
         costos_fijos: costosFijos,
@@ -2784,6 +2875,11 @@ const calcularPuntoEquilibrio = async (fechaDesdeParam = null, fechaHastaParam =
         payload.fecha_fin = fechaHasta;
     }
 
+    const cargaSigueVigente = () =>
+        idCargaParam !== null
+            ? esCargaVigente(idCargaParam, estadoApp.idCargaReportes)
+            : idCargaEsperado === estadoApp.idCargaReportes;
+
     try {
         const res = await fetch(`${estadoApp.djangoUrl}/api/ventas/punto-equilibrio/`, {
             method: 'POST',
@@ -2793,19 +2889,34 @@ const calcularPuntoEquilibrio = async (fechaDesdeParam = null, fechaHastaParam =
             },
             body: JSON.stringify(payload),
         });
+        if (!cargaSigueVigente()) return true;
 
-        if (res.ok) {
-            const pe = await res.json();
-            if ($('pe-monto-mensual')) $('pe-monto-mensual').textContent = formatearMoneda(pe.punto_equilibrio_mensual);
-            if ($('pe-monto-diario')) $('pe-monto-diario').textContent = formatearMoneda(pe.meta_diaria);
-            if ($('pe-monto-semanal')) $('pe-monto-semanal').textContent = formatearMoneda(pe.meta_semanal);
-
-            const alcance = Math.min(100, Math.max(0, Number(pe.porcentaje_cumplimiento_pe || 0)));
-            if ($('pe-barra-progreso')) $('pe-barra-progreso').style.width = `${alcance}%`;
-            if ($('pe-porcentaje-texto')) $('pe-porcentaje-texto').textContent = `${alcance.toFixed(1)}% de meta mensual alcanzada`;
+        if (!res.ok) {
+            limpiarTarjetasPuntoEquilibrio();
+            if (idCargaParam === null) {
+                mostrarToast('No se pudo calcular el punto de equilibrio.', 'advertencia');
+            }
+            return false;
         }
+
+        const pe = await res.json();
+        if (!cargaSigueVigente()) return true;
+
+        if ($('pe-monto-mensual')) $('pe-monto-mensual').textContent = formatearMoneda(pe.punto_equilibrio_mensual);
+        if ($('pe-monto-diario')) $('pe-monto-diario').textContent = formatearMoneda(pe.meta_diaria);
+        if ($('pe-monto-semanal')) $('pe-monto-semanal').textContent = formatearMoneda(pe.meta_semanal);
+
+        const alcance = Math.min(100, Math.max(0, Number(pe.porcentaje_cumplimiento_pe || 0)));
+        if ($('pe-barra-progreso')) $('pe-barra-progreso').style.width = `${alcance}%`;
+        if ($('pe-porcentaje-texto')) $('pe-porcentaje-texto').textContent = `${alcance.toFixed(1)}% de meta mensual alcanzada`;
+        return true;
     } catch {
-        // Fallback
+        if (!cargaSigueVigente()) return true;
+        limpiarTarjetasPuntoEquilibrio();
+        if (idCargaParam === null) {
+            mostrarToast('No se pudo calcular el punto de equilibrio.', 'advertencia');
+        }
+        return false;
     }
 };
 
@@ -4070,11 +4181,23 @@ Flete y entrega a local: $4500`;
 
     // 21c. Filtro de Fechas y Trazabilidad en Reportes y Finanzas
     const aplicarFiltroFechasReportes = () => {
+        const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado();
+        const validacion = validarRangoFechas(fechaDesde, fechaHasta);
+        if (!validacion.valido) {
+            mostrarToast(validacion.mensaje, 'advertencia');
+            return;
+        }
         document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
         cargarFinanzas();
     };
-    $('filtro-fecha-desde')?.addEventListener('change', aplicarFiltroFechasReportes);
-    $('filtro-fecha-hasta')?.addEventListener('change', aplicarFiltroFechasReportes);
+    const manejarEnterFiltroFechas = (evento) => {
+        if (evento.key === 'Enter') {
+            evento.preventDefault();
+            aplicarFiltroFechasReportes();
+        }
+    };
+    $('filtro-fecha-desde')?.addEventListener('keydown', manejarEnterFiltroFechas);
+    $('filtro-fecha-hasta')?.addEventListener('keydown', manejarEnterFiltroFechas);
     $('btn-filtrar-fechas')?.addEventListener('click', aplicarFiltroFechasReportes);
     $('btn-limpiar-fechas')?.addEventListener('click', () => {
         if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = '';
