@@ -1508,3 +1508,39 @@ Cómo probarlo:
 
 
 
+Fecha: 2026-11-16
+Tarea: Corrección de acceso del cajero a la carta real en POS y eliminación de catálogo de respaldo inventado
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Por qué:** El rol `CAJERO` no posee `recetas.ver`, por lo que `GET /api/productos/` respondía HTTP 403 y el cliente web caía en `CATALOGO_RESPALDO` con 5 productos ficticios cuyos IDs no coincidían con los de la base de datos, permitiendo registrar ventas de otro producto o productos inexistentes.
+- **Backend (`backend-django`):**
+  - En `apps/usuarios/permissions.py`: se agregó la fábrica reutilizable `TieneAlgunPermiso(*claves_permiso)` usando `usuario_tiene_permiso` y el mismo mensaje estándar (`"No tiene permisos para realizar esta acción"`).
+  - En `apps/recetas/views.py`: `ProductoViewSet.get_permissions` habilita `list` y `retrieve` para `TieneAlgunPermiso("recetas.ver", "ventas.cobrar_ticket")()`, manteniendo intactos los permisos de escritura, cálculo/costos, `RecetaItemViewSet` y los permisos por defecto de `ROL_CAJERO` en `apps/usuarios/constantes.py`.
+  - En `apps/recetas/serializers.py`: `ProductoSerializer.to_representation` ahora también enmascara `costo_hora_mano_obra` y `descartables` en `None` cuando falta `recetas.ver_costos`, sin alterar la visibilidad de costos para Dueño/Encargado.
+- **Frontend (`web/`):**
+  - En `web/js/logicaPwa.js`: se agregaron las funciones puras `prepararCatalogoParaCache(productos)` (conserva únicamente `id`, `nombre`, `codigo_barras`, `precio_venta` y `estado_activo`, sin costos, márgenes ni recetas) y `validarCarritoContraCatalogo(carrito, catalogo)` (exige carta no vacía y coincidencia exacta de cada ítem por `id` y precio en centavos).
+  - En `web/js/app.js` y `web/css/estilos.css`: se eliminó por completo `CATALOGO_RESPALDO`; `leerCacheCatalogoLocal` devuelve la última carta real sanitizada de `localStorage` o `[]`; `cargarCatalogo` guarda la versión limpia en `CLAVE_CATALOGO_CACHE` y avisa si falla el servidor o la red; `renderizarCatalogoPOS` muestra un aviso claro y deshabilita el botón de cobro cuando la carta está vacía; y `cobrarTicketVenta` valida el carrito contra la carta actual antes de cobrar tanto online como en la cola offline.
+- **Tests:**
+  - `backend-django/apps/usuarios/tests/unit/test_unit_permisos_drf.py`: tests unitarios de `TieneAlgunPermiso` y enmascaramiento de `costo_hora_mano_obra`/`descartables`.
+  - `backend-django/apps/recetas/tests/api/test_api_recetas.py`: tests de API para `CAJERO` (200 sin costos en `GET /api/productos/` y detalle; 403 en POST/PATCH/DELETE y `GET /api/recetas-items/`) y `DUENIO` (ve costos completos).
+  - `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`: actualización del test negativo de `GET /api/productos/` para verificar rechazo 403 cuando faltan tanto `recetas.ver` como `ventas.cobrar_ticket`.
+  - `backend-node/tests/unit/logicaPwa.unit.test.js`: pruebas unitarias de `prepararCatalogoParaCache` y `validarCarritoContraCatalogo`.
+Archivos tocados:
+- `backend-django/apps/usuarios/permissions.py`
+- `backend-django/apps/recetas/views.py`
+- `backend-django/apps/recetas/serializers.py`
+- `backend-django/apps/usuarios/tests/unit/test_unit_permisos_drf.py`
+- `backend-django/apps/recetas/tests/api/test_api_recetas.py`
+- `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `web/css/estilos.css`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q` (407 passed)
+- `cd backend-node && npm test` (24 suites, 171 tests passed)
+- `cd backend-node && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+- `.venv/bin/ruff check` y `.venv/bin/ruff format --check` sobre los archivos Python modificados.
+---
