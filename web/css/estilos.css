@@ -1047,6 +1047,17 @@ textarea:focus {
     gap: 1rem;
 }
 
+.pos-carta-vacia {
+    grid-column: 1 / -1;
+    padding: 2rem 1.25rem;
+    text-align: center;
+    background: var(--color-blanco);
+    border: 1px dashed var(--color-borde-suave);
+    border-radius: var(--radio-lg);
+    color: var(--texto-mutado);
+    font-weight: 500;
+}
+
 .producto-card-comercial {
     background: var(--color-blanco);
     border: 1px solid var(--color-borde-suave);
@@ -1376,6 +1387,13 @@ textarea:focus {
 
 .btn-cobrar-cta:active {
     transform: scale(0.99);
+}
+
+.btn-cobrar-cta:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 .mensaje-estado-caja {

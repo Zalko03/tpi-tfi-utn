@@ -1979,3 +1979,121 @@ export const extraerMensajeErrorApi = (
     return detalleMsg || data.mensaje || data.detail || fallback;
 };
 
+/**
+ * Conserva únicamente los campos públicos necesarios para operar el POS en caché local,
+ * descartando costos, márgenes y recetas para no exponer información sensible en el navegador.
+ */
+export const prepararCatalogoParaCache = (productos = []) => {
+    if (!Array.isArray(productos)) {
+        return [];
+    }
+
+    const limpios = [];
+    for (const prod of productos) {
+        if (!prod || typeof prod !== 'object') continue;
+        const idNum = Number(prod.id);
+        if (!Number.isInteger(idNum) || idNum <= 0) continue;
+
+        const precioCentavos = convertirMontoACentavos(
+            prod.precio_venta ?? prod.precioVenta ?? '0.00'
+        );
+
+        limpios.push({
+            id: idNum,
+            nombre: String(prod.nombre ?? ''),
+            codigo_barras:
+                prod.codigo_barras !== undefined && prod.codigo_barras !== null
+                    ? String(prod.codigo_barras)
+                    : null,
+            precio_venta: formatearCentavosADecimal(precioCentavos),
+            estado_activo:
+                prod.estado_activo !== undefined ? Boolean(prod.estado_activo) : true,
+        });
+    }
+    return limpios;
+};
+
+/**
+ * Valida antes de cobrar (online u offline) que exista una carta real cargada
+ * y que todos los ítems del carrito coincidan por id y precio con esa carta.
+ */
+export const validarCarritoContraCatalogo = (carrito = [], catalogo = []) => {
+    if (!Array.isArray(catalogo) || catalogo.length === 0) {
+        return {
+            valido: false,
+            mensaje:
+                'No hay carta disponible. Conectate a internet para cargar los productos antes de vender.',
+        };
+    }
+
+    if (!Array.isArray(carrito) || carrito.length === 0) {
+        return {
+            valido: false,
+            mensaje: 'El ticket de venta está vacío.',
+        };
+    }
+
+    const mapaCatalogo = new Map();
+    for (const prod of catalogo) {
+        if (!prod || typeof prod !== 'object') continue;
+        const idNum = Number(prod.id);
+        if (Number.isInteger(idNum) && idNum > 0) {
+            mapaCatalogo.set(idNum, prod);
+        }
+    }
+
+    if (mapaCatalogo.size === 0) {
+        return {
+            valido: false,
+            mensaje:
+                'No hay carta disponible. Conectate a internet para cargar los productos antes de vender.',
+        };
+    }
+
+    for (const item of carrito) {
+        const prodId = Number(item?.productoId ?? item?.producto ?? item?.producto_id);
+        if (!Number.isInteger(prodId) || prodId <= 0) {
+            return {
+                valido: false,
+                mensaje:
+                    'Uno de los productos del ticket no es válido. Vacialo y volvé a cargarlo.',
+            };
+        }
+
+        const prodCatalogo = mapaCatalogo.get(prodId);
+        if (!prodCatalogo) {
+            const nombreMostrar = item?.nombre ? `"${String(item.nombre)}"` : `#${prodId}`;
+            return {
+                valido: false,
+                mensaje: `El producto ${nombreMostrar} no existe en la carta actual. Quitalo del ticket antes de cobrar.`,
+            };
+        }
+
+        const precioCatalogoCentavos = convertirMontoACentavos(
+            prodCatalogo.precio_venta ?? prodCatalogo.precioVenta
+        );
+        const tieneCentavos =
+            item?.precioUnitarioCentavos !== undefined &&
+            item?.precioUnitarioCentavos !== null &&
+            Number.isFinite(Number(item.precioUnitarioCentavos));
+        const precioItemCentavos = tieneCentavos
+            ? Math.round(Number(item.precioUnitarioCentavos))
+            : convertirMontoACentavos(
+                  item?.precioUnitarioDecimal ?? item?.precio_unitario ?? item?.precio_venta
+              );
+
+        if (precioItemCentavos !== precioCatalogoCentavos) {
+            const nombreMostrar = prodCatalogo.nombre || item?.nombre || `#${prodId}`;
+            return {
+                valido: false,
+                mensaje: `El precio de "${nombreMostrar}" cambió en la carta actual. Quitalo y volvé a agregarlo antes de cobrar.`,
+            };
+        }
+    }
+
+    return {
+        valido: true,
+        mensaje: '',
+    };
+};
+

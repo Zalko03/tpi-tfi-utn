@@ -47,12 +47,14 @@ import {
     obtenerVentasOffline,
     obtenerVentasRechazadasOffline,
     parsearCsvProveedor,
+    prepararCatalogoParaCache,
     procesarColaVentasOffline,
     reconstruirLineasDeItemsPdf,
     siguienteIdCarga,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
+    validarCarritoContraCatalogo,
     validarRangoFechas,
     validarTamanoArchivoImportacion,
 } from '../../../web/js/logicaPwa.js';
@@ -1120,6 +1122,100 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                 'Permiso denegado'
             );
             expect(extraerMensajeErrorApi(null, 'Fallo genérico')).toBe('Fallo genérico');
+        });
+    });
+
+    describe('Caché segura del catálogo POS y validación de carrito contra carta real', () => {
+        it('prepararCatalogoParaCache conserva solo campos de venta y elimina costos, márgenes y recetas', () => {
+            const entrada = [
+                {
+                    id: 5,
+                    nombre: 'Filtrado Geisha',
+                    codigo_barras: '7790001000059',
+                    precio_venta: '7500.00',
+                    estado_activo: true,
+                    minutos_mano_obra: '3.00',
+                    costo_hora_mano_obra: '2500.00',
+                    descartables: '120.00',
+                    costo_total_calculado: '2100.0000',
+                    ganancia_bruta: '5400.0000',
+                    margen_bruto: '0.7200',
+                    receta_items: [{ id: 1, insumo: 2, insumo_costo_unitario: '45.0000' }],
+                },
+                null,
+                { id: 0, nombre: 'Inválido', precio_venta: '100.00' },
+            ];
+
+            const limpio = prepararCatalogoParaCache(entrada);
+
+            expect(limpio).toEqual([
+                {
+                    id: 5,
+                    nombre: 'Filtrado Geisha',
+                    codigo_barras: '7790001000059',
+                    precio_venta: '7500.00',
+                    estado_activo: true,
+                },
+            ]);
+            expect(Object.keys(limpio[0]).sort()).toEqual([
+                'codigo_barras',
+                'estado_activo',
+                'id',
+                'nombre',
+                'precio_venta',
+            ]);
+            expect(limpio[0].costo_total_calculado).toBeUndefined();
+            expect(limpio[0].ganancia_bruta).toBeUndefined();
+            expect(limpio[0].margen_bruto).toBeUndefined();
+            expect(limpio[0].costo_hora_mano_obra).toBeUndefined();
+            expect(limpio[0].descartables).toBeUndefined();
+            expect(limpio[0].receta_items).toBeUndefined();
+            expect(prepararCatalogoParaCache(null)).toEqual([]);
+        });
+
+        it('validarCarritoContraCatalogo rechaza carta vacía, id inexistente o precio distinto y acepta carrito válido', () => {
+            const catalogoReal = [
+                { id: 5, nombre: 'Filtrado Geisha', precio_venta: '7500.00', estado_activo: true },
+                { id: 8, nombre: 'Espresso Doble', precio_venta: '2200.00', estado_activo: true },
+            ];
+
+            const carritoValido = agregarProductoAlCarrito([], catalogoReal[0], 2);
+
+            const resCartaVacia = validarCarritoContraCatalogo(carritoValido, []);
+            expect(resCartaVacia.valido).toBe(false);
+            expect(resCartaVacia.mensaje).toContain('No hay carta disponible');
+
+            const resCarritoVacio = validarCarritoContraCatalogo([], catalogoReal);
+            expect(resCarritoVacio.valido).toBe(false);
+            expect(resCarritoVacio.mensaje).toContain('vacío');
+
+            const carritoIdInexistente = agregarProductoAlCarrito(
+                [],
+                { id: 99, nombre: 'Producto Fantasma', precio_venta: '1400.00' },
+                1
+            );
+            const resIdInexistente = validarCarritoContraCatalogo(
+                carritoIdInexistente,
+                catalogoReal
+            );
+            expect(resIdInexistente.valido).toBe(false);
+            expect(resIdInexistente.mensaje).toContain('no existe en la carta actual');
+
+            const carritoPrecioDistinto = agregarProductoAlCarrito(
+                [],
+                { id: 5, nombre: 'Filtrado Geisha', precio_venta: '1400.00' },
+                1
+            );
+            const resPrecioDistinto = validarCarritoContraCatalogo(
+                carritoPrecioDistinto,
+                catalogoReal
+            );
+            expect(resPrecioDistinto.valido).toBe(false);
+            expect(resPrecioDistinto.mensaje).toContain('cambió en la carta actual');
+
+            const carritoMultiple = agregarProductoAlCarrito(carritoValido, catalogoReal[1], 1);
+            const resOk = validarCarritoContraCatalogo(carritoMultiple, catalogoReal);
+            expect(resOk).toEqual({ valido: true, mensaje: '' });
         });
     });
 });

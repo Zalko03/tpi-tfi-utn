@@ -37,10 +37,12 @@ import {
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     parsearCsvProveedor,
+    prepararCatalogoParaCache,
     procesarColaVentasOffline,
     siguienteIdCarga,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
+    validarCarritoContraCatalogo,
     validarRangoFechas,
     validarTamanoArchivoImportacion,
 } from './logicaPwa.js';
@@ -50,15 +52,6 @@ const CLAVE_TURNO_CACHE = 'sapori_turno_cache';
 const CLAVE_MODO_CONEXION = 'sapori_modo_conexion';
 const CLAVE_DJANGO_URL = 'sapori_django_url';
 const CLAVE_NODE_URL = 'sapori_node_url';
-
-// Catálogo de respaldo inicial por si el backend tarda en responder
-const CATALOGO_RESPALDO = [
-    { id: 1, nombre: 'Café Espresso Doble', codigo_barras: '7790001000011', precio_venta: '2200.00', costo_total_calculado: '650.00', margen_bruto: '0.7045' },
-    { id: 2, nombre: 'Café Flat White Barista', codigo_barras: '7790001000028', precio_venta: '3800.00', costo_total_calculado: '1420.00', margen_bruto: '0.6263' },
-    { id: 3, nombre: 'Cappuccino Italiano', codigo_barras: '7790001000035', precio_venta: '3500.00', costo_total_calculado: '1350.00', margen_bruto: '0.6142' },
-    { id: 4, nombre: 'Chipá Tradicional (x4)', codigo_barras: '7790001000042', precio_venta: '1800.00', costo_total_calculado: '820.00', margen_bruto: '0.5444' },
-    { id: 5, nombre: 'Medialuna de Manteca', codigo_barras: '7790001000059', precio_venta: '1400.00', costo_total_calculado: '550.00', margen_bruto: '0.6071' },
-];
 
 /**
  * Resuelve dinámicamente las URLs de DJANGO_API_URL y NODE_API_URL:
@@ -94,12 +87,14 @@ const leerCacheCatalogoLocal = () => {
         const guardado = localStorage.getItem(CLAVE_CATALOGO_CACHE);
         if (guardado) {
             const lista = JSON.parse(guardado);
-            if (Array.isArray(lista) && lista.length > 0) return lista;
+            if (Array.isArray(lista) && lista.length > 0) {
+                return prepararCatalogoParaCache(lista);
+            }
         }
     } catch {
-        // Fallback al catálogo por defecto
+        // Sin caché válida en localStorage
     }
-    return [...CATALOGO_RESPALDO];
+    return [];
 };
 
 const leerCacheTurnoLocal = () => {
@@ -796,14 +791,25 @@ export const cargarCatalogo = async () => {
             if (res.ok) {
                 const data = await res.json();
                 const productos = Array.isArray(data) ? data : (data.datos || data.results || []);
-                if (productos.length > 0) {
-                    estadoApp.catalogo = productos;
-                    localStorage.setItem(CLAVE_CATALOGO_CACHE, JSON.stringify(productos));
-                }
+                estadoApp.catalogo = productos;
+                const catalogoCache = prepararCatalogoParaCache(productos);
+                localStorage.setItem(CLAVE_CATALOGO_CACHE, JSON.stringify(catalogoCache));
+            } else {
+                estadoApp.catalogo = leerCacheCatalogoLocal();
+                const msg =
+                    estadoApp.catalogo.length > 0
+                        ? 'No se pudo actualizar la carta desde el servidor. Se muestra la última carta guardada.'
+                        : 'No se pudo cargar la carta desde el servidor. Conectate o reintentá antes de vender.';
+                mostrarToast(msg, 'advertencia');
             }
         } catch {
             // En caso de corte de internet usamos la copia persistida en localStorage
             estadoApp.catalogo = leerCacheCatalogoLocal();
+            const msg =
+                estadoApp.catalogo.length > 0
+                    ? 'Sin conexión al servidor para actualizar la carta. Se muestra la última carta guardada.'
+                    : 'No hay carta disponible. Conectate a internet para cargar los productos antes de vender.';
+            mostrarToast(msg, 'advertencia');
         }
     } else {
         estadoApp.catalogo = leerCacheCatalogoLocal();
@@ -822,23 +828,50 @@ export const cargarCatalogo = async () => {
 
 const renderizarCatalogoPOS = () => {
     const contenedor = $('grilla-productos');
+    const btnCobrar = $('btn-cobrar-ticket');
+    const sinCarta = !Array.isArray(estadoApp.catalogo) || estadoApp.catalogo.length === 0;
+
+    if (btnCobrar) {
+        btnCobrar.disabled = sinCarta;
+        btnCobrar.title = sinCarta
+            ? 'No hay carta disponible. Cargá los productos antes de vender.'
+            : 'Cobrar y Emitir Ticket (F2)';
+    }
+
     if (!contenedor) return;
     contenedor.innerHTML = '';
+
+    if (sinCarta) {
+        const aviso = document.createElement('div');
+        aviso.className = 'pos-carta-vacia';
+        aviso.textContent =
+            'No hay carta disponible. Conectate a internet para cargar los productos antes de vender.';
+        contenedor.appendChild(aviso);
+        return;
+    }
 
     const filtro = estadoApp.filtroCategoriaActual;
     const filtrados = estadoApp.catalogo.filter((prod) => {
         if (filtro === 'todos') return true;
-        const n = prod.nombre.toLowerCase();
+        const n = String(prod.nombre || '').toLowerCase();
         if (filtro === 'cafe') return n.includes('café') || n.includes('espresso') || n.includes('latte') || n.includes('cappuccino');
         if (filtro === 'panaderia') return n.includes('chipa') || n.includes('chipá') || n.includes('medialuna') || n.includes('torta');
         if (filtro === 'bebidas') return n.includes('jugo') || n.includes('limonada') || n.includes('agua');
         return true;
     });
 
+    if (filtrados.length === 0) {
+        const avisoFiltro = document.createElement('div');
+        avisoFiltro.className = 'pos-carta-vacia';
+        avisoFiltro.textContent = 'No hay productos disponibles en esta categoría.';
+        contenedor.appendChild(avisoFiltro);
+        return;
+    }
+
     for (const prod of filtrados) {
         const card = document.createElement('div');
         card.className = 'producto-card-comercial';
-        card.dataset.id = prod.id;
+        card.dataset.id = String(prod.id);
 
         const icono = obtenerIconoProducto(prod.nombre);
         const precioFormateado = formatearMoneda(prod.precio_venta);
@@ -850,7 +883,7 @@ const renderizarCatalogoPOS = () => {
                 <span class="producto-codigo-badge">${escaparHtml(prod.codigo_barras || 'SIN CÓDIGO')}</span>
             </div>
             <div class="producto-precio-fila">
-                <span class="producto-precio-grande">${precioFormateado}</span>
+                <span class="producto-precio-grande">${escaparHtml(precioFormateado)}</span>
                 <div class="producto-btn-agregar">+</div>
             </div>
         `;
@@ -979,6 +1012,26 @@ const registrarCobroEnColaOffline = (payload, resumen, metodoPago) => {
 };
 
 const cobrarTicketVenta = async () => {
+    const validacionCatalogo = validarCarritoContraCatalogo(
+        estadoApp.carrito,
+        estadoApp.catalogo
+    );
+    if (!validacionCatalogo.valido) {
+        const esCartaOCarritoVacio =
+            !Array.isArray(estadoApp.catalogo) ||
+            estadoApp.catalogo.length === 0 ||
+            !Array.isArray(estadoApp.carrito) ||
+            estadoApp.carrito.length === 0;
+        mostrarToast(
+            validacionCatalogo.mensaje,
+            esCartaOCarritoVacio ? 'advertencia' : 'peligro'
+        );
+        if ($('estado-caja')) {
+            $('estado-caja').textContent = validacionCatalogo.mensaje;
+        }
+        return;
+    }
+
     const resumen = calcularResumenCarrito(estadoApp.carrito);
     if (resumen.itemsPayload.length === 0) {
         mostrarToast('El ticket de venta está vacío.', 'advertencia');
@@ -4271,6 +4324,7 @@ const registrarServiceWorkerPwa = () => {
 document.addEventListener('DOMContentLoaded', () => {
     registrarServiceWorkerPwa();
     actualizarUIUsuario();
+    renderizarCatalogoPOS();
     inicializarEventosDOM();
 
     if (estadoApp.tokenJwt) {
