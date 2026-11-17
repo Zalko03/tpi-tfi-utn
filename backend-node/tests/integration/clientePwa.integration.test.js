@@ -95,6 +95,7 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(resAppJs.text).toContain('/api/productos/');
         expect(resAppJs.text).toContain('/api/recetas-items/');
         expect(resAppJs.text).toContain('usuarioTienePermiso');
+        expect(resAppJs.text).toContain('Cobro bloqueado: no hay carta cargada.');
         expect(resAppJs.text).not.toContain('extraerItemsDesdeTextoLista');
 
         expect(resLogicaJs.status).toBe(200);

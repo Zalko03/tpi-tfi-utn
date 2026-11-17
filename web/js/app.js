@@ -843,6 +843,7 @@ export const cargarCatalogo = async () => {
 const renderizarCatalogoPOS = () => {
     const contenedor = $('grilla-productos');
     const btnCobrar = $('btn-cobrar-ticket');
+    const estadoCaja = $('estado-caja');
     const sinCarta = !Array.isArray(estadoApp.catalogo) || estadoApp.catalogo.length === 0;
 
     if (btnCobrar) {
@@ -850,6 +851,11 @@ const renderizarCatalogoPOS = () => {
         btnCobrar.title = sinCarta
             ? 'No hay carta disponible. Cargá los productos antes de vender.'
             : 'Cobrar y Emitir Ticket (F2)';
+    }
+    if (estadoCaja) {
+        estadoCaja.textContent = sinCarta
+            ? 'Cobro bloqueado: no hay carta cargada.'
+            : 'Listo para escanear productos o cobrar.';
     }
 
     if (!contenedor) return;
