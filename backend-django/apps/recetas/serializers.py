@@ -113,6 +113,8 @@ class ProductoSerializer(serializers.ModelSerializer):
                 tiene_costos = "recetas.ver_costos" in token_permisos
 
             if not tiene_costos:
+                ret["costo_hora_mano_obra"] = None
+                ret["descartables"] = None
                 ret["costo_total_calculado"] = None
                 ret["ganancia_bruta"] = None
                 ret["margen_bruto"] = None

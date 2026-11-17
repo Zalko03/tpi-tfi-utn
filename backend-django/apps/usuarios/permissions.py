@@ -48,6 +48,21 @@ def TienePermiso(clave_permiso: str) -> Type[permissions.BasePermission]:
     return _TienePermiso
 
 
+def TieneAlgunPermiso(*claves_permiso: str) -> Type[permissions.BasePermission]:
+    """
+    Fábrica de permisos DRF que comprueba si el usuario autenticado posee
+    al menos uno de los permisos granulares indicados en su perfil activo o token.
+    """
+
+    class _TieneAlgunPermiso(permissions.BasePermission):
+        message = "No tiene permisos para realizar esta acción"
+
+        def has_permission(self, request, view):
+            return any(usuario_tiene_permiso(request, clave) for clave in claves_permiso)
+
+    return _TieneAlgunPermiso
+
+
 class EsDuenio(permissions.BasePermission):
     """Permite el acceso exclusivamente a usuarios con rol Dueño."""
 
