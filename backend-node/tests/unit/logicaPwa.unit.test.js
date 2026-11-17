@@ -19,6 +19,7 @@ import {
     esArchivoDocx,
     esArchivoExcel,
     esArchivoPdf,
+    esCargaVigente,
     escaparHtml,
     estaFechaEnRango,
     evaluarCsvPlantillaDirecta,
@@ -48,6 +49,7 @@ import {
     parsearCsvProveedor,
     procesarColaVentasOffline,
     reconstruirLineasDeItemsPdf,
+    siguienteIdCarga,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
@@ -451,6 +453,56 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             ).toBe('fecha_desde=2026-11-12&fecha_hasta=2026-11-14&limite=100');
             expect(construirQueryRangoFechas('', '')).toBe('');
             expect(formatearFechaLocalInput(new Date(2026, 10, 12, 23, 45))).toBe('2026-11-12');
+        });
+
+        it('validarRangoFechas acepta fechas vacías, exige años entre 2000 y 2100 y rechaza desde > hasta', () => {
+            expect(validarRangoFechas('', '')).toEqual({ valido: true, mensaje: '' });
+            expect(validarRangoFechas('2026-11-12', '')).toEqual({ valido: true, mensaje: '' });
+            expect(validarRangoFechas('', '2026-11-14')).toEqual({ valido: true, mensaje: '' });
+            expect(validarRangoFechas(null, undefined)).toEqual({ valido: true, mensaje: '' });
+            expect(validarRangoFechas('2000-01-01', '2100-12-31')).toEqual({
+                valido: true,
+                mensaje: '',
+            });
+
+            // Años intermedios al tipear en Chrome (0002, 0202) y fuera del rango 2000-2100
+            const resAnio0002 = validarRangoFechas('0002-11-16', '2026-11-16');
+            expect(resAnio0002.valido).toBe(false);
+            expect(resAnio0002.mensaje).toContain('2000');
+
+            const resAnio1999 = validarRangoFechas('1999-12-31', '2026-11-16');
+            expect(resAnio1999.valido).toBe(false);
+            expect(resAnio1999.mensaje).toContain('2000');
+
+            const resHasta2101 = validarRangoFechas('2026-11-16', '2101-01-01');
+            expect(resHasta2101.valido).toBe(false);
+            expect(resHasta2101.mensaje).toContain('2100');
+
+            // Desde posterior a Hasta
+            const resInvertido = validarRangoFechas('2026-11-20', '2026-11-10');
+            expect(resInvertido.valido).toBe(false);
+            expect(resInvertido.mensaje).toContain('posterior');
+
+            // Fecha de calendario inexistente
+            expect(validarRangoFechas('2026-02-30', '2026-03-01').valido).toBe(false);
+        });
+
+        it('siguienteIdCarga y esCargaVigente descartan respuestas de cargas obsoletas', () => {
+            const primera = siguienteIdCarga(0);
+            const segunda = siguienteIdCarga(primera);
+            const tercera = siguienteIdCarga(segunda);
+
+            expect(primera).toBe(1);
+            expect(segunda).toBe(2);
+            expect(tercera).toBe(3);
+            expect(siguienteIdCarga(undefined)).toBe(1);
+            expect(siguienteIdCarga(-5)).toBe(1);
+
+            expect(esCargaVigente(tercera, tercera)).toBe(true);
+            expect(esCargaVigente(primera, tercera)).toBe(false);
+            expect(esCargaVigente(segunda, tercera)).toBe(false);
+            expect(esCargaVigente(0, 0)).toBe(false);
+            expect(esCargaVigente(null, 1)).toBe(false);
         });
 
         it('filtra fechas inclusivamente de 00:00:00 a 23:59:59.999 en estado local/offline', () => {

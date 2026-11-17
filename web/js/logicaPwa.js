@@ -949,6 +949,9 @@ export const formatearFechaLocalInput = (fecha = new Date()) => {
     return `${anio}-${mes}-${dia}`;
 };
 
+export const ANIO_MINIMO_FILTRO_REPORTES = 2000;
+export const ANIO_MAXIMO_FILTRO_REPORTES = 2100;
+
 const parsearFechaSoloDiaLocal = (valor, esFin = false) => {
     const match = String(valor || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!match) return null;
@@ -958,21 +961,49 @@ const parsearFechaSoloDiaLocal = (valor, esFin = false) => {
     const d = esFin
         ? new Date(anio, mes, dia, 23, 59, 59, 999)
         : new Date(anio, mes, dia, 0, 0, 0, 0);
-    return Number.isNaN(d.getTime()) ? null : d.getTime();
+    d.setFullYear(anio);
+    if (
+        Number.isNaN(d.getTime()) ||
+        d.getFullYear() !== anio ||
+        d.getMonth() !== mes ||
+        d.getDate() !== dia
+    ) {
+        return null;
+    }
+    return d.getTime();
 };
 
 /**
- * Valida que el rango [fechaDesde, fechaHasta] sea consistente (YYYY-MM-DD y desde <= hasta).
+ * Valida que el rango [fechaDesde, fechaHasta] sea consistente (YYYY-MM-DD,
+ * año entre 2000 y 2100 y desde <= hasta). Acepta fechas vacías para historial completo.
  */
 export const validarRangoFechas = (fechaDesde = '', fechaHasta = '') => {
-    const desde = String(fechaDesde || '').trim();
-    const hasta = String(fechaHasta || '').trim();
+    const desde = String(fechaDesde ?? '').trim();
+    const hasta = String(fechaHasta ?? '').trim();
 
-    if (desde && parsearFechaSoloDiaLocal(desde, false) === null) {
-        return { valido: false, mensaje: 'La fecha "Desde" no tiene un formato válido.' };
+    if (desde) {
+        if (parsearFechaSoloDiaLocal(desde, false) === null) {
+            return { valido: false, mensaje: 'La fecha "Desde" no tiene un formato válido.' };
+        }
+        const anioDesde = Number(desde.slice(0, 4));
+        if (anioDesde < ANIO_MINIMO_FILTRO_REPORTES || anioDesde > ANIO_MAXIMO_FILTRO_REPORTES) {
+            return {
+                valido: false,
+                mensaje: `El año de la fecha "Desde" debe estar entre ${ANIO_MINIMO_FILTRO_REPORTES} y ${ANIO_MAXIMO_FILTRO_REPORTES}.`,
+            };
+        }
     }
-    if (hasta && parsearFechaSoloDiaLocal(hasta, true) === null) {
-        return { valido: false, mensaje: 'La fecha "Hasta" no tiene un formato válido.' };
+    if (hasta) {
+        if (parsearFechaSoloDiaLocal(hasta, true) === null) {
+            return { valido: false, mensaje: 'La fecha "Hasta" no tiene un formato válido.' };
+        }
+        const anioHasta = Number(hasta.slice(0, 4));
+        if (anioHasta < ANIO_MINIMO_FILTRO_REPORTES || anioHasta > ANIO_MAXIMO_FILTRO_REPORTES) {
+            return {
+                valido: false,
+                mensaje: `El año de la fecha "Hasta" debe estar entre ${ANIO_MINIMO_FILTRO_REPORTES} y ${ANIO_MAXIMO_FILTRO_REPORTES}.`,
+            };
+        }
     }
     if (desde && hasta && desde > hasta) {
         return {
@@ -981,6 +1012,26 @@ export const validarRangoFechas = (fechaDesde = '', fechaHasta = '') => {
         };
     }
     return { valido: true, mensaje: '' };
+};
+
+/**
+ * Genera el siguiente identificador monotónico para descartar respuestas asíncronas obsoletas.
+ */
+export const siguienteIdCarga = (idActual = 0) => {
+    const numero = Number(idActual);
+    if (!Number.isFinite(numero) || numero < 0) {
+        return 1;
+    }
+    return Math.floor(numero) + 1;
+};
+
+/**
+ * Indica si una respuesta asíncrona corresponde a la carga más reciente todavía vigente.
+ */
+export const esCargaVigente = (idCargaRespuesta, idCargaActual) => {
+    const respuesta = Number(idCargaRespuesta);
+    const actual = Number(idCargaActual);
+    return Number.isFinite(respuesta) && Number.isFinite(actual) && respuesta > 0 && respuesta === actual;
 };
 
 /**
