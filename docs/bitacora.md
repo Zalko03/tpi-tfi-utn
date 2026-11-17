@@ -1721,3 +1721,23 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint` (198 tests en verde).
 - Reportes: tipear 10102026 → "10/10/2026"; Filtrar aplica el rango; "17/10" avisa que no es válida.
 ---
+
+
+
+Fecha: 2026-11-17
+Tarea: Sonidos en acciones importantes y loaders mientras se espera al servidor (solo web)
+Rama: feature/mejoras-profesor
+Qué se hizo y por qué:
+- Sonidos sintéticos con Web Audio API (`OscillatorNode` + `GainNode` con envolvente suave para evitar chasquidos y volumen bajo), sin archivos externos ni librerías. El `AudioContext` se crea recién en la primera interacción del usuario (`pointerdown`/`keydown`/`click`) para cumplir con la política de reproducción automática del navegador.
+- Definición pura de notas (`SONIDOS`: `cobro`, `escaneo`, `error`, `caja`, `aviso`), lectura/escritura segura de preferencia de silencio en `localStorage` (`leerPreferenciaSonidosSilenciados`, `guardarPreferenciaSonidosSilenciados`) y mapeo de eventos (`obtenerSonidoParaEvento`) en `web/js/logicaPwa.js`. Conectados en cobro exitoso (online y sin internet), agregado al carrito, toasts de tipo `peligro`, apertura/cierre de turno, confirmación de precios de importación (CSV directo e IA) y alertas en vivo por Socket.IO (`stock.bajo` y `costo.actualizado` con `alertaMargenBajo`), sin sonar en toasts informativos.
+- Botón `#btn-toggle-sonidos` en la barra superior (`web/index.html`) con icono de parlante, `aria-label` dinámico ("Silenciar sonidos" / "Activar sonidos") y `aria-pressed`, activado por defecto.
+- Helper `conCargando(boton, accionAsync)` en `web/js/app.js`: deshabilita el botón, evita doble clic, agrega `.btn-cargando` (spinner CSS puro), `aria-busy="true"` y texto accesible `.sr-only`, restaurando siempre en `finally`. Aplicado a Ingresar, Cobrar y Emitir Ticket, Abrir/Cerrar turno, Movimiento de caja, Filtrar en Reportes, Punto de equilibrio, Consultor IA (insumos y auditoría de caja), Compras (Analizar con IA, Confirmar precios, Aprobar/Descartar IA, Compra manual), Recetas/Carta (nuevo producto, editar precio, guardar/quitar ítem, recalcular) y Equipo (agregar empleado, guardar permisos, dar de baja / reactivar).
+- Indicadores de carga ("Cargando…" con spinner y filas/tarjetas esqueleto en CSS puro) en carta del POS, tabla de Recetas, tabla de Reportes y tarjetas de Equipo, limpiados siempre en `finally` al terminar o fallar, respetando `@media (prefers-reduced-motion: reduce)`.
+Archivos tocados:
+- `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`, `web/css/estilos.css`
+- `backend-node/tests/unit/logicaPwa.unit.test.js` (3 tests unitarios para sonidos, preferencia con errores de storage y mapeo de eventos)
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (25 suites, 207 tests en verde).
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
