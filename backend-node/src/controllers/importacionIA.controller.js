@@ -2,7 +2,14 @@ import * as importacionService from '../services/importacionIA.service.js';
 
 export const crearImportacion = async (req, res, next) => {
     try {
-        const { textoLista, proveedorNombre, versionPrompt, origenArchivo } = req.body;
+        const {
+            textoLista,
+            proveedorNombre,
+            versionPrompt,
+            origenArchivo,
+            imagenBase64,
+            imagenMime,
+        } = req.body;
         const usuarioId = req.usuario?.id;
 
         const importacion = await importacionService.iniciarImportacionPrecios({
@@ -11,6 +18,8 @@ export const crearImportacion = async (req, res, next) => {
             proveedorNombre,
             versionPrompt,
             origenArchivo,
+            imagenBase64,
+            imagenMime,
         });
 
         return res.status(202).json({

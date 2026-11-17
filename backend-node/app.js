@@ -65,7 +65,12 @@ app.use('/health', healthRoutes);
 // Rate limiting perimetral general (T2.5)
 app.use(limitadorGeneral);
 
-// Parseo de JSON en body
+// Límite ampliado únicamente para importaciones (permite fotos en base64 hasta ~5 MB binarios)
+const parserJsonImportaciones = express.json({ limit: '8mb' });
+app.use('/api/importaciones', parserJsonImportaciones);
+app.use('/importaciones', parserJsonImportaciones);
+
+// Parseo de JSON en body para el resto de las rutas
 app.use(express.json());
 
 // Sanitización y prevención activa de inyecciones NoSQL ($ o .) (T2.5)
