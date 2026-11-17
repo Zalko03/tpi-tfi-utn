@@ -22,6 +22,32 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-17
+Tarea: Alta de empleados, baja/reactivación, cambio de rol y edición de permisos desde Equipo & Permisos
+Rama: feature/mejoras-profesor
+Cambios realizados:
+- **Lógica pura en `web/js/logicaPwa.js`:**
+  - Se definieron `GRUPOS_PERMISOS_EQUIPO` (9 áreas, 30 permisos con etiquetas simples de vos sin claves internas), `PERMISOS_CATALOGO_EQUIPO` y `ROLES_PLANTILLAS` (en espejo con `backend-django/apps/usuarios/constantes.py`).
+  - Se agregaron `obtenerPlantillaRol`, `construirDictPermisosDesdeSeleccion`, `obtenerPermisosInicialesEmpleado`, `accionesEquipoVisiblesParaUsuario` y `accionesEmpleadoVisiblesParaUsuario` (bloqueando la autobaja en la propia tarjeta).
+  - Se ajustó `extraerMensajeErrorApi` para rescatar `detalles.mensaje` cuando Django responde con errores de dominio (como la regla de supervivencia del último dueño).
+- **Interfaz y flujo web (`web/index.html`, `web/css/estilos.css`, `web/js/app.js`):**
+  - Botón "+ Agregar empleado" (solo con `personal.crear`) y modal `#modal-nuevo-empleado` con ojito de contraseña reutilizando `.btn-toggle-visibilidad` (`POST /api/usuarios/`).
+  - Modal `#modal-permisos` editable con selector de rol (solo con `personal.editar`) que precarga la plantilla del rol al cambiar, casillas agrupadas por área (`PATCH` si cambia el rol + `POST ajustar-permisos` con el diccionario completo de 30 claves).
+  - Modal `#modal-baja-empleado` con confirmación y motivo opcional para "Dar de baja", y botón "Reactivar" según `is_active` (solo con `personal.desactivar`, ocultos en la tarjeta del usuario logueado).
+  - Todos los pedidos usan `fetchConSesion`, errores con `mensajeErrorParaUsuario` y textos simples de vos (incluyendo el aviso "Siempre queda un dueño activo").
+- **Tests (`backend-node/tests/`):**
+  - Se agregaron pruebas unitarias en `logicaPwa.unit.test.js` y verificaciones HTML en `clientePwa.integration.test.js`.
+Archivos tocados:
+- `web/index.html`, `web/css/estilos.css`, `web/js/app.js`, `web/js/logicaPwa.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test`
+- `cd backend-node && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+---
+Fecha: 2026-11-17
 Tarea: Trato de vos en la interfaz web y mensajes de validación de Node en lenguaje simple
 Rama: feature/reportes-filtro-fechas
 Cambios realizados:
