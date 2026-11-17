@@ -1934,6 +1934,39 @@ export const usuarioTienePermiso = (usuario, clavePermiso) => {
     return String(usuario.rol || '').toUpperCase() === 'DUENIO';
 };
 
+export const PERMISOS_POR_SECCION = {
+    pos: ['ventas.cobrar_ticket'],
+    caja: [
+        'caja.abrir_turno',
+        'caja.cerrar_turno',
+        'caja.ver_efectivo_esperado',
+        'caja.gestionar_turnos_ajenos',
+    ],
+    compras: [
+        'compras.ver',
+        'compras.registrar',
+        'ia.importar_listas',
+        'insumos.ver',
+    ],
+    recetas: ['recetas.ver'],
+    finanzas: ['reportes.ver_financieros', 'reportes.ver_operativos'],
+    personal: ['personal.ver'],
+};
+
+/**
+ * Devuelve la lista de secciones visibles (en el orden del menú) para el usuario.
+ */
+export const seccionesVisiblesParaUsuario = (usuario) => {
+    if (!usuario || typeof usuario !== 'object') {
+        return [];
+    }
+    return Object.entries(PERMISOS_POR_SECCION)
+        .filter(([, permisosRequeridos]) =>
+            permisosRequeridos.some((clave) => usuarioTienePermiso(usuario, clave))
+        )
+        .map(([seccion]) => seccion);
+};
+
 /**
  * Devuelve las unidades compatibles con la unidad base de un insumo ('g', 'ml', 'un').
  */

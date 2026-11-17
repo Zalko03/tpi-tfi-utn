@@ -48,9 +48,11 @@ import {
     obtenerVentasOffline,
     obtenerVentasRechazadasOffline,
     parsearCsvProveedor,
+    PERMISOS_POR_SECCION,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
     reconstruirLineasDeItemsPdf,
+    seccionesVisiblesParaUsuario,
     siguienteIdCarga,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
@@ -1246,6 +1248,67 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(mensajeErrorParaUsuario(0)).toBe(
                 'No se pudo completar la operación. Probá de nuevo en unos minutos.'
             );
+        });
+    });
+
+    describe('Menú visible según permisos del usuario', () => {
+        it('seccionesVisiblesParaUsuario respeta el orden del menú y los permisos por rol', () => {
+            expect(Object.keys(PERMISOS_POR_SECCION)).toEqual([
+                'pos',
+                'caja',
+                'compras',
+                'recetas',
+                'finanzas',
+                'personal',
+            ]);
+
+            const duenioSuperusuario = { rol: 'DUENIO', permisos: [] };
+            expect(seccionesVisiblesParaUsuario(duenioSuperusuario)).toEqual([
+                'pos',
+                'caja',
+                'compras',
+                'recetas',
+                'finanzas',
+                'personal',
+            ]);
+
+            const encargadoPorDefecto = {
+                rol: 'ENCARGADO',
+                permisos: [
+                    'ventas.cobrar_ticket',
+                    'caja.abrir_turno',
+                    'caja.cerrar_turno',
+                    'caja.ver_efectivo_esperado',
+                    'caja.gestionar_turnos_ajenos',
+                    'compras.ver',
+                    'compras.registrar',
+                    'insumos.ver',
+                    'recetas.ver',
+                    'reportes.ver_operativos',
+                ],
+            };
+            expect(seccionesVisiblesParaUsuario(encargadoPorDefecto)).toEqual([
+                'pos',
+                'caja',
+                'compras',
+                'recetas',
+                'finanzas',
+            ]);
+
+            const cajeroPorDefecto = {
+                rol: 'CAJERO',
+                permisos: ['ventas.cobrar_ticket', 'caja.abrir_turno', 'caja.cerrar_turno'],
+            };
+            expect(seccionesVisiblesParaUsuario(cajeroPorDefecto)).toEqual(['pos', 'caja']);
+
+            const cajeroConCompras = {
+                rol: 'CAJERO',
+                permisos: ['ventas.cobrar_ticket', 'ia.importar_listas'],
+            };
+            expect(seccionesVisiblesParaUsuario(cajeroConCompras)).toEqual(['pos', 'compras']);
+
+            expect(seccionesVisiblesParaUsuario(null)).toEqual([]);
+            expect(seccionesVisiblesParaUsuario({ rol: 'CAJERO', permisos: [] })).toEqual([]);
         });
     });
 });

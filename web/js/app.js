@@ -40,6 +40,7 @@ import {
     parsearCsvProveedor,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    seccionesVisiblesParaUsuario,
     siguienteIdCarga,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
@@ -512,12 +513,18 @@ const actualizarUIUsuario = () => {
 };
 
 const configurarVisibilidadPorRol = (rol) => {
+    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
     const esCajero = rol === 'CAJERO';
 
     const btnConfigHeader = $('btn-config-servidor-header');
     if (btnConfigHeader) {
         btnConfigHeader.style.display = rol === 'DUENIO' ? 'flex' : 'none';
     }
+
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach((btn) => {
+        const seccion = btn.dataset.seccion;
+        btn.style.display = seccionesVisibles.includes(seccion) ? '' : 'none';
+    });
 
     if ($('caja-panel-cajero-ciego')) {
         $('caja-panel-cajero-ciego').style.display = 'block';
@@ -531,6 +538,15 @@ const configurarVisibilidadPorRol = (rol) => {
     }
     if ($('finanzas-bloqueo-cajero')) {
         $('finanzas-bloqueo-cajero').style.display = esCajero ? 'block' : 'none';
+    }
+
+    const vistaActiva = document.querySelector('.vista-modulo.activa');
+    const seccionActiva = vistaActiva ? vistaActiva.id.replace(/^vista-/, '') : '';
+    if (seccionesVisibles.length === 0) {
+        document.querySelectorAll('.vista-modulo').forEach((v) => v.classList.remove('activa'));
+        document.querySelectorAll('.sidebar-nav .nav-item').forEach((b) => b.classList.remove('activo'));
+    } else if (!seccionesVisibles.includes(seccionActiva)) {
+        cambiarSeccion(seccionesVisibles[0]);
     }
 
     actualizarVisibilidadGestionRecetas();
@@ -3533,23 +3549,39 @@ const abrirModalConfigServidor = () => {
 // CARGA INICIAL Y NAVEGACIÓN
 // ============================================================
 const cargarDatosIniciales = async () => {
+    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
     await cargarTurnoActivo();
     await cargarCatalogo();
-    await cargarInsumos();
-    await cargarProveedores();
-    if (estadoApp.usuario?.rol !== 'CAJERO') {
+    if (seccionesVisibles.includes('compras') || seccionesVisibles.includes('recetas')) {
+        await cargarInsumos();
+        await cargarProveedores();
+    }
+    if (seccionesVisibles.includes('finanzas')) {
         await cargarFinanzas();
+    }
+    if (seccionesVisibles.includes('personal')) {
         await cargarPersonal();
     }
     actualizarIndicadorColaOffline();
 };
 
 const cambiarSeccion = (nombreSeccion) => {
+    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
+    let destino = nombreSeccion;
+    if (estadoApp.usuario) {
+        if (seccionesVisibles.length === 0) {
+            return;
+        }
+        if (!seccionesVisibles.includes(destino)) {
+            destino = seccionesVisibles[0];
+        }
+    }
+
     document.querySelectorAll('.vista-modulo').forEach((v) => v.classList.remove('activa'));
     document.querySelectorAll('.sidebar-nav .nav-item').forEach((b) => b.classList.remove('activo'));
 
-    const seccionEl = $(`vista-${nombreSeccion}`);
-    const botonEl = document.querySelector(`.sidebar-nav .nav-item[data-seccion="${nombreSeccion}"]`);
+    const seccionEl = $(`vista-${destino}`);
+    const botonEl = document.querySelector(`.sidebar-nav .nav-item[data-seccion="${destino}"]`);
 
     if (seccionEl) seccionEl.classList.add('activa');
     if (botonEl) botonEl.classList.add('activo');
@@ -3563,15 +3595,15 @@ const cambiarSeccion = (nombreSeccion) => {
         personal: { titulo: 'Equipo & Permisos', sub: 'Gobernanza de personal y control granular de accesos' },
     };
 
-    if (titulos[nombreSeccion]) {
-        if ($('titulo-seccion-actual')) $('titulo-seccion-actual').textContent = titulos[nombreSeccion].titulo;
-        if ($('subtitulo-seccion-actual')) $('subtitulo-seccion-actual').textContent = titulos[nombreSeccion].sub;
+    if (titulos[destino]) {
+        if ($('titulo-seccion-actual')) $('titulo-seccion-actual').textContent = titulos[destino].titulo;
+        if ($('subtitulo-seccion-actual')) $('subtitulo-seccion-actual').textContent = titulos[destino].sub;
     }
 
-    if (nombreSeccion === 'pos') {
+    if (destino === 'pos') {
         const input = $('input-codigo-barras');
         if (input) setTimeout(() => input.focus(), 100);
-    } else if (nombreSeccion === 'finanzas' && estadoApp.tokenJwt && estadoApp.usuario?.rol !== 'CAJERO') {
+    } else if (destino === 'finanzas' && estadoApp.tokenJwt && seccionesVisibles.includes('finanzas')) {
         cargarFinanzas();
     }
 };
@@ -3649,10 +3681,12 @@ const inicializarEventosDOM = () => {
     // Atajos globales de teclado F2 (cobrar) y F4 (enfocar lector láser)
     window.addEventListener('keydown', (e) => {
         if (e.key === 'F4') {
+            if (!seccionesVisiblesParaUsuario(estadoApp.usuario).includes('pos')) return;
             e.preventDefault();
             const input = $('input-codigo-barras');
             if (input) input.focus();
         } else if (e.key === 'F2') {
+            if (!seccionesVisiblesParaUsuario(estadoApp.usuario).includes('pos')) return;
             e.preventDefault();
             cobrarTicketVenta();
         } else if (e.key === 'Escape') {
