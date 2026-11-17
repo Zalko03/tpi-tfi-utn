@@ -1,38 +1,21 @@
 import jwt from 'jsonwebtoken';
 import { obtenerClavePublicaJwt } from '../config/env.js';
 
-/**
- * Middleware que valida criptográficamente el token de autenticación JWT asimétrico (RS256).
- * Verifica firma con la clave pública RSA, expiración (exp), emisor (iss = 'cafe-gestion-django')
- * y que el tipo de token sea de acceso (token_type = 'access') en memoria local sin consultar a Django.
- * Inyecta los datos decodificados en req.usuario.
- */
-export const verificarToken = (req, res, next) => {
-    const cabeceraAuth = req.headers.authorization || req.header('Authorization');
-
-    if (!cabeceraAuth) {
-        return res.status(401).json({
-            mensaje: 'Token de autenticación no provisto',
-            detalles: null,
-        });
+const decodificarTokenAcceso = (cabeceraAuth) => {
+    if (!cabeceraAuth || typeof cabeceraAuth !== 'string') {
+        return { ok: false, codigo: 'NO_PROVISTO' };
     }
 
     const partes = cabeceraAuth.trim().split(' ');
     if (partes.length !== 2 || partes[0] !== 'Bearer' || !partes[1]) {
-        return res.status(401).json({
-            mensaje: 'Formato de autorización inválido. Debe ser: Bearer <token>',
-            detalles: null,
-        });
+        return { ok: false, codigo: 'FORMATO_INVALIDO' };
     }
 
     const token = partes[1];
     const clavePublica = obtenerClavePublicaJwt();
 
     if (!clavePublica) {
-        return res.status(500).json({
-            mensaje: 'Error de configuración de seguridad en el servidor',
-            detalles: 'Clave pública RSA no disponible para validación de tokens',
-        });
+        return { ok: false, codigo: 'SIN_CLAVE_PUBLICA' };
     }
 
     try {
@@ -42,23 +25,76 @@ export const verificarToken = (req, res, next) => {
         });
 
         if (decoded.token_type !== 'access') {
+            return { ok: false, codigo: 'TIPO_INVALIDO' };
+        }
+
+        const subNormalizado =
+            decoded.sub !== undefined && decoded.sub !== null && String(decoded.sub).trim() !== ''
+                ? Number.isNaN(Number(decoded.sub))
+                    ? decoded.sub
+                    : Number(decoded.sub)
+                : undefined;
+        const id = decoded.user_id ?? subNormalizado;
+
+        return { ok: true, decoded, id };
+    } catch (error) {
+        return { ok: false, codigo: 'ERROR_VERIFICACION', error };
+    }
+};
+
+/**
+ * Función pura que extrae el ID de usuario desde una cabecera Authorization Bearer
+ * verificando criptográficamente el JWT RS256. Retorna null si falta o es inválido.
+ */
+export const obtenerUsuarioIdDeToken = (cabecera) => {
+    const resultado = decodificarTokenAcceso(cabecera);
+    if (!resultado.ok) {
+        return null;
+    }
+    const { id } = resultado;
+    if (id === undefined || id === null || id === '') {
+        return null;
+    }
+    return id;
+};
+
+/**
+ * Middleware que valida criptográficamente el token de autenticación JWT asimétrico (RS256).
+ * Verifica firma con la clave pública RSA, expiración (exp), emisor (iss = 'cafe-gestion-django')
+ * y que el tipo de token sea de acceso (token_type = 'access') en memoria local sin consultar a Django.
+ * Inyecta los datos decodificados en req.usuario.
+ */
+export const verificarToken = (req, res, next) => {
+    const cabeceraAuth = req.headers.authorization || req.header('Authorization');
+    const resultado = decodificarTokenAcceso(cabeceraAuth);
+
+    if (!resultado.ok) {
+        if (resultado.codigo === 'NO_PROVISTO') {
+            return res.status(401).json({
+                mensaje: 'Token de autenticación no provisto',
+                detalles: null,
+            });
+        }
+        if (resultado.codigo === 'FORMATO_INVALIDO') {
+            return res.status(401).json({
+                mensaje: 'Formato de autorización inválido. Debe ser: Bearer <token>',
+                detalles: null,
+            });
+        }
+        if (resultado.codigo === 'SIN_CLAVE_PUBLICA') {
+            return res.status(500).json({
+                mensaje: 'Error de configuración de seguridad en el servidor',
+                detalles: 'Clave pública RSA no disponible para validación de tokens',
+            });
+        }
+        if (resultado.codigo === 'TIPO_INVALIDO') {
             return res.status(401).json({
                 mensaje: 'Tipo de token inválido. Se requiere un token de acceso',
                 detalles: null,
             });
         }
 
-        req.usuario = {
-            id: decoded.user_id || (decoded.sub ? Number(decoded.sub) : undefined),
-            username: decoded.username,
-            email: decoded.email,
-            rol: decoded.rol,
-            permisos: Array.isArray(decoded.permisos) ? decoded.permisos : [],
-            ...decoded,
-        };
-
-        return next();
-    } catch (error) {
+        const error = resultado.error;
         if (error instanceof jwt.TokenExpiredError) {
             return res.status(401).json({
                 mensaje: 'Token de autenticación expirado',
@@ -96,6 +132,18 @@ export const verificarToken = (req, res, next) => {
             detalles: null,
         });
     }
+
+    const { decoded, id } = resultado;
+    req.usuario = {
+        id,
+        username: decoded.username,
+        email: decoded.email,
+        rol: decoded.rol,
+        permisos: Array.isArray(decoded.permisos) ? decoded.permisos : [],
+        ...decoded,
+    };
+
+    return next();
 };
 
 /**

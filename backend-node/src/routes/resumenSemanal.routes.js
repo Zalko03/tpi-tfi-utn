@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { check } from 'express-validator';
 import { generarResumenSemanal } from '../controllers/resumenSemanal.controller.js';
 import { verificarPermiso, verificarToken } from '../middlewares/auth.middleware.js';
-import { limitadorConsultasCostosas } from '../middlewares/rateLimit.middleware.js';
+import { limitadorIA } from '../middlewares/rateLimit.middleware.js';
 import { validarCampos } from '../middlewares/validarCampos.middleware.js';
 
 const router = Router();
@@ -66,6 +66,6 @@ const checksResumenSemanal = [
     validarCampos,
 ];
 
-router.post('/', limitadorConsultasCostosas, checksResumenSemanal, generarResumenSemanal);
+router.post('/', limitadorIA, checksResumenSemanal, generarResumenSemanal);
 
 export default router;

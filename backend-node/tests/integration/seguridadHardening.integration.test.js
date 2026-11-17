@@ -70,4 +70,21 @@ describe('Integration Tests - Endurecimiento de Seguridad (T2.5) en Express', ()
         expect(res.body.mensaje).toBe('Datos de entrada inválidos');
         expect(res.body.detalles).toEqual(expect.arrayContaining([expect.stringContaining('id')]));
     });
+
+    it('/app/index.html y /health no emiten cabeceras RateLimit y trust proxy por defecto es 0', async () => {
+        expect(app.get('trust proxy')).toBe(0);
+
+        const [resApp, resHealth] = await Promise.all([
+            request(app).get('/app/index.html'),
+            request(app).get('/health'),
+        ]);
+
+        expect(resApp.status).toBe(200);
+        expect(resApp.headers.ratelimit).toBeUndefined();
+        expect(resApp.headers['ratelimit-limit']).toBeUndefined();
+
+        expect(resHealth.status).toBe(200);
+        expect(resHealth.headers.ratelimit).toBeUndefined();
+        expect(resHealth.headers['ratelimit-limit']).toBeUndefined();
+    });
 });

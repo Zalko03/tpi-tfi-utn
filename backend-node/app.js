@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { entorno } from './src/config/env.js';
+import { entorno, nodeTrustProxySaltos } from './src/config/env.js';
 import healthRoutes from './src/routes/health.routes.js';
 import historialPreciosRoutes from './src/routes/historialPrecio.routes.js';
 import snapshotCosteoRoutes from './src/routes/snapshotCosteo.routes.js';
@@ -21,6 +21,7 @@ const __dirname = path.dirname(__filename);
 const rutaClienteWeb = path.resolve(__dirname, '../web');
 
 const app = express();
+app.set('trust proxy', nodeTrustProxySaltos);
 
 // Trazabilidad y correlación distribuida de peticiones (TP 4)
 app.use(correlationIdMiddleware);
@@ -52,13 +53,17 @@ app.use(
 // Política de CORS restrictiva sin comodín '*' (T2.5)
 app.use(corsRestringido);
 
-// Rate limiting perimetral general (T2.5)
-app.use(limitadorGeneral);
-
 // Logging seguro: en test se omite para no ensuciar la salida
 if (entorno !== 'test') {
     app.use(morgan('dev'));
 }
+
+// Cliente mínimo PWA y chequeo de salud sin rate limiting para no gastar cupo de API
+app.use('/app', express.static(rutaClienteWeb));
+app.use('/health', healthRoutes);
+
+// Rate limiting perimetral general (T2.5)
+app.use(limitadorGeneral);
 
 // Parseo de JSON en body
 app.use(express.json());
@@ -66,10 +71,6 @@ app.use(express.json());
 // Sanitización y prevención activa de inyecciones NoSQL ($ o .) (T2.5)
 app.use(sanitizarNoSql);
 
-// Cliente mínimo PWA instalable servido localmente en /app (T3.6)
-app.use('/app', express.static(rutaClienteWeb));
-
-app.use('/health', healthRoutes);
 app.use('/api/historial-precios', historialPreciosRoutes);
 app.use('/api/snapshots-costeo', snapshotCosteoRoutes);
 app.use('/api/productos', productoResumenRoutes);

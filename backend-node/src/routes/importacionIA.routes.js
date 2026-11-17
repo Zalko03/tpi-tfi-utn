@@ -8,6 +8,7 @@ import {
     rechazarImportacion,
 } from '../controllers/importacionIA.controller.js';
 import { verificarPermiso, verificarToken } from '../middlewares/auth.middleware.js';
+import { limitadorIA } from '../middlewares/rateLimit.middleware.js';
 import { validarCampos } from '../middlewares/validarCampos.middleware.js';
 
 const router = Router();
@@ -82,7 +83,7 @@ const checksRechazarImportacion = [
 
 router.get('/', listarImportaciones);
 router.get('/:id', obtenerImportacionPorId);
-router.post('/', checksImportacionObligatorios, crearImportacion);
+router.post('/', limitadorIA, checksImportacionObligatorios, crearImportacion);
 router.post('/:id/aprobar', checksAprobarImportacion, aprobarImportacion);
 router.post('/:id/rechazar', checksRechazarImportacion, rechazarImportacion);
 

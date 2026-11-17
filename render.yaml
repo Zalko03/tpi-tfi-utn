@@ -45,6 +45,8 @@ services:
         value: production
       - key: NODE_PORT
         value: "3000"
+      - key: NODE_TRUST_PROXY_SALTOS
+        value: "1"
       - key: MONGO_URI
         sync: false
       - key: DJANGO_BASE_URL
