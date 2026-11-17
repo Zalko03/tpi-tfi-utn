@@ -11,8 +11,10 @@ import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularCostosExtraReceta,
+    calcularDimensionesReescaladoImagen,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
+    CALIDAD_JPEG_IMAGEN_IMPORTACION,
     construirDictPermisosDesdeSeleccion,
     fechaIsoATexto,
     fechaTextoAIso,
@@ -24,6 +26,7 @@ import {
     esArchivoDocAntiguo,
     esArchivoDocx,
     esArchivoExcel,
+    esArchivoImagenImportacion,
     esArchivoPdf,
     esCargaVigente,
     escaparHtml,
@@ -31,6 +34,7 @@ import {
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
     evaluarTextoComoCsvDirecto,
+    extraerBase64DeDataUrl,
     extraerCsvDeExcelBuffer,
     extraerMensajeErrorApi,
     extraerTextoDeDocxBuffer,
@@ -42,8 +46,10 @@ import {
     generarIdOperacion,
     GRUPOS_PERMISOS_EQUIPO,
     guardarPreferenciaSonidosSilenciados,
+    LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
     leerPreferenciaSonidosSilenciados,
     MENSAJE_DOC_ANTIGUO,
+    MENSAJE_FOTO_LISTA_IA,
     MENSAJE_IA_NO_DISPONIBLE,
     mensajeErrorParaUsuario,
     obtenerContenidoPlantillaCsv,
@@ -60,6 +66,7 @@ import {
     SONIDOS,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
+    validarArchivoImportacionGeneral,
     validarCarritoContraCatalogo,
     validarRangoFechas,
     validarTamanoArchivoImportacion,
@@ -149,6 +156,7 @@ export const estadoApp = {
     importacionActual: null,
     csvParseadoActual: null,
     csvContingenciaFallback: null,
+    imagenImportacionActual: null,
     ultimoOrigenArchivo: 'texto',
     insumos: [],
     proveedores: [],
@@ -1958,7 +1966,121 @@ const procesarArchivoDocxSeleccionado = async (archivo, origenSelector = 'ia') =
     }
 };
 
+const limpiarFotoImportacionActual = ({ limpiarAviso = false } = {}) => {
+    estadoApp.imagenImportacionActual = null;
+    const preview = $('preview-foto-lista-ia');
+    const imgPreview = $('img-preview-foto-ia');
+    const textarea = $('textarea-lista-ia');
+    if (preview) preview.style.display = 'none';
+    if (imgPreview) imgPreview.removeAttribute('src');
+    if (textarea) textarea.required = true;
+    if (estadoApp.ultimoOrigenArchivo === 'imagen') {
+        estadoApp.ultimoOrigenArchivo = 'texto';
+    }
+    if (limpiarAviso) {
+        mostrarEstadoArchivoPdf('', 'info');
+    }
+};
+
+const redimensionarImagenParaImportacion = async (archivo) => {
+    const dataUrlOriginal = await new Promise((resolve, reject) => {
+        const lector = new FileReader();
+        lector.onload = () => resolve(String(lector.result || ''));
+        lector.onerror = () => reject(new Error('No se pudo leer la foto seleccionada.'));
+        lector.readAsDataURL(archivo);
+    });
+
+    const imagen = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('No se pudo cargar la foto. Probá con otra imagen.'));
+        img.src = dataUrlOriginal;
+    });
+
+    const { ancho, alto } = calcularDimensionesReescaladoImagen(
+        imagen.naturalWidth || imagen.width,
+        imagen.naturalHeight || imagen.height,
+        LADO_MAXIMO_IMAGEN_IMPORTACION_PX
+    );
+
+    const canvas = document.createElement('canvas');
+    canvas.width = ancho;
+    canvas.height = alto;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        throw new Error('Tu navegador no pudo preparar la foto para analizar.');
+    }
+    // Fondo blanco para evitar transparencias oscuras al convertir PNG/WEBP a JPEG
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, ancho, alto);
+    ctx.drawImage(imagen, 0, 0, ancho, alto);
+
+    const dataUrlJpeg = canvas.toDataURL('image/jpeg', CALIDAD_JPEG_IMAGEN_IMPORTACION);
+    const base64 = extraerBase64DeDataUrl(dataUrlJpeg);
+    if (!base64) {
+        throw new Error('No se pudo preparar la foto en formato JPEG.');
+    }
+
+    return {
+        dataUrl: dataUrlJpeg,
+        base64,
+        mime: 'image/jpeg',
+        ancho,
+        alto,
+    };
+};
+
+const procesarArchivoImagenSeleccionado = async (archivo, origenSelector = 'ia') => {
+    if (!archivo) return;
+    mostrarEstadoArchivoPdf(`Preparando la foto “${archivo.name}”…`, 'info');
+    try {
+        const { dataUrl, base64, mime, ancho, alto } =
+            await redimensionarImagenParaImportacion(archivo);
+
+        estadoApp.imagenImportacionActual = {
+            base64,
+            mime,
+            dataUrl,
+            nombre: archivo.name,
+            ancho,
+            alto,
+        };
+        estadoApp.ultimoOrigenArchivo = 'imagen';
+        estadoApp.csvParseadoActual = null;
+        estadoApp.csvContingenciaFallback = null;
+        if ($('panel-preview-csv')) {
+            $('panel-preview-csv').style.display = 'none';
+        }
+        const textarea = $('textarea-lista-ia');
+        if (textarea) {
+            textarea.value = '';
+            textarea.required = false;
+        }
+        if ($('img-preview-foto-ia')) {
+            $('img-preview-foto-ia').src = dataUrl;
+        }
+        if ($('texto-preview-foto-ia')) {
+            $('texto-preview-foto-ia').textContent = MENSAJE_FOTO_LISTA_IA;
+        }
+        if ($('preview-foto-lista-ia')) {
+            $('preview-foto-lista-ia').style.display = 'flex';
+        }
+        mostrarEstadoArchivoPdf(MENSAJE_FOTO_LISTA_IA, 'info');
+        mostrarToast(MENSAJE_FOTO_LISTA_IA, 'exito');
+        if (origenSelector === 'csv') {
+            $('preview-foto-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        }
+    } catch (err) {
+        console.error('Error al preparar la foto:', err);
+        limpiarFotoImportacionActual();
+        const msg = err?.message || 'No se pudo procesar la foto seleccionada.';
+        mostrarEstadoArchivoPdf(msg, 'advertencia');
+        mostrarToast(msg, 'peligro');
+    }
+};
+
 const aplicarCsvParseadoEnPreview = (resultado, origenEtiqueta = 'archivo CSV') => {
+    limpiarFotoImportacionActual();
     estadoApp.csvParseadoActual = resultado;
     estadoApp.csvContingenciaFallback = resultado;
     estadoApp.ultimoOrigenArchivo =
@@ -1981,12 +2103,26 @@ const procesarArchivoImportacionSeleccionado = async (archivo, origenSelector = 
         return;
     }
 
+    const validacionArchivo = validarArchivoImportacionGeneral(archivo);
+    if (!validacionArchivo.valido) {
+        mostrarEstadoArchivoPdf(validacionArchivo.mensajeError, 'advertencia');
+        mostrarToast(validacionArchivo.mensajeError, 'peligro');
+        return;
+    }
+
     const validacionTamano = validarTamanoArchivoImportacion(archivo);
     if (!validacionTamano.valido) {
         mostrarEstadoArchivoPdf(validacionTamano.mensajeError, 'advertencia');
         mostrarToast(validacionTamano.mensajeError, 'peligro');
         return;
     }
+
+    if (esArchivoImagenImportacion(archivo)) {
+        await procesarArchivoImagenSeleccionado(archivo, origenSelector);
+        return;
+    }
+
+    limpiarFotoImportacionActual();
 
     if (esArchivoPdf(archivo)) {
         await procesarArchivoPdfSeleccionado(archivo, origenSelector);
@@ -2263,7 +2399,7 @@ const consultarDetalleImportacion = async (importacionId, intento = 1) => {
         if (res.ok) {
             if (
                 (datos.estado === 'PENDIENTE' || datos.estado === 'PROCESANDO') &&
-                intento < 20
+                intento < 40
             ) {
                 if (intento === 1) {
                     renderizarPropuestaIAComercial(datos);
@@ -4324,7 +4460,20 @@ const inicializarEventosDOM = () => {
     $('btn-csv-desde-texto')?.addEventListener('click', previsualizarCsvDesdeTexto);
 
     // 16. Importador IA de Listas
+    $('btn-quitar-foto-ia')?.addEventListener('click', () => {
+        limpiarFotoImportacionActual({ limpiarAviso: true });
+        mostrarToast('Foto quitada. Podés subir otro archivo o pegar texto.', 'info');
+    });
+
+    $('textarea-lista-ia')?.addEventListener('input', () => {
+        if (estadoApp.imagenImportacionActual && $('textarea-lista-ia')?.value.trim()) {
+            limpiarFotoImportacionActual({ limpiarAviso: true });
+        }
+    });
+
     $('btn-ejemplo-proveedor')?.addEventListener('click', () => {
+        limpiarFotoImportacionActual({ limpiarAviso: true });
+        estadoApp.ultimoOrigenArchivo = 'texto';
         if ($('input-proveedor-ia')) $('input-proveedor-ia').value = 'Distribuidora Central de Café';
         if ($('textarea-lista-ia')) {
             $('textarea-lista-ia').value = `Distribuidora Central de Café
@@ -4340,22 +4489,36 @@ Flete y entrega a local: $4500`;
     $('form-importacion-ia')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Mayorista Café del Litoral';
+        const imagenActual = estadoApp.imagenImportacionActual;
         const textoLista = $('textarea-lista-ia')?.value.trim() || '';
-        if (textoLista.startsWith('%PDF-')) {
+
+        if (!imagenActual && !textoLista) {
+            const aviso = 'Pegá el texto de la lista o subí un archivo o foto para analizar.';
+            mostrarEstadoArchivoPdf(aviso, 'advertencia');
+            mostrarToast(aviso, 'advertencia');
+            $('textarea-lista-ia')?.focus();
+            return;
+        }
+        if (!imagenActual && textoLista.startsWith('%PDF-')) {
             const aviso = 'No se pudo leer el texto del PDF. Probá subiéndolo de nuevo.';
             mostrarEstadoArchivoPdf(aviso, 'advertencia');
             mostrarToast(aviso, 'advertencia');
             return;
         }
+
         await conCargando($('btn-analizar-ia'), async () => {
-            const evalCsv = evaluarTextoComoCsvDirecto(textoLista);
-            if (evalCsv.compatible) {
-                estadoApp.csvContingenciaFallback = evalCsv.resultado;
-            } else if (
-                !(estadoApp.csvParseadoActual?.items?.length > 0 &&
-                estadoApp.csvParseadoActual.textoParaIa === textoLista)
-            ) {
+            if (imagenActual) {
                 estadoApp.csvContingenciaFallback = null;
+            } else {
+                const evalCsv = evaluarTextoComoCsvDirecto(textoLista);
+                if (evalCsv.compatible) {
+                    estadoApp.csvContingenciaFallback = evalCsv.resultado;
+                } else if (
+                    !(estadoApp.csvParseadoActual?.items?.length > 0 &&
+                    estadoApp.csvParseadoActual.textoParaIa === textoLista)
+                ) {
+                    estadoApp.csvContingenciaFallback = null;
+                }
             }
             const estadoPill = $('estado-importacion-ia');
 
@@ -4363,9 +4526,25 @@ Flete y entrega a local: $4500`;
             renderizarPropuestaIAComercial({
                 _id: null,
                 estado: 'PROCESANDO',
-                entrada: { proveedorNombre, textoLista, origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto' },
+                entrada: imagenActual
+                    ? { proveedorNombre, origenArchivo: 'imagen' }
+                    : { proveedorNombre, textoLista, origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto' },
                 salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
             });
+
+            const cuerpoSolicitud = imagenActual
+                ? {
+                      proveedorNombre,
+                      origenArchivo: 'imagen',
+                      imagenBase64: imagenActual.base64,
+                      imagenMime: imagenActual.mime,
+                  }
+                : {
+                      proveedorNombre,
+                      textoLista,
+                      versionPrompt: 'v1',
+                      origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto',
+                  };
 
             try {
                 const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones`, {
@@ -4374,12 +4553,7 @@ Flete y entrega a local: $4500`;
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     },
-                    body: JSON.stringify({
-                        proveedorNombre,
-                        textoLista,
-                        versionPrompt: 'v1',
-                        origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto',
-                    }),
+                    body: JSON.stringify(cuerpoSolicitud),
                 });
                 const data = await res.json().catch(() => ({}));
                 if (res.status === 202 && data.importacionId) {

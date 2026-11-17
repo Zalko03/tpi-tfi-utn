@@ -3128,6 +3128,36 @@ textarea:focus {
     color: #92400E;
 }
 
+.preview-foto-lista-ia {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.65rem 0.85rem;
+    margin-bottom: 0.65rem;
+    border: 1px solid #A7F3D0;
+    border-radius: var(--radio-md);
+    background: #F0FDF4;
+}
+
+.preview-foto-lista-ia img {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: var(--radio-sm, 6px);
+    border: 1px solid var(--color-borde-suave, #E5E7EB);
+    flex-shrink: 0;
+}
+
+.preview-foto-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #065F46;
+}
+
 .btn-exito-comercial:disabled,
 .btn-descartar-comercial:disabled {
     opacity: 0.5;

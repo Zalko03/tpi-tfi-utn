@@ -1664,6 +1664,160 @@ export const TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES = 5 * 1024 * 1024;
 export const MENSAJE_ARCHIVO_DEMASIADO_GRANDE =
     'El archivo supera el límite máximo permitido de 5 MB.';
 export const MENSAJE_DOC_ANTIGUO = 'Guardá el archivo como .docx y volvé a subirlo';
+export const MIMES_IMAGEN_IMPORTACION_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp'];
+export const EXTENSIONES_IMAGEN_IMPORTACION_PERMITIDAS = ['.jpg', '.jpeg', '.png', '.webp'];
+export const LADO_MAXIMO_IMAGEN_IMPORTACION_PX = 1600;
+export const CALIDAD_JPEG_IMAGEN_IMPORTACION = 0.85;
+export const MENSAJE_TIPO_IMAGEN_INVALIDO = 'Elegí una foto JPG, PNG o WEBP.';
+export const MENSAJE_FOTO_LISTA_IA = 'Foto lista para analizar con IA';
+
+const EXTENSIONES_IMAGEN_CUALQUIERA = [
+    ...EXTENSIONES_IMAGEN_IMPORTACION_PERMITIDAS,
+    '.gif',
+    '.bmp',
+    '.svg',
+    '.heic',
+    '.heif',
+    '.tiff',
+    '.tif',
+    '.avif',
+    '.ico',
+];
+const EXTENSIONES_TEXTO_IMPORTACION = ['.csv', '.txt'];
+
+/**
+ * Determina si un archivo seleccionado corresponde a una imagen (permitida o no).
+ */
+export const esArchivoImagenImportacion = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    if (tipo.startsWith('image/')) return true;
+    return EXTENSIONES_IMAGEN_CUALQUIERA.some((ext) => nombre.endsWith(ext));
+};
+
+/**
+ * Valida que una imagen seleccionada para importación sea JPG, PNG o WEBP y no supere 5 MB.
+ */
+export const validarArchivoImagenImportacion = (
+    archivo,
+    maxBytes = TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES
+) => {
+    if (!archivo) {
+        return { valido: false, mensajeError: 'No se seleccionó ninguna foto.' };
+    }
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    const extPermitida = EXTENSIONES_IMAGEN_IMPORTACION_PERMITIDAS.some((ext) =>
+        nombre.endsWith(ext)
+    );
+    const mimePermitido = MIMES_IMAGEN_IMPORTACION_PERMITIDOS.includes(tipo);
+
+    if ((tipo && !mimePermitido) || (!tipo && !extPermitida)) {
+        return { valido: false, mensajeError: MENSAJE_TIPO_IMAGEN_INVALIDO };
+    }
+    if (!mimePermitido && !extPermitida) {
+        return { valido: false, mensajeError: MENSAJE_TIPO_IMAGEN_INVALIDO };
+    }
+
+    const tamano = Number(archivo.size ?? 0);
+    if (Number.isFinite(tamano) && tamano <= 0 && archivo.size !== undefined) {
+        return { valido: false, mensajeError: 'La foto está vacía. Elegí otra.' };
+    }
+    if (Number.isFinite(tamano) && tamano > maxBytes) {
+        return { valido: false, mensajeError: MENSAJE_ARCHIVO_DEMASIADO_GRANDE };
+    }
+    return { valido: true, mensajeError: null };
+};
+
+/**
+ * Valida tipo y tamaño de cualquier archivo elegido en la carga de listas de proveedores.
+ */
+export const validarArchivoImportacionGeneral = (
+    archivo,
+    maxBytes = TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES
+) => {
+    if (!archivo) {
+        return { valido: false, mensajeError: 'No se seleccionó ningún archivo.' };
+    }
+    if (esArchivoDocAntiguo(archivo)) {
+        return { valido: false, mensajeError: MENSAJE_DOC_ANTIGUO };
+    }
+    if (esArchivoImagenImportacion(archivo)) {
+        return validarArchivoImagenImportacion(archivo, maxBytes);
+    }
+
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    const esTexto =
+        EXTENSIONES_TEXTO_IMPORTACION.some((ext) => nombre.endsWith(ext)) ||
+        tipo === 'text/csv' ||
+        tipo === 'text/plain';
+    const soportado =
+        esArchivoPdf(archivo) || esArchivoExcel(archivo) || esArchivoDocx(archivo) || esTexto;
+
+    if (!soportado) {
+        return {
+            valido: false,
+            mensajeError:
+                'Formato no compatible. Subí Excel, PDF, Word, foto (JPG, PNG, WEBP) o texto.',
+        };
+    }
+    return validarTamanoArchivoImportacion(archivo, maxBytes);
+};
+
+/**
+ * Calcula ancho y alto finales para reescalar una foto sin deformarla,
+ * acotando su lado mayor a `ladoMaximo` píxeles.
+ */
+export const calcularDimensionesReescaladoImagen = (
+    anchoOriginal,
+    altoOriginal,
+    ladoMaximo = LADO_MAXIMO_IMAGEN_IMPORTACION_PX
+) => {
+    const ancho = Number(anchoOriginal);
+    const alto = Number(altoOriginal);
+    const maxLado = Number(ladoMaximo);
+
+    if (
+        !Number.isFinite(ancho) ||
+        !Number.isFinite(alto) ||
+        !Number.isFinite(maxLado) ||
+        ancho <= 0 ||
+        alto <= 0 ||
+        maxLado <= 0
+    ) {
+        throw new Error('Dimensiones de imagen inválidas.');
+    }
+
+    const mayorLado = Math.max(ancho, alto);
+    if (mayorLado <= maxLado) {
+        return {
+            ancho: Math.round(ancho),
+            alto: Math.round(alto),
+            reescalada: false,
+        };
+    }
+
+    const escala = maxLado / mayorLado;
+    return {
+        ancho: Math.max(1, Math.round(ancho * escala)),
+        alto: Math.max(1, Math.round(alto * escala)),
+        reescalada: true,
+    };
+};
+
+/**
+ * Extrae el contenido base64 puro quitando el prefijo `data:<mime>;base64,`.
+ */
+export const extraerBase64DeDataUrl = (dataUrl = '') => {
+    const texto = String(dataUrl || '').trim();
+    const indice = texto.indexOf(';base64,');
+    if (!texto.startsWith('data:') || indice === -1) {
+        return '';
+    }
+    return texto.slice(indice + ';base64,'.length).trim();
+};
 
 /**
  * Valida antes de leer un archivo que no supere el tamaño máximo permitido (5 MB por defecto).

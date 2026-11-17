@@ -562,7 +562,7 @@
                                 <div class="panel-cabecera-linea">
                                     <div>
                                         <h3>Cargar planilla del proveedor</h3>
-                                        <p class="text-muted">Subí la planilla del proveedor para revisar los precios antes de aplicarlos. También podés subir un PDF o un Word para que lo lea la IA.</p>
+                                        <p class="text-muted">Subí la planilla del proveedor para revisar los precios antes de aplicarlos. También podés subir un PDF, un Word o una foto para que lo lea la IA.</p>
                                     </div>
                                     <button type="button" id="btn-descargar-plantilla-csv" class="btn-secundario-comercial" style="display: inline-flex; align-items: center; gap: 0.45rem;">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -571,10 +571,10 @@
                                 </div>
 
                                 <div id="zona-drop-csv" class="zona-drop-csv">
-                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt,.pdf,.xlsx,.xls,.docx" class="sr-only" />
+                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt,.pdf,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="sr-only" />
                                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
                                     <div>
-                                        <strong>Arrastrá aquí la planilla, el PDF o el Word del proveedor</strong>
+                                        <strong>Arrastrá aquí la planilla, el PDF, el Word o la foto del proveedor</strong>
                                         <p class="text-muted">o hacé clic para elegirlo (máx. 5 MB)</p>
                                     </div>
                                 </div>
@@ -622,7 +622,7 @@
                                     <div class="paso-circulo">1</div>
                                     <div>
                                         <h3>Pegar Lista o Mensaje del Proveedor</h3>
-                                        <p class="text-muted">Pegá el mensaje de WhatsApp o subí un archivo (Excel, PDF, Word o texto; máx. 5 MB).</p>
+                                        <p class="text-muted">Pegá el mensaje de WhatsApp o subí un archivo (Excel, PDF, Word, foto o texto; máx. 5 MB).</p>
                                     </div>
                                 </div>
 
@@ -634,9 +634,9 @@
 
                                     <div class="campo-grupo">
                                         <div class="flex-justify-between" style="gap: 0.65rem; flex-wrap: wrap;">
-                                            <label for="textarea-lista-ia">Texto de la Lista de Precios, Excel, Word o PDF</label>
+                                            <label for="textarea-lista-ia">Texto de la Lista de Precios, Excel, Word, PDF o foto</label>
                                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                                                <input type="file" id="archivo-lista-ia" accept=".pdf,.txt,.csv,.xlsx,.xls,.docx" class="sr-only" />
+                                                <input type="file" id="archivo-lista-ia" accept=".pdf,.txt,.csv,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="sr-only" />
                                                 <button type="button" id="btn-cargar-archivo-ia" class="btn-secundario-comercial" style="padding: 0.35rem 0.75rem; font-size: 0.82rem;">
                                                     <span>Subir archivo</span>
                                                 </button>
@@ -646,7 +646,14 @@
                                             </div>
                                         </div>
                                         <div id="estado-archivo-lista-ia" class="alerta-archivo-pdf" role="status" style="display: none;"></div>
-                                        <textarea id="textarea-lista-ia" rows="5" placeholder="Pegá aquí el texto que te mandó el proveedor por WhatsApp o subí un archivo..." required>Café tostado en grano 1 kg: $24500
+                                        <div id="preview-foto-lista-ia" class="preview-foto-lista-ia" style="display: none;">
+                                            <img id="img-preview-foto-ia" alt="Vista previa de la foto de la lista de precios" />
+                                            <div class="preview-foto-info">
+                                                <span id="texto-preview-foto-ia">Foto lista para analizar con IA</span>
+                                                <button type="button" id="btn-quitar-foto-ia" class="btn-secundario-comercial" style="padding: 0.25rem 0.65rem; font-size: 0.8rem;">Quitar foto</button>
+                                            </div>
+                                        </div>
+                                        <textarea id="textarea-lista-ia" rows="5" placeholder="Pegá aquí el texto que te mandó el proveedor por WhatsApp o subí un archivo o foto..." required>Café tostado en grano 1 kg: $24500
 Leche entera 12 l: $15600
 Envío: $2000</textarea>
                                     </div>

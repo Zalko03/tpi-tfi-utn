@@ -11,6 +11,7 @@ import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularCostosExtraReceta,
+    calcularDimensionesReescaladoImagen,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
     construirDictPermisosDesdeSeleccion,
@@ -28,6 +29,7 @@ import {
     esArchivoDocAntiguo,
     esArchivoDocx,
     esArchivoExcel,
+    esArchivoImagenImportacion,
     esArchivoPdf,
     esCargaVigente,
     escaparHtml,
@@ -37,6 +39,7 @@ import {
     evaluarEstadoResumenIA,
     evaluarTextoComoCsvDirecto,
     evaluarTextoExtraidoPdf,
+    extraerBase64DeDataUrl,
     extraerCsvDeExcelBuffer,
     extraerItemsDesdeTextoLista,
     extraerMensajeErrorApi,
@@ -49,12 +52,14 @@ import {
     generarIdOperacion,
     GRUPOS_PERMISOS_EQUIPO,
     guardarPreferenciaSonidosSilenciados,
+    LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
     leerPreferenciaSonidosSilenciados,
     limpiarColaOffline,
     MENSAJE_ARCHIVO_DEMASIADO_GRANDE,
     MENSAJE_DOC_ANTIGUO,
     MENSAJE_IA_NO_DISPONIBLE,
     MENSAJE_PDF_ESCANEADO,
+    MENSAJE_TIPO_IMAGEN_INVALIDO,
     mensajeErrorParaUsuario,
     obtenerContenidoPlantillaCsv,
     obtenerPermisosInicialesEmpleado,
@@ -76,6 +81,8 @@ import {
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
+    validarArchivoImagenImportacion,
+    validarArchivoImportacionGeneral,
     validarCarritoContraCatalogo,
     validarRangoFechas,
     validarTamanoArchivoImportacion,
@@ -1803,6 +1810,110 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(obtenerSonidoParaEvento('socket', { nombreEvento: 'stock.bajo' })).toBe('aviso');
             expect(obtenerSonidoParaEvento('socket', { nombreEvento: 'venta.registrada' })).toBeNull();
             expect(obtenerSonidoParaEvento('evento.desconocido')).toBeNull();
+        });
+    });
+
+    describe('Validación y reescalado de fotos de listas de precios', () => {
+        it('valida tipo (JPG, PNG, WEBP) y tamaño máximo (5 MB) de imágenes seleccionadas', () => {
+            expect(esArchivoImagenImportacion({ name: 'lista.JPG', type: '' })).toBe(true);
+            expect(esArchivoImagenImportacion({ name: 'captura', type: 'image/webp' })).toBe(true);
+            expect(esArchivoImagenImportacion({ name: 'lista.pdf', type: 'application/pdf' })).toBe(false);
+
+            expect(
+                validarArchivoImagenImportacion({
+                    name: 'lista.jpg',
+                    type: 'image/jpeg',
+                    size: 1024 * 1024,
+                })
+            ).toEqual({ valido: true, mensajeError: null });
+
+            expect(
+                validarArchivoImagenImportacion({
+                    name: 'foto.png',
+                    type: 'image/png',
+                    size: TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
+                })
+            ).toEqual({ valido: true, mensajeError: null });
+
+            expect(
+                validarArchivoImagenImportacion({
+                    name: 'foto.webp',
+                    type: 'image/webp',
+                    size: 500000,
+                })
+            ).toEqual({ valido: true, mensajeError: null });
+
+            expect(
+                validarArchivoImagenImportacion({
+                    name: 'animado.gif',
+                    type: 'image/gif',
+                    size: 50000,
+                })
+            ).toEqual({
+                valido: false,
+                mensajeError: MENSAJE_TIPO_IMAGEN_INVALIDO,
+            });
+
+            expect(
+                validarArchivoImagenImportacion({
+                    name: 'gigante.jpg',
+                    type: 'image/jpeg',
+                    size: TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES + 1,
+                })
+            ).toEqual({
+                valido: false,
+                mensajeError: MENSAJE_ARCHIVO_DEMASIADO_GRANDE,
+            });
+
+            expect(
+                validarArchivoImagenImportacion({
+                    name: 'vacia.jpg',
+                    type: 'image/jpeg',
+                    size: 0,
+                })
+            ).toEqual({
+                valido: false,
+                mensajeError: 'La foto está vacía. Elegí otra.',
+            });
+
+            expect(
+                validarArchivoImportacionGeneral({
+                    name: 'comprimido.zip',
+                    type: 'application/zip',
+                    size: 1024,
+                }).valido
+            ).toBe(false);
+        });
+
+        it('calcula dimensiones proporcionales acotando el lado mayor a 1600 px y extrae base64', () => {
+            expect(LADO_MAXIMO_IMAGEN_IMPORTACION_PX).toBe(1600);
+
+            expect(calcularDimensionesReescaladoImagen(3200, 1600)).toEqual({
+                ancho: 1600,
+                alto: 800,
+                reescalada: true,
+            });
+            expect(calcularDimensionesReescaladoImagen(1200, 2400)).toEqual({
+                ancho: 800,
+                alto: 1600,
+                reescalada: true,
+            });
+            expect(calcularDimensionesReescaladoImagen(800, 600)).toEqual({
+                ancho: 800,
+                alto: 600,
+                reescalada: false,
+            });
+            expect(calcularDimensionesReescaladoImagen(1600, 1600)).toEqual({
+                ancho: 1600,
+                alto: 1600,
+                reescalada: false,
+            });
+            expect(() => calcularDimensionesReescaladoImagen(0, 100)).toThrow(
+                'Dimensiones de imagen inválidas.'
+            );
+
+            expect(extraerBase64DeDataUrl('data:image/jpeg;base64,/9j/4AAQ')).toBe('/9j/4AAQ');
+            expect(extraerBase64DeDataUrl('sin-prefijo')).toBe('');
         });
     });
 });
