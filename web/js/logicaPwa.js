@@ -839,7 +839,7 @@ export const procesarColaVentasOffline = async ({
             itemsMapeados = itemsRaw.map((it) => {
                 const prodId = Number(it.producto || it.producto_id || it.id);
                 if (!Number.isInteger(prodId) || prodId <= 0) {
-                    throw new Error('Producto faltante o inválido en una venta de la cola offline.');
+                    throw new Error('Una venta guardada sin internet tiene un producto que no es válido.');
                 }
                 const itemObj = {
                     producto: prodId,
@@ -856,7 +856,7 @@ export const procesarColaVentasOffline = async ({
         }
 
         if (errorMapeo || itemsMapeados.length === 0) {
-            const motivo = errorMapeo || 'Una venta en cola offline no contiene productos válidos.';
+            const motivo = errorMapeo || 'Una venta guardada sin internet no tiene productos válidos.';
             moverVentaARechazadas(itemCola, motivo, 400, storage);
             rechazadas += 1;
             if (typeof onItemRechazado === 'function') onItemRechazado(itemCola, motivo, 400);
@@ -1180,7 +1180,7 @@ export const unificarTrazabilidadRegistros = ({
             id: `venta-${v.id}`,
             categoria: 'venta',
             fechaIso: v.fecha || v.creado_en || '',
-            tipoEtiqueta: v.origen === 'offline' ? 'Venta (Sync Offline)' : 'Venta',
+            tipoEtiqueta: v.origen === 'offline' ? 'Venta (sin internet)' : 'Venta',
             nivelBadge: 'exito',
             detalle: `Ticket #${v.id}${medio} · ${resumenItems}`,
             montoCantidad: v.total !== null && v.total !== undefined
@@ -1198,7 +1198,7 @@ export const unificarTrazabilidadRegistros = ({
             id: `offline-${vo.idTemporal || vo.creadoEn}`,
             categoria: 'venta',
             fechaIso: vo.creadoEn || '',
-            tipoEtiqueta: 'Venta (Cola Offline)',
+            tipoEtiqueta: 'Venta (pendiente de envío)',
             nivelBadge: 'advertencia',
             detalle: `Pendiente sync (${payload.medio_pago || 'EFECTIVO'}) · ${cantItems} unidad(es)`,
             montoCantidad: 'Pendiente sync',

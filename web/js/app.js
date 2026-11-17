@@ -360,7 +360,7 @@ export const sincronizarVentasPendientes = async () => {
 
         if (resultado.sinTurnoAbierto) {
             mostrarToast(
-                'No hay un turno de caja abierto para sincronizar la cola offline. Abrí un turno primero.',
+                'No hay un turno de caja abierto para enviar las ventas guardadas. Abrí un turno primero.',
                 'peligro'
             );
         }
