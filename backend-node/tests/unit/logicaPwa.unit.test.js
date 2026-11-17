@@ -7,6 +7,7 @@ import { jest } from '@jest/globals';
 import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
+    calcularCostosExtraReceta,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
     CLAVE_COLA_VENTAS_RECHAZADAS,
@@ -1257,6 +1258,43 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
         });
     });
 
+    describe('Costos extra del desglose de receta', () => {
+        it('calcula mano de obra y descartables igual que el backend', () => {
+            const extras = calcularCostosExtraReceta({
+                minutos_mano_obra: '2.00',
+                costo_hora_mano_obra: '2500.00',
+                descartables: '80.00',
+            });
+            expect(extras.minutos).toBe(2);
+            expect(extras.costoHora).toBe(2500);
+            expect(extras.manoObra).toBeCloseTo(83.3333, 4);
+            expect(extras.descartables).toBe(80);
+            // Insumos $812 + mano de obra + descartables = $975,33 (costo total del backend).
+            expect(812 + extras.manoObra + extras.descartables).toBeCloseTo(975.33, 2);
+        });
+
+        it('sin minutos la mano de obra es cero', () => {
+            const extras = calcularCostosExtraReceta({
+                minutos_mano_obra: '0',
+                costo_hora_mano_obra: '2400.00',
+                descartables: '0.00',
+            });
+            expect(extras.manoObra).toBe(0);
+            expect(extras.descartables).toBe(0);
+        });
+
+        it('devuelve null si la API ocultó los costos', () => {
+            expect(
+                calcularCostosExtraReceta({
+                    minutos_mano_obra: '2',
+                    costo_hora_mano_obra: null,
+                    descartables: null,
+                })
+            ).toBeNull();
+            expect(calcularCostosExtraReceta(null)).toBeNull();
+        });
+    });
+
     describe('Acciones rápidas de caja según permisos', () => {
         it('el cajero por defecto no ve Movimiento de Caja Chica pero sí Abrir Nuevo Turno', () => {
             const cajero = {
@@ -1301,6 +1339,27 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(accionesCajaVisiblesParaUsuario(null)).toEqual({
                 movimiento: false,
                 abrirTurno: false,
+            });
+        });
+
+        it('con un turno abierto se oculta Abrir Nuevo Turno aunque tenga el permiso', () => {
+            const cajero = { rol: 'CAJERO', permisos: ['caja.abrir_turno'] };
+            expect(accionesCajaVisiblesParaUsuario(cajero, { id: 1, estado: 'ABIERTO' })).toEqual({
+                movimiento: false,
+                abrirTurno: false,
+            });
+            const duenio = { rol: 'DUENIO', permisos: [] };
+            expect(accionesCajaVisiblesParaUsuario(duenio, { id: 1, estado: 'ABIERTO' })).toEqual({
+                movimiento: true,
+                abrirTurno: false,
+            });
+        });
+
+        it('con el último turno cerrado vuelve a mostrarse Abrir Nuevo Turno', () => {
+            const cajero = { rol: 'CAJERO', permisos: ['caja.abrir_turno'] };
+            expect(accionesCajaVisiblesParaUsuario(cajero, { id: 1, estado: 'CERRADO' })).toEqual({
+                movimiento: false,
+                abrirTurno: true,
             });
         });
     });

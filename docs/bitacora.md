@@ -1612,3 +1612,23 @@ Cómo probarlo:
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 - `.venv/bin/ruff check` y `.venv/bin/ruff format --check` sobre los archivos Python modificados.
 ---
+
+
+
+Fecha: 2026-11-17
+Tarea: "Abrir Nuevo Turno" oculto con turno abierto y desglose de receta con mano de obra y descartables
+Rama: feature/reportes-filtro-fechas
+Qué se hizo y por qué:
+- `accionesCajaVisiblesParaUsuario(usuario, turnoActivo)` ahora oculta "Abrir Nuevo Turno" mientras el turno activo está `ABIERTO`, aunque el usuario tenga `caja.abrir_turno`. Se aplica en `aplicarAccionesCajaVisibles()` (`web/js/app.js`), que se llama al configurar la vista por rol y cada vez que se actualiza la tarjeta del turno, así el botón vuelve al cerrar el turno. Es solo pantalla: el backend todavía no impide abrir un segundo turno (pendiente en `TurnoCajaViewSet.perform_create`).
+- El desglose de receta mostraba solo los insumos (latte: $812), mientras el costo total del backend (`obtener_desglose_costeo_producto`) suma mano de obra y descartables ($975,33). La API ya mandaba `minutos_mano_obra`, `costo_hora_mano_obra` y `descartables`, así que se resolvió en el frontend: `calcularCostosExtraReceta` (`web/js/logicaPwa.js`) usa la misma fórmula (minutos × costo por hora / 60) y `mostrarDesgloseReceta` agrega los renglones "Mano de obra", "Descartables" y "Costo total por porción". Si la API ocultó los costos (sin `recetas.ver_costos`), no se muestran.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `web/css/estilos.css`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (25 suites, 190 tests en verde).
+- `cd backend-django && .venv/bin/python -m pytest -q` (407 passed; el backend no cambió).
+- En la web: Recetas → Café Latte muestra $812 de insumos + $83,33 de mano de obra + $80 de descartables = $975,33, igual a la columna de costo de la carta. En Caja, con un turno abierto no aparece "Abrir Nuevo Turno".
+---

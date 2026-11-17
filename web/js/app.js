@@ -7,6 +7,7 @@
 import {
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
+    calcularCostosExtraReceta,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
     construirQueryRangoFechas,
@@ -513,6 +514,18 @@ const actualizarUIUsuario = () => {
     actualizarIndicadorColaOffline();
 };
 
+
+// Acciones rápidas de caja según permisos y turno (solo pantalla; el backend ya las protege).
+const aplicarAccionesCajaVisibles = () => {
+    const accionesCaja = accionesCajaVisiblesParaUsuario(estadoApp.usuario, estadoApp.turnoActivo);
+    if ($('btn-modal-movimiento')) $('btn-modal-movimiento').style.display = accionesCaja.movimiento ? '' : 'none';
+    if ($('btn-modal-abrir-turno')) $('btn-modal-abrir-turno').style.display = accionesCaja.abrirTurno ? '' : 'none';
+    const tarjetaAcciones = document.querySelector('.acciones-rapidas-caja');
+    if (tarjetaAcciones) {
+        tarjetaAcciones.style.display = accionesCaja.movimiento || accionesCaja.abrirTurno ? '' : 'none';
+    }
+};
+
 const configurarVisibilidadPorRol = (rol) => {
     const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
     const esCajero = rol === 'CAJERO';
@@ -527,14 +540,7 @@ const configurarVisibilidadPorRol = (rol) => {
         btn.style.display = seccionesVisibles.includes(seccion) ? '' : 'none';
     });
 
-    // Acciones rápidas de caja según permisos (solo pantalla; el backend ya las protege).
-    const accionesCaja = accionesCajaVisiblesParaUsuario(estadoApp.usuario);
-    if ($('btn-modal-movimiento')) $('btn-modal-movimiento').style.display = accionesCaja.movimiento ? '' : 'none';
-    if ($('btn-modal-abrir-turno')) $('btn-modal-abrir-turno').style.display = accionesCaja.abrirTurno ? '' : 'none';
-    const tarjetaAcciones = document.querySelector('.acciones-rapidas-caja');
-    if (tarjetaAcciones) {
-        tarjetaAcciones.style.display = accionesCaja.movimiento || accionesCaja.abrirTurno ? '' : 'none';
-    }
+    aplicarAccionesCajaVisibles();
 
     if ($('caja-panel-cajero-ciego')) {
         $('caja-panel-cajero-ciego').style.display = 'block';
@@ -1281,6 +1287,7 @@ const actualizarCardTurnoActivo = (turno) => {
     }
 
     renderizarMovimientosCaja(turno.movimientos || []);
+    aplicarAccionesCajaVisibles();
 };
 
 const renderizarMovimientosCaja = (movimientos = []) => {
@@ -2479,10 +2486,11 @@ const mostrarDesgloseReceta = (producto) => {
                 <td colspan="${mostrarAcciones ? 5 : 4}" class="col-centro text-muted py-4">Este producto utiliza el costo directo de carta sin sub-ítems detallados.</td>
             </tr>
         `;
-        return;
     }
 
     const esCajero = estadoApp.usuario?.rol === 'CAJERO';
+    let costoInsumos = 0;
+    let costosInsumosVisibles = true;
     for (const item of items) {
         const cant = Number(item.cantidad || 0);
         const unidadItem = item.unidad || item.insumo_unidad_base || 'un';
@@ -2492,6 +2500,8 @@ const mostrarDesgloseReceta = (producto) => {
             : null;
         const factor = calcularFactorConversionReceta(unidadItem, unidadBase);
         const subtotal = costoUnit !== null ? cant * factor * costoUnit : null;
+        if (subtotal === null) costosInsumosVisibles = false;
+        else costoInsumos += subtotal;
 
         const tr = document.createElement('tr');
         const cantidadHtml = puedeEditar
@@ -2533,6 +2543,34 @@ const mostrarDesgloseReceta = (producto) => {
 
         tbody.appendChild(tr);
     }
+
+    // Mano de obra, descartables y total: suman igual que el costo total del backend.
+    const extras = calcularCostosExtraReceta(producto);
+    if (esCajero || !extras || !costosInsumosVisibles) return;
+    const celdaAcciones = mostrarAcciones ? '<td></td>' : '';
+    const minutosTexto = extras.minutos.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+    const filasExtra = [
+        `<tr class="fila-receta-extra">
+            <td class="col-texto"><strong>Mano de obra</strong></td>
+            <td class="col-centro">${escaparHtml(minutosTexto)} <span class="producto-codigo-badge">min</span></td>
+            <td class="col-numero">${formatearMoneda(extras.costoHora)} / hora</td>
+            <td class="col-numero font-bold">${formatearMoneda(extras.manoObra)}</td>
+            ${celdaAcciones}
+        </tr>`,
+        `<tr class="fila-receta-extra">
+            <td class="col-texto"><strong>Descartables</strong></td>
+            <td class="col-centro">-</td>
+            <td class="col-numero">-</td>
+            <td class="col-numero font-bold">${formatearMoneda(extras.descartables)}</td>
+            ${celdaAcciones}
+        </tr>`,
+        `<tr class="fila-receta-total">
+            <td class="col-texto" colspan="3"><strong>Costo total por porción</strong></td>
+            <td class="col-numero font-bold">${formatearMoneda(costoInsumos + extras.manoObra + extras.descartables)}</td>
+            ${celdaAcciones}
+        </tr>`,
+    ];
+    tbody.insertAdjacentHTML('beforeend', filasExtra.join(''));
 };
 
 const recalcularProducto = async (productoId) => {

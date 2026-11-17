@@ -1955,10 +1955,11 @@ export const PERMISOS_POR_SECCION = {
 
 /**
  * Indica qué acciones rápidas de caja puede ver el usuario según sus permisos.
+ * "Abrir turno" además se oculta mientras ya hay un turno abierto.
  */
-export const accionesCajaVisiblesParaUsuario = (usuario) => ({
+export const accionesCajaVisiblesParaUsuario = (usuario, turnoActivo = null) => ({
     movimiento: usuarioTienePermiso(usuario, 'caja.registrar_movimiento'),
-    abrirTurno: usuarioTienePermiso(usuario, 'caja.abrir_turno'),
+    abrirTurno: usuarioTienePermiso(usuario, 'caja.abrir_turno') && turnoActivo?.estado !== 'ABIERTO',
 });
 
 /**
@@ -1998,6 +1999,22 @@ export const calcularFactorConversionReceta = (unidadOrigen = '', unidadBase = '
     const base = String(unidadBase || '').trim().toLowerCase();
     if (!origen || !base || origen === base) return 1;
     return FACTORES_CONVERSION_RECETA[`${origen}->${base}`] ?? 1;
+};
+
+/**
+ * Mano de obra y descartables de un producto, con la misma fórmula del backend
+ * (obtener_desglose_costeo_producto): mano de obra = minutos × costo por hora / 60.
+ * Devuelve null si la API ocultó los costos (usuario sin recetas.ver_costos).
+ */
+export const calcularCostosExtraReceta = (producto) => {
+    if (!producto || producto.costo_hora_mano_obra === null || producto.costo_hora_mano_obra === undefined) {
+        return null;
+    }
+    const minutos = Math.max(Number(producto.minutos_mano_obra) || 0, 0);
+    const costoHora = Number(producto.costo_hora_mano_obra) || 0;
+    const descartables = Number(producto.descartables) || 0;
+    const manoObra = minutos > 0 ? (minutos * costoHora) / 60 : 0;
+    return { minutos, costoHora, manoObra, descartables };
 };
 
 /**

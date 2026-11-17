@@ -3140,3 +3140,8 @@ textarea:focus {
     }
 }
 
+
+/* Desglose de receta: renglones de mano de obra, descartables y total */
+.tabla-comercial tr.fila-receta-total td {
+    border-top: 2px solid var(--color-borde-fuerte);
+}
