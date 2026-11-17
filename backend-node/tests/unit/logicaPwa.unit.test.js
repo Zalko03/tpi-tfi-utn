@@ -19,6 +19,7 @@ import {
     formatearEntradaFecha,
     crearFetchConSesion,
     CLAVE_COLA_VENTAS_RECHAZADAS,
+    CLAVE_SONIDOS_SILENCIADOS,
     construirQueryRangoFechas,
     convertirMontoACentavos,
     ejecutarSincronizacionConLock,
@@ -47,6 +48,8 @@ import {
     formatearFechaLocalInput,
     generarIdOperacion,
     GRUPOS_PERMISOS_EQUIPO,
+    guardarPreferenciaSonidosSilenciados,
+    leerPreferenciaSonidosSilenciados,
     limpiarColaOffline,
     MENSAJE_ARCHIVO_DEMASIADO_GRANDE,
     MENSAJE_DOC_ANTIGUO,
@@ -56,6 +59,7 @@ import {
     obtenerContenidoPlantillaCsv,
     obtenerPermisosInicialesEmpleado,
     obtenerPlantillaRol,
+    obtenerSonidoParaEvento,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     obtenerVentasRechazadasOffline,
@@ -68,6 +72,7 @@ import {
     ROLES_PLANTILLAS,
     seccionesVisiblesParaUsuario,
     siguienteIdCarga,
+    SONIDOS,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
@@ -1717,6 +1722,87 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                 },
             });
             expect(msg).toBe('No se puede cambiar el rol del único Dueño activo en el sistema.');
+        });
+    });
+
+    describe('Sonidos sintéticos y preferencia de silencio (Web Audio)', () => {
+        it('define secuencias válidas para cobro, escaneo, error, caja y aviso con frecuencias y duraciones positivas', () => {
+            expect(Object.keys(SONIDOS).sort()).toEqual(['aviso', 'caja', 'cobro', 'error', 'escaneo']);
+
+            for (const [_nombre, notas] of Object.entries(SONIDOS)) {
+                expect(Array.isArray(notas)).toBe(true);
+                expect(notas.length).toBeGreaterThanOrEqual(1);
+                for (const nota of notas) {
+                    expect(Number.isFinite(nota.frecuencia)).toBe(true);
+                    expect(nota.frecuencia).toBeGreaterThan(0);
+                    expect(Number.isFinite(nota.duracion)).toBe(true);
+                    expect(nota.duracion).toBeGreaterThan(0);
+                    expect(nota.retardo ?? 0).toBeGreaterThanOrEqual(0);
+                    expect(nota.ganancia).toBeGreaterThan(0);
+                    expect(nota.ganancia).toBeLessThanOrEqual(0.2);
+                }
+            }
+            expect(SONIDOS.cobro.length).toBeGreaterThanOrEqual(2);
+            expect(SONIDOS.cobro[1].frecuencia).toBeGreaterThan(SONIDOS.cobro[0].frecuencia);
+        });
+
+        it('lee y guarda la preferencia de silencio tolerando storage ausente o con errores', () => {
+            const mapa = new Map();
+            const storageOk = {
+                getItem: (k) => (mapa.has(k) ? mapa.get(k) : null),
+                setItem: (k, v) => mapa.set(k, String(v)),
+            };
+
+            expect(leerPreferenciaSonidosSilenciados(storageOk)).toBe(false);
+            expect(guardarPreferenciaSonidosSilenciados(true, storageOk)).toBe(true);
+            expect(mapa.get(CLAVE_SONIDOS_SILENCIADOS)).toBe('true');
+            expect(leerPreferenciaSonidosSilenciados(storageOk)).toBe(true);
+
+            expect(guardarPreferenciaSonidosSilenciados(false, storageOk)).toBe(true);
+            expect(leerPreferenciaSonidosSilenciados(storageOk)).toBe(false);
+
+            const storageConError = {
+                getItem: () => {
+                    throw new Error('SecurityError');
+                },
+                setItem: () => {
+                    throw new Error('QuotaExceededError');
+                },
+            };
+            expect(leerPreferenciaSonidosSilenciados(storageConError)).toBe(false);
+            expect(guardarPreferenciaSonidosSilenciados(true, storageConError)).toBe(false);
+            expect(leerPreferenciaSonidosSilenciados(null)).toBe(false);
+            expect(guardarPreferenciaSonidosSilenciados(true, null)).toBe(false);
+        });
+
+        it('mapea cada evento del sistema a su sonido correspondiente y silencia toasts informativos', () => {
+            expect(obtenerSonidoParaEvento('venta.cobrada')).toBe('cobro');
+            expect(obtenerSonidoParaEvento('venta.offline')).toBe('cobro');
+            expect(obtenerSonidoParaEvento('importacion.confirmada')).toBe('cobro');
+            expect(obtenerSonidoParaEvento('carrito.agregado')).toBe('escaneo');
+            expect(obtenerSonidoParaEvento('turno.abierto')).toBe('caja');
+            expect(obtenerSonidoParaEvento('turno.cerrado')).toBe('caja');
+
+            expect(obtenerSonidoParaEvento('toast', { tipo: 'peligro' })).toBe('error');
+            expect(obtenerSonidoParaEvento('toast', { tipo: 'info' })).toBeNull();
+            expect(obtenerSonidoParaEvento('toast', { tipo: 'advertencia' })).toBeNull();
+            expect(obtenerSonidoParaEvento('toast', { tipo: 'exito' })).toBeNull();
+
+            expect(
+                obtenerSonidoParaEvento('socket', {
+                    nombreEvento: 'costo.actualizado',
+                    payload: { alertaMargenBajo: true },
+                })
+            ).toBe('aviso');
+            expect(
+                obtenerSonidoParaEvento('socket', {
+                    nombreEvento: 'costo.actualizado',
+                    payload: { alertaMargenBajo: false },
+                })
+            ).toBeNull();
+            expect(obtenerSonidoParaEvento('socket', { nombreEvento: 'stock.bajo' })).toBe('aviso');
+            expect(obtenerSonidoParaEvento('socket', { nombreEvento: 'venta.registrada' })).toBeNull();
+            expect(obtenerSonidoParaEvento('evento.desconocido')).toBeNull();
         });
     });
 });

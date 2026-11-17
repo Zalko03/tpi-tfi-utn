@@ -41,12 +41,15 @@ import {
     formatearFechaLocalInput,
     generarIdOperacion,
     GRUPOS_PERMISOS_EQUIPO,
+    guardarPreferenciaSonidosSilenciados,
+    leerPreferenciaSonidosSilenciados,
     MENSAJE_DOC_ANTIGUO,
     MENSAJE_IA_NO_DISPONIBLE,
     mensajeErrorParaUsuario,
     obtenerContenidoPlantillaCsv,
     obtenerPermisosInicialesEmpleado,
     obtenerPlantillaRol,
+    obtenerSonidoParaEvento,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     parsearCsvProveedor,
@@ -54,6 +57,7 @@ import {
     procesarColaVentasOffline,
     seccionesVisiblesParaUsuario,
     siguienteIdCarga,
+    SONIDOS,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
     validarCarritoContraCatalogo,
@@ -203,6 +207,98 @@ const obtenerIconoProducto = (nombre = '') => {
 };
 
 // ============================================================
+// SONIDOS SINTÉTICOS CON WEB AUDIO API (SIN ARCHIVOS EXTERNOS)
+// ============================================================
+let audioContexto = null;
+let huboInteraccionAudio = false;
+let sonidosSilenciados = leerPreferenciaSonidosSilenciados();
+
+const obtenerOCrearAudioContext = () => {
+    if (typeof window === 'undefined') return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioContexto) {
+        try {
+            audioContexto = new AudioCtx();
+        } catch {
+            return null;
+        }
+    }
+    if (audioContexto.state === 'suspended' && typeof audioContexto.resume === 'function') {
+        audioContexto.resume().catch(() => {});
+    }
+    return audioContexto;
+};
+
+const registrarDesbloqueoAudio = () => {
+    if (typeof window === 'undefined') return;
+    const desbloquear = () => {
+        huboInteraccionAudio = true;
+        obtenerOCrearAudioContext();
+    };
+    // Los navegadores bloquean el audio hasta la primera interacción del usuario.
+    window.addEventListener('pointerdown', desbloquear, { capture: true, once: true, passive: true });
+    window.addEventListener('keydown', desbloquear, { capture: true, once: true, passive: true });
+    window.addEventListener('click', desbloquear, { capture: true, once: true, passive: true });
+};
+
+const reproducirSonido = (nombreSonido) => {
+    if (!nombreSonido || sonidosSilenciados || !huboInteraccionAudio) return;
+    const notas = SONIDOS[nombreSonido];
+    if (!Array.isArray(notas) || notas.length === 0) return;
+
+    const ctx = obtenerOCrearAudioContext();
+    if (!ctx) return;
+
+    try {
+        const inicioBase = ctx.currentTime + 0.005;
+        for (const nota of notas) {
+            const freq = Number(nota.frecuencia);
+            const dur = Number(nota.duracion);
+            const retardo = Math.max(0, Number(nota.retardo) || 0);
+            const gananciaMax = Math.min(0.18, Math.max(0.01, Number(nota.ganancia) || 0.08));
+            if (!(freq > 0) || !(dur > 0)) continue;
+
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = nota.tipo || 'sine';
+            osc.frequency.setValueAtTime(freq, inicioBase + retardo);
+
+            const t0 = inicioBase + retardo;
+            const ataque = Math.min(0.01, dur * 0.25);
+            const tFin = t0 + dur;
+
+            // Envolvente corta de ataque/decaimiento para evitar chasquidos al iniciar o cortar la onda.
+            gain.gain.setValueAtTime(0.0001, t0);
+            gain.gain.linearRampToValueAtTime(gananciaMax, t0 + ataque);
+            gain.gain.exponentialRampToValueAtTime(0.0001, tFin);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start(t0);
+            osc.stop(tFin + 0.01);
+        }
+    } catch {
+        // Ignoramos fallos de reproducción en entornos restringidos.
+    }
+};
+
+const actualizarBotonSonidosUI = () => {
+    const btn = $('btn-toggle-sonidos');
+    if (!btn) return;
+    const iconoActivo = btn.querySelector('.icono-sonido-activo');
+    const iconoSilenciado = btn.querySelector('.icono-sonido-silenciado');
+    const texto = sonidosSilenciados ? 'Activar sonidos' : 'Silenciar sonidos';
+    btn.setAttribute('aria-label', texto);
+    btn.setAttribute('title', texto);
+    btn.setAttribute('aria-pressed', sonidosSilenciados ? 'true' : 'false');
+    btn.classList.toggle('sonidos-silenciados', sonidosSilenciados);
+    if (iconoActivo) iconoActivo.hidden = sonidosSilenciados;
+    if (iconoSilenciado) iconoSilenciado.hidden = !sonidosSilenciados;
+};
+
+// ============================================================
 // TOAST NOTIFICACIONES FLOTANTES (CERO EMOJIS)
 // ============================================================
 export const mostrarToast = (mensaje, tipo = 'info') => {
@@ -211,6 +307,9 @@ export const mostrarToast = (mensaje, tipo = 'info') => {
     // Recién vencida la sesión, los pedidos que ya estaban en camino fallan en cadena:
     // solo se deja el aviso de "Tu sesión venció".
     if (tipo !== 'exito' && Date.now() < (estadoApp.avisosSilenciadosHasta || 0)) return;
+
+    const sonidoToast = obtenerSonidoParaEvento('toast', { tipo });
+    if (sonidoToast) reproducirSonido(sonidoToast);
 
     const toast = document.createElement('div');
     toast.className = `toast-notif ${tipo}`;
@@ -878,6 +977,9 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 
     const totalAlertas = estadoApp.contadores.ventas + estadoApp.contadores.alertasMargen + estadoApp.contadores.alertasStock;
     if ($('contador-notificaciones')) $('contador-notificaciones').textContent = String(totalAlertas);
+
+    const sonidoSocket = obtenerSonidoParaEvento('socket', { nombreEvento, payload });
+    if (sonidoSocket) reproducirSonido(sonidoSocket);
 };
 
 // ============================================================
@@ -1009,6 +1111,7 @@ const renderizarCatalogoPOS = () => {
 const agregarProducto = (prod, cantidad = 1) => {
     estadoApp.carrito = agregarProductoAlCarrito(estadoApp.carrito, prod, cantidad);
     renderizarCarritoTicket();
+    reproducirSonido(obtenerSonidoParaEvento('carrito.agregado'));
 
     const inputLaser = $('input-codigo-barras');
     if (inputLaser) {
@@ -1118,6 +1221,7 @@ const registrarCobroEnColaOffline = (payload, resumen, metodoPago) => {
     if ($('estado-caja')) {
         $('estado-caja').textContent = 'Sin internet: la venta quedó guardada y se enviará sola.';
     }
+    reproducirSonido(obtenerSonidoParaEvento('venta.offline'));
     mostrarToast('Sin internet: la venta quedó guardada y se enviará sola.', 'advertencia');
 };
 
@@ -1204,6 +1308,7 @@ const cobrarTicketVenta = async () => {
         const data = await res.json();
 
         if (res.ok) {
+            reproducirSonido(obtenerSonidoParaEvento('venta.cobrada'));
             mostrarToast(`Venta #${data.id} cobrada con éxito.`, 'exito');
             mostrarModalTicketTermico(data, resumen, metodoPago);
             estadoApp.carrito = [];
@@ -1455,6 +1560,7 @@ const cerrarTurnoCaja = async (efectivoContado) => {
         const data = await res.json();
 
         if (res.ok) {
+            reproducirSonido(obtenerSonidoParaEvento('turno.cerrado'));
             mostrarToast('Turno cerrado exitosamente con arqueo ciego.', 'exito');
             if ($('input-efectivo-contado')) $('input-efectivo-contado').value = '';
             cargarTurnoActivo();
@@ -2036,6 +2142,7 @@ const confirmarCsvDirectoEnInventario = async () => {
 
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
+            reproducirSonido(obtenerSonidoParaEvento('importacion.confirmada'));
             mostrarToast(
                 `Precios confirmados sin IA: ${data.compras_creadas?.length || csv.items.length} compras registradas y costos actualizados.`,
                 'exito'
@@ -3844,7 +3951,15 @@ const inicializarEventosDOM = () => {
         });
     });
 
-    // 5. Drawer lateral de monitor
+    // 5. Drawer lateral de monitor y silenciador de sonidos
+    $('btn-toggle-sonidos')?.addEventListener('click', () => {
+        sonidosSilenciados = !sonidosSilenciados;
+        guardarPreferenciaSonidosSilenciados(sonidosSilenciados);
+        actualizarBotonSonidosUI();
+        if (!sonidosSilenciados) {
+            reproducirSonido(obtenerSonidoParaEvento('escaneo'));
+        }
+    });
     $('btn-toggle-monitor')?.addEventListener('click', () => {
         $('panel-monitor-lateral')?.classList.toggle('abierto');
     });
@@ -3993,6 +4108,7 @@ const inicializarEventosDOM = () => {
                 body: JSON.stringify({ efectivo_inicial: efectivoInicial }),
             });
             if (res.ok) {
+                reproducirSonido(obtenerSonidoParaEvento('turno.abierto'));
                 mostrarToast('Turno de caja abierto correctamente.', 'exito');
                 if ($('modal-abrir-turno')) $('modal-abrir-turno').style.display = 'none';
                 cargarTurnoActivo();
@@ -4195,6 +4311,7 @@ Flete y entrega a local: $4500`;
             });
             const data = await res.json();
             if (res.ok) {
+                reproducirSonido(obtenerSonidoParaEvento('importacion.confirmada'));
                 const cantCompras = data.comprasCreadas?.length || itemsParaAprobar.length;
                 const cantRecetas = data.productosRecalculados?.length || 0;
                 mostrarToast(
@@ -4733,6 +4850,8 @@ const registrarServiceWorkerPwa = () => {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    registrarDesbloqueoAudio();
+    actualizarBotonSonidosUI();
     registrarServiceWorkerPwa();
     actualizarUIUsuario();
     renderizarCatalogoPOS();

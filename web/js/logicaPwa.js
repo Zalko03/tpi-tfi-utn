@@ -2534,3 +2534,91 @@ export const accionesEmpleadoVisiblesParaUsuario = (usuarioActual, empleado) => 
     };
 };
 
+export const CLAVE_SONIDOS_SILENCIADOS = 'sapori_sonidos_silenciados';
+
+/**
+ * Secuencias de notas puras para sintetizar avisos cortos con Web Audio API.
+ * Cada nota incluye frecuencia en Hz (> 0) y duración en segundos (> 0).
+ */
+export const SONIDOS = {
+    cobro: [
+        { frecuencia: 523.25, duracion: 0.09, retardo: 0, tipo: 'triangle', ganancia: 0.09 },
+        { frecuencia: 659.25, duracion: 0.14, retardo: 0.085, tipo: 'triangle', ganancia: 0.1 },
+    ],
+    escaneo: [{ frecuencia: 1046.5, duracion: 0.045, retardo: 0, tipo: 'sine', ganancia: 0.07 }],
+    error: [{ frecuencia: 196.0, duracion: 0.16, retardo: 0, tipo: 'triangle', ganancia: 0.1 }],
+    caja: [
+        { frecuencia: 440.0, duracion: 0.08, retardo: 0, tipo: 'sine', ganancia: 0.08 },
+        { frecuencia: 587.33, duracion: 0.13, retardo: 0.08, tipo: 'sine', ganancia: 0.09 },
+    ],
+    aviso: [
+        { frecuencia: 783.99, duracion: 0.07, retardo: 0, tipo: 'sine', ganancia: 0.08 },
+        { frecuencia: 880.0, duracion: 0.1, retardo: 0.1, tipo: 'sine', ganancia: 0.08 },
+    ],
+};
+
+/**
+ * Lee si el usuario silenció los sonidos; por defecto quedan activados (false).
+ * Tolera entornos sin localStorage o errores de acceso.
+ */
+export const leerPreferenciaSonidosSilenciados = (storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (!storage || typeof storage.getItem !== 'function') return false;
+    try {
+        const valor = storage.getItem(CLAVE_SONIDOS_SILENCIADOS);
+        return valor === 'true' || valor === '1';
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Guarda la preferencia de silencio en storage sin propagar errores de cuota o seguridad.
+ */
+export const guardarPreferenciaSonidosSilenciados = (silenciado, storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (!storage || typeof storage.setItem !== 'function') return false;
+    try {
+        storage.setItem(CLAVE_SONIDOS_SILENCIADOS, silenciado ? 'true' : 'false');
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Devuelve qué sonido de SONIDOS corresponde a un evento del sistema, o null si no debe sonar.
+ */
+export const obtenerSonidoParaEvento = (evento, contexto = {}) => {
+    switch (evento) {
+        case 'cobro':
+        case 'venta.cobrada':
+        case 'venta.offline':
+        case 'importacion.confirmada':
+            return 'cobro';
+        case 'escaneo':
+        case 'carrito.agregado':
+            return 'escaneo';
+        case 'caja':
+        case 'turno.abierto':
+        case 'turno.cerrado':
+            return 'caja';
+        case 'error':
+            return 'error';
+        case 'aviso':
+            return 'aviso';
+        case 'toast':
+            return contexto?.tipo === 'peligro' ? 'error' : null;
+        case 'socket': {
+            const nombreEvento = contexto?.nombreEvento;
+            if (nombreEvento === 'stock.bajo') return 'aviso';
+            if (nombreEvento === 'costo.actualizado' && Boolean(contexto?.payload?.alertaMargenBajo)) {
+                return 'aviso';
+            }
+            return null;
+        }
+        default:
+            return null;
+    }
+};
+

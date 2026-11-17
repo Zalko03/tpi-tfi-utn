@@ -888,6 +888,11 @@ textarea:focus {
     border-color: var(--color-borde-hover);
 }
 
+.btn-icono-panel.sonidos-silenciados {
+    color: var(--texto-mutado);
+    background: var(--color-canvas);
+}
+
 .badge-notif {
     position: absolute;
     top: -4px;
