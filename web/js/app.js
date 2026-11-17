@@ -360,7 +360,7 @@ export const sincronizarVentasPendientes = async () => {
 
         if (resultado.sinTurnoAbierto) {
             mostrarToast(
-                'No hay un turno de caja abierto para sincronizar la cola offline. Abra un turno primero.',
+                'No hay un turno de caja abierto para sincronizar la cola offline. Abrí un turno primero.',
                 'peligro'
             );
         }
@@ -938,7 +938,7 @@ const renderizarCarritoTicket = () => {
         tabla.innerHTML = `
             <tr>
                 <td colspan="5" class="col-centro text-center text-muted py-8">
-                    El ticket está vacío.<br />Escanee un código de barras o seleccione productos.
+                    El ticket está vacío.<br />Escaneá un código de barras o elegí productos.
                 </td>
             </tr>
         `;
@@ -1060,7 +1060,7 @@ const cobrarTicketVenta = async () => {
 
     const turnoId = estadoApp.turnoActivo?.estado === 'ABIERTO' ? estadoApp.turnoActivo.id : null;
     if (!turnoId) {
-        mostrarToast('No hay un turno de caja abierto. Debe abrir un turno antes de cobrar.', 'peligro');
+        mostrarToast('No hay un turno de caja abierto. Abrí un turno antes de cobrar.', 'peligro');
         return;
     }
 
@@ -1735,7 +1735,7 @@ const previsualizarCsvDesdeTexto = () => {
     const { compatible, resultado } = evaluarTextoComoCsvDirecto(textoCrudo);
     if (!compatible || resultado.items.length === 0) {
         mostrarToast(
-            'El texto ingresado no tiene formato CSV tabular válido (ej: insumo,cantidad,unidad,precio_total).',
+            'El texto no tiene el formato de la planilla modelo. Descargá la planilla modelo para ver cómo tiene que estar.',
             'advertencia'
         );
         return;
@@ -1817,7 +1817,7 @@ const construirHtmlAlertaContingenciaIA = ({
 const enviarCsvAlCircuitoAprobacion = async () => {
     const csv = estadoApp.csvParseadoActual;
     if (!csv || csv.items.length === 0) {
-        mostrarToast('Primero cargue un archivo CSV válido.', 'advertencia');
+        mostrarToast('Primero cargá una planilla válida.', 'advertencia');
         return;
     }
 
@@ -1913,7 +1913,7 @@ const confirmarCsvDirectoEnInventario = async () => {
     try {
         const csv = estadoApp.csvParseadoActual;
         if (!csv || csv.items.length === 0) {
-            mostrarToast('Primero cargue un archivo CSV válido.', 'advertencia');
+            mostrarToast('Primero cargá una planilla válida.', 'advertencia');
             return;
         }
 
@@ -2911,7 +2911,7 @@ const renderizarRankingProductos = (ranking, conError = false) => {
 
     const sinVentas = menosVendidos.filter((p) => Number(p.unidades_vendidas || 0) === 0);
     if (sinVentas.length === 0) {
-        contenedorSin.innerHTML = '<p class="text-muted">Excelente: toda su carta registra rotación en el período.</p>';
+        contenedorSin.innerHTML = '<p class="text-muted">Excelente: toda tu carta registra rotación en el período.</p>';
     } else {
         for (const item of sinVentas) {
             const div = document.createElement('div');
@@ -3896,7 +3896,7 @@ Flete y entrega a local: $4500`;
         const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Mayorista Café del Litoral';
         const textoLista = $('textarea-lista-ia')?.value.trim() || '';
         if (textoLista.startsWith('%PDF-')) {
-            const aviso = 'No se puede enviar contenido binario de PDF sin extraer texto. Seleccioná el archivo .pdf con el cargador local.';
+            const aviso = 'No se pudo leer el texto del PDF. Probá subiéndolo de nuevo.';
             mostrarEstadoArchivoPdf(aviso, 'advertencia');
             mostrarToast(aviso, 'advertencia');
             return;

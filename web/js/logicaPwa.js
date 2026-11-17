@@ -1533,7 +1533,7 @@ export const evaluarTextoExtraidoPdf = (textoCrudo = '') => {
             esEscaneado: false,
             texto: '',
             mensajeError:
-                'No se pudo leer el contenido binario del PDF. Usá la extracción con pdf.js local.',
+                'No se pudo leer el texto del PDF. Probá subiéndolo de nuevo.',
         };
     }
 
