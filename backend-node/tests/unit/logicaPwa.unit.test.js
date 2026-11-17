@@ -1236,6 +1236,11 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                 'El insumo es obligatorio'
             );
             expect(mensajeErrorParaUsuario(422, 'Cantidad inválida')).toBe('Cantidad inválida');
+            expect(mensajeErrorParaUsuario(409, 'El turno ya está cerrado')).toBe('El turno ya está cerrado');
+            expect(mensajeErrorParaUsuario(404, 'Recurso no encontrado')).toBe('Recurso no encontrado');
+            expect(mensajeErrorParaUsuario(403, 'No tiene permisos para realizar esta acción')).toBe(
+                'No tenés permiso para hacer esto.'
+            );
             expect(mensajeErrorParaUsuario(400, '')).toBe(
                 'No se pudo completar la operación. Probá de nuevo en unos minutos.'
             );

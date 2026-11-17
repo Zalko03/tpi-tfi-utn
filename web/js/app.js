@@ -229,7 +229,7 @@ export const actualizarIndicadorColaOffline = () => {
         banner.style.display = 'flex';
         texto.textContent =
             cantidad === 1
-                ? 'Sin internet: 1 venta guardada, se enviarán al volver la conexión'
+                ? 'Sin internet: 1 venta guardada, se enviará al volver la conexión'
                 : `Sin internet: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
     } else {
         banner.style.display = 'none';
@@ -1146,7 +1146,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
     const leyendaEl = $('ticket-termico-leyenda');
     if (leyendaEl) {
         leyendaEl.textContent = datosVenta.offline
-            ? 'Comprobante Emitido en Modo Offline - Pendiente de Sincronización'
+            ? 'Comprobante emitido sin internet - se enviará al volver la conexión'
             : 'Comprobante comercial no fiscal emitido por Sapori Stock';
     }
 

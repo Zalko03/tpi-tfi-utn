@@ -2007,7 +2007,8 @@ export const mensajeErrorParaUsuario = (status, mensajeApi = '') => {
         return 'Demasiados intentos seguidos. Esperá unos minutos y probá de nuevo.';
     }
     const mensajeLimpio = typeof mensajeApi === 'string' ? mensajeApi.trim() : '';
-    if ((codigo === 400 || codigo === 422) && mensajeLimpio) {
+    // Errores de negocio (4xx) traen su motivo en español; los del servidor (5xx/red) van genéricos.
+    if (codigo >= 400 && codigo < 500 && mensajeLimpio) {
         return mensajeLimpio;
     }
     return 'No se pudo completar la operación. Probá de nuevo en unos minutos.';
