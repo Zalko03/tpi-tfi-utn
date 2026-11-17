@@ -53,6 +53,7 @@ import {
     procesarColaVentasOffline,
     reconstruirLineasDeItemsPdf,
     seccionesVisiblesParaUsuario,
+    accionesCajaVisiblesParaUsuario,
     siguienteIdCarga,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
@@ -1253,6 +1254,54 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(mensajeErrorParaUsuario(0)).toBe(
                 'No se pudo completar la operación. Probá de nuevo en unos minutos.'
             );
+        });
+    });
+
+    describe('Acciones rápidas de caja según permisos', () => {
+        it('el cajero por defecto no ve Movimiento de Caja Chica pero sí Abrir Nuevo Turno', () => {
+            const cajero = {
+                rol: 'CAJERO',
+                permisos: [
+                    'ventas.cobrar_ticket',
+                    'ventas.ver_historial_propio',
+                    'caja.abrir_turno',
+                    'caja.cerrar_turno',
+                ],
+            };
+            expect(accionesCajaVisiblesParaUsuario(cajero)).toEqual({
+                movimiento: false,
+                abrirTurno: true,
+            });
+        });
+
+        it('sin caja.abrir_turno se oculta Abrir Nuevo Turno', () => {
+            const usuario = { rol: 'CAJERO', permisos: ['ventas.cobrar_ticket'] };
+            expect(accionesCajaVisiblesParaUsuario(usuario)).toEqual({
+                movimiento: false,
+                abrirTurno: false,
+            });
+        });
+
+        it('encargado con registrar_movimiento y dueño superusuario ven ambas acciones', () => {
+            const encargado = {
+                rol: 'ENCARGADO',
+                permisos: ['caja.abrir_turno', 'caja.registrar_movimiento'],
+            };
+            expect(accionesCajaVisiblesParaUsuario(encargado)).toEqual({
+                movimiento: true,
+                abrirTurno: true,
+            });
+            expect(accionesCajaVisiblesParaUsuario({ rol: 'DUENIO', permisos: [] })).toEqual({
+                movimiento: true,
+                abrirTurno: true,
+            });
+        });
+
+        it('sin usuario no muestra ninguna acción', () => {
+            expect(accionesCajaVisiblesParaUsuario(null)).toEqual({
+                movimiento: false,
+                abrirTurno: false,
+            });
         });
     });
 

@@ -1113,7 +1113,8 @@ Envío: $2000</textarea>
                     <span id="metrica-alertas-margen" class="metrica-numero text-advertencia">0</span>
                     <span class="metrica-sub">Margen &lt; 30%</span>
                 </div>
-                <div class="metrica-item-drawer">
+                <!-- Oculta hasta que exista control de stock: hoy nadie emite 'stock.bajo' (emitirStockBajo queda en backend-node). -->
+                <div class="metrica-item-drawer" style="display: none;">
                     <span id="metrica-alertas-stock" class="metrica-numero text-peligro">0</span>
                     <span class="metrica-sub">Alertas de insumos</span>
                 </div>

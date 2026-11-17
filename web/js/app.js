@@ -41,6 +41,7 @@ import {
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
     seccionesVisiblesParaUsuario,
+    accionesCajaVisiblesParaUsuario,
     siguienteIdCarga,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
@@ -525,6 +526,15 @@ const configurarVisibilidadPorRol = (rol) => {
         const seccion = btn.dataset.seccion;
         btn.style.display = seccionesVisibles.includes(seccion) ? '' : 'none';
     });
+
+    // Acciones rápidas de caja según permisos (solo pantalla; el backend ya las protege).
+    const accionesCaja = accionesCajaVisiblesParaUsuario(estadoApp.usuario);
+    if ($('btn-modal-movimiento')) $('btn-modal-movimiento').style.display = accionesCaja.movimiento ? '' : 'none';
+    if ($('btn-modal-abrir-turno')) $('btn-modal-abrir-turno').style.display = accionesCaja.abrirTurno ? '' : 'none';
+    const tarjetaAcciones = document.querySelector('.acciones-rapidas-caja');
+    if (tarjetaAcciones) {
+        tarjetaAcciones.style.display = accionesCaja.movimiento || accionesCaja.abrirTurno ? '' : 'none';
+    }
 
     if ($('caja-panel-cajero-ciego')) {
         $('caja-panel-cajero-ciego').style.display = 'block';

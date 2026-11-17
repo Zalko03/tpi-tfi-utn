@@ -2242,7 +2242,7 @@ textarea:focus {
 
 .metricas-vivo-drawer {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     padding: 1rem 1.25rem;
     gap: 0.5rem;
     background: #fff;

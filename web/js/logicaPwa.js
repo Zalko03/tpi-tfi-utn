@@ -1954,6 +1954,14 @@ export const PERMISOS_POR_SECCION = {
 };
 
 /**
+ * Indica qué acciones rápidas de caja puede ver el usuario según sus permisos.
+ */
+export const accionesCajaVisiblesParaUsuario = (usuario) => ({
+    movimiento: usuarioTienePermiso(usuario, 'caja.registrar_movimiento'),
+    abrirTurno: usuarioTienePermiso(usuario, 'caja.abrir_turno'),
+});
+
+/**
  * Devuelve la lista de secciones visibles (en el orden del menú) para el usuario.
  */
 export const seccionesVisiblesParaUsuario = (usuario) => {
