@@ -54,13 +54,13 @@
                         </li>
                         <li>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            <span>Importación CSV y procesamiento inteligente de listas de proveedores</span>
+                            <span>Carga de listas de precios de proveedores (Excel, PDF, Word o WhatsApp)</span>
                         </li>
                     </ul>
                 </div>
 
                 <div class="login-demo-selector">
-                    <span class="demo-selector-etiqueta">Autocompletar Usuario de Demostración Local:</span>
+                    <span class="demo-selector-etiqueta">Probar con un usuario de demostración:</span>
                     <div class="demo-tarjetas-grilla">
                         <button type="button" class="btn-demo-acceso" id="btn-demo-duenio" data-usuario="duenio_demo">
                             <span class="demo-avatar">
@@ -68,7 +68,7 @@
                             </span>
                             <div class="demo-info">
                                 <strong>Dueño / Gerencia</strong>
-                                <small>Finanzas, IA y Recalcular Costos</small>
+                                <small>Finanzas, costos y asistente IA</small>
                             </div>
                         </button>
                         <button type="button" class="btn-demo-acceso" id="btn-demo-encargado" data-usuario="encargado_demo">
@@ -97,7 +97,7 @@
             <div class="login-formulario-panel">
                 <div class="login-form-cabecera">
                     <h2>Ingreso al Sistema</h2>
-                    <p>Acceda a su terminal de trabajo con sus credenciales de cafetería.</p>
+                    <p>Ingresá con tu usuario y contraseña.</p>
                 </div>
 
                 <form id="form-login" class="form-login-comercial">
@@ -136,35 +136,6 @@
                         </div>
                     </div>
 
-                    <details class="acceso-tecnico-toggle">
-                        <summary>Opciones de conexión avanzada</summary>
-                        <div class="campo-grupo mt-2">
-                            <label for="input-token-jwt">Token de Acceso Directo</label>
-                            <div class="input-con-accion">
-                                <input id="input-token-jwt" type="password" placeholder="Pegar token de sesión..." autocomplete="off" />
-                                <button
-                                    type="button"
-                                    id="btn-toggle-token-jwt"
-                                    class="btn-toggle-visibilidad"
-                                    aria-label="Mostrar token JWT"
-                                    aria-pressed="false"
-                                    data-target-input="input-token-jwt"
-                                    data-label-mostrar="Mostrar token JWT"
-                                    data-label-ocultar="Ocultar token JWT"
-                                >
-                                    <svg class="icono-ojo-mostrar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                        <circle cx="12" cy="12" r="3"></circle>
-                                    </svg>
-                                    <svg class="icono-ojo-ocultar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
-                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                                        <line x1="1" y1="1" x2="23" y2="23"></line>
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                    </details>
-
                     <button type="submit" id="btn-login-submit" class="btn-cta-primario">
                         <span>Ingresar a Sapori Stock</span>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -178,12 +149,9 @@
                 <div class="login-footer-seguridad" style="display: flex; flex-direction: column; gap: 0.65rem;">
                     <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                        <span>Ambiente comercial seguro · Operación híbrida Cloud / LAN / Offline</span>
+                        <span>Funciona con y sin internet</span>
                     </div>
-                    <button type="button" id="btn-config-servidor-login" class="btn-secundario-comercial" style="font-size: 0.78rem; padding: 0.45rem 0.85rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        <span>Configuración de Servidor / Modo de Conexión</span>
-                    </button>
+                    <button type="button" id="btn-config-servidor-login" class="btn-enlace-magico" style="font-size: 0.78rem; font-weight: 500; align-self: center;">¿No podés conectarte?</button>
                 </div>
             </div>
         </div>
@@ -271,7 +239,7 @@
                     <!-- Indicador de Contingencia Offline y Cola Local -->
                     <div id="banner-cola-offline" class="pildora-offline-alerta" style="display: none;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
-                        <span id="texto-cola-offline">Modo Sin Internet Activo — 0 ventas en cola local</span>
+                        <span id="texto-cola-offline">Sin internet: 0 ventas guardadas, se enviarán al volver la conexión</span>
                         <button type="button" id="btn-sincronizar-offline" class="btn-sincronizar-cola">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                             <span>Sincronizar Ventas Pendientes</span>
@@ -285,11 +253,11 @@
                     </div>
 
                     <!-- Presencia y Sockets -->
-                    <span id="insignia-presencia" class="pildora-presencia">1 terminal activa</span>
-                    <span id="insignia-socket" class="pildora-socket conectado">Sistema en Línea</span>
+                    <span id="insignia-presencia" class="pildora-presencia">1 equipo conectado</span>
+                    <span id="insignia-socket" class="pildora-socket conectado">Conectado</span>
 
                     <!-- Botón de Configuración de Servidor / Modo de Conexión -->
-                    <button type="button" id="btn-config-servidor-header" class="btn-icono-panel" title="Configuración de Servidor / Modo de Conexión">
+                    <button type="button" id="btn-config-servidor-header" class="btn-icono-panel" title="Conexión del sistema" style="display: none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     </button>
 
@@ -325,7 +293,7 @@
                                             autocomplete="off"
                                             autofocus
                                         />
-                                        <span class="laser-badge-estado">Lector Láser Listo (F4)</span>
+                                        <span class="laser-badge-estado">Lector de códigos listo (F4)</span>
                                     </div>
                                 </div>
 
@@ -559,7 +527,7 @@
                 <section id="vista-compras" class="vista-modulo">
                     <div class="modulo-compras-tabs">
                         <button type="button" class="tab-compras-btn activa" data-tab="ia">
-                            <span>Importación de Listas de Precios (CSV / IA)</span>
+                            <span>Listas de precios de proveedores</span>
                         </button>
                         <button type="button" class="tab-compras-btn" data-tab="insumos">
                             <span>Inventario de Insumos & Compras Manuales</span>
@@ -573,12 +541,12 @@
                             <div class="tarjeta-panel-blanca">
                                 <div class="panel-cabecera-linea">
                                     <div>
-                                        <h3>Importación Directa CSV (sin IA)</h3>
-                                        <p class="text-muted">Suba planillas .CSV, .TXT o Excel (.XLSX / .XLS) para previsualizar y aplicar precios directamente sin usar IA, o archivos .PDF / .DOCX para extraer texto localmente.</p>
+                                        <h3>Cargar planilla del proveedor</h3>
+                                        <p class="text-muted">Subí la planilla del proveedor para revisar los precios antes de aplicarlos. También podés subir un PDF o un Word para que lo lea la IA.</p>
                                     </div>
                                     <button type="button" id="btn-descargar-plantilla-csv" class="btn-secundario-comercial" style="display: inline-flex; align-items: center; gap: 0.45rem;">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                        <span>Descargar Plantilla CSV Modelo</span>
+                                        <span>Descargar planilla modelo</span>
                                     </button>
                                 </div>
 
@@ -586,8 +554,8 @@
                                     <input type="file" id="input-archivo-csv" accept=".csv,.txt,.pdf,.xlsx,.xls,.docx" class="sr-only" />
                                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
                                     <div>
-                                        <strong>Arrastre aquí su archivo .CSV, .TXT, Excel (.XLSX / .XLS), .PDF o Word (.DOCX) de proveedor</strong>
-                                        <p class="text-muted">o haga clic para seleccionar desde su equipo (máx. 5 MB · CSV/Excel directo sin IA o extracción local de texto para IA)</p>
+                                        <strong>Arrastrá aquí la planilla, el PDF o el Word del proveedor</strong>
+                                        <p class="text-muted">o hacé clic para elegirlo (máx. 5 MB)</p>
                                     </div>
                                 </div>
 
@@ -595,12 +563,12 @@
                                 <div id="panel-preview-csv" class="mt-4" style="display: none;">
                                     <div class="panel-cabecera-linea">
                                         <div>
-                                            <h4>Previsualización de CSV <span class="badge-csv-sin-ia">Importación directa CSV (sin IA)</span></h4>
+                                            <h4>Vista previa <span class="badge-csv-sin-ia">Sin IA</span></h4>
                                             <span id="resumen-preview-csv" class="text-muted">0 filas detectadas</span>
                                         </div>
                                         <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
                                             <button type="button" id="btn-csv-confirmar-directo" class="btn-exito-comercial">
-                                                Confirmar Importación Directa CSV (sin IA)
+                                                Confirmar precios
                                             </button>
                                             <button type="button" id="btn-csv-circuito-ia" class="btn-secundario-comercial">
                                                 Analizar Planilla con IA
@@ -634,7 +602,7 @@
                                     <div class="paso-circulo">1</div>
                                     <div>
                                         <h3>Pegar Lista o Mensaje del Proveedor</h3>
-                                        <p class="text-muted">Pegue el mensaje de WhatsApp o suba archivos .PDF, Word (.DOCX), Excel (.XLSX / .XLS), .CSV o .TXT (máx. 5 MB).</p>
+                                        <p class="text-muted">Pegá el mensaje de WhatsApp o subí un archivo (Excel, PDF, Word o texto; máx. 5 MB).</p>
                                     </div>
                                 </div>
 
@@ -650,7 +618,7 @@
                                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
                                                 <input type="file" id="archivo-lista-ia" accept=".pdf,.txt,.csv,.xlsx,.xls,.docx" class="sr-only" />
                                                 <button type="button" id="btn-cargar-archivo-ia" class="btn-secundario-comercial" style="padding: 0.35rem 0.75rem; font-size: 0.82rem;">
-                                                    <span>Subir Archivo (.PDF / .XLSX / .XLS / .DOCX / .TXT / .CSV)</span>
+                                                    <span>Subir archivo</span>
                                                 </button>
                                                 <button type="button" id="btn-ejemplo-proveedor" class="btn-enlace-magico">
                                                     <span>Cargar Ejemplo de Proveedor</span>
@@ -658,7 +626,7 @@
                                             </div>
                                         </div>
                                         <div id="estado-archivo-lista-ia" class="alerta-archivo-pdf" role="status" style="display: none;"></div>
-                                        <textarea id="textarea-lista-ia" rows="5" placeholder="Pegue aquí el texto recibido por WhatsApp o cargue un archivo .PDF, .DOCX, .XLSX, .XLS, .TXT o .CSV..." required>Café tostado en grano 1 kg: $24500
+                                        <textarea id="textarea-lista-ia" rows="5" placeholder="Pegá aquí el texto que te mandó el proveedor por WhatsApp o subí un archivo..." required>Café tostado en grano 1 kg: $24500
 Leche entera 12 l: $15600
 Envío: $2000</textarea>
                                     </div>
@@ -669,7 +637,7 @@ Envío: $2000</textarea>
                                             <span>Analizar Lista con Inteligencia Artificial</span>
                                         </button>
                                         <button type="button" id="btn-csv-desde-texto" class="btn-secundario-comercial">
-                                            <span>Previsualizar como CSV directo (sin IA)</span>
+                                            <span>Ver vista previa sin IA</span>
                                         </button>
                                         <div id="estado-importacion-ia" class="estado-ia-pill">
                                             La IA analiza las cantidades y precios para su posterior validación.
@@ -702,7 +670,7 @@ Envío: $2000</textarea>
                                                 <th class="col-centro">Cantidad</th>
                                                 <th class="col-centro">Unidad</th>
                                                 <th class="col-numero">Precio Detectado</th>
-                                                <th class="col-centro">Confianza IA</th>
+                                                <th class="col-centro">Certeza de la IA</th>
                                             </tr>
                                         </thead>
                                         <tbody id="tabla-items-ia-body">
@@ -1398,8 +1366,8 @@ Envío: $2000</textarea>
         <div class="modal-tarjeta">
             <div class="modal-cabecera">
                 <div>
-                    <h3>Configuración de Servidor / Modo de Conexión</h3>
-                    <p class="text-muted">Arquitectura híbrida Cloud, Red Local (LAN) y Contingencia Offline</p>
+                    <h3>Conexión del sistema</h3>
+                    <p class="text-muted">Dónde está instalado Sapori Stock</p>
                 </div>
                 <button type="button" class="btn-cerrar-modal" data-cerrar="modal-config-servidor" aria-label="Cerrar">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -1409,17 +1377,17 @@ Envío: $2000</textarea>
                 <div class="campo-grupo">
                     <label for="select-modo-conexion">Modo Operativo de Conexión</label>
                     <select id="select-modo-conexion">
-                        <option value="local">Servidor Local LAN (PC de Mostrador / Docker)</option>
-                        <option value="cloud">Servidor Cloud Remoto (Render + Aiven + Atlas)</option>
-                        <option value="offline">Modo Contingencia Offline (Sin Internet)</option>
+                        <option value="local">En la computadora del local</option>
+                        <option value="cloud">En internet</option>
+                        <option value="offline">Sin internet (temporal)</option>
                     </select>
                 </div>
                 <div class="campo-grupo">
-                    <label for="input-config-django-url">URL Backend Transaccional (Django API)</label>
+                    <label for="input-config-django-url">Dirección del sistema de ventas</label>
                     <input id="input-config-django-url" type="text" placeholder="http://localhost:8000" required />
                 </div>
                 <div class="campo-grupo">
-                    <label for="input-config-node-url">URL Backend Tiempo Real & IA (Node / Socket.IO)</label>
+                    <label for="input-config-node-url">Dirección del sistema de avisos e IA</label>
                     <input id="input-config-node-url" type="text" placeholder="http://localhost:3000" required />
                 </div>
                 <div class="modal-footer-acciones">

@@ -215,7 +215,7 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
             return {
                 evento: nombreEvento,
                 nivel: 'info',
-                titulo: `Evento ${nombreEvento}`,
+                titulo: 'Actividad en el local',
                 detalle: JSON.stringify(payload),
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
@@ -905,14 +905,18 @@ export const procesarColaVentasOffline = async ({
                     ![401, 408, 429].includes(res.status);
 
                 if (esErrorClienteDefinitivo) {
-                    let motivo = `Error HTTP ${res.status}`;
+                    let mensajeApi = '';
                     try {
                         const errBody = await res.json();
-                        motivo = errBody?.mensaje || errBody?.detail || motivo;
+                        mensajeApi = errBody?.mensaje || errBody?.detail || '';
                     } catch {
                         // Mantener motivo por defecto
                     }
+                    const motivo = mensajeErrorParaUsuario(res.status, mensajeApi);
                     moverVentaARechazadas(itemCola, motivo, res.status, storage);
+                    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+                        console.warn('Venta offline rechazada por servidor:', res.status, mensajeApi);
+                    }
                     rechazadas += 1;
                     if (typeof onItemRechazado === 'function') {
                         onItemRechazado(itemCola, motivo, res.status);
@@ -1953,6 +1957,27 @@ export const calcularFactorConversionReceta = (unidadOrigen = '', unidadBase = '
     const base = String(unidadBase || '').trim().toLowerCase();
     if (!origen || !base || origen === base) return 1;
     return FACTORES_CONVERSION_RECETA[`${origen}->${base}`] ?? 1;
+};
+
+/**
+ * Traduce un código de estado HTTP y el mensaje de la API a un texto claro para el usuario.
+ */
+export const mensajeErrorParaUsuario = (status, mensajeApi = '') => {
+    const codigo = Number(status);
+    if (codigo === 403) {
+        return 'No tenés permiso para hacer esto.';
+    }
+    if (codigo === 401) {
+        return 'Tu sesión venció. Volvé a ingresar.';
+    }
+    if (codigo === 429) {
+        return 'Demasiados intentos seguidos. Esperá unos minutos y probá de nuevo.';
+    }
+    const mensajeLimpio = typeof mensajeApi === 'string' ? mensajeApi.trim() : '';
+    if ((codigo === 400 || codigo === 422) && mensajeLimpio) {
+        return mensajeLimpio;
+    }
+    return 'No se pudo completar la operación. Probá de nuevo en unos minutos.';
 };
 
 /**

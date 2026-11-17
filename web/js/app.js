@@ -33,6 +33,7 @@ import {
     generarIdOperacion,
     MENSAJE_DOC_ANTIGUO,
     MENSAJE_IA_NO_DISPONIBLE,
+    mensajeErrorParaUsuario,
     obtenerContenidoPlantillaCsv,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
@@ -225,7 +226,10 @@ export const actualizarIndicadorColaOffline = () => {
 
     if (sinInternet || cantidad > 0) {
         banner.style.display = 'flex';
-        texto.textContent = `Modo Sin Internet Activo — ${cantidad} ventas en cola local`;
+        texto.textContent =
+            cantidad === 1
+                ? 'Sin internet: 1 venta guardada, se enviarán al volver la conexión'
+                : `Sin internet: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
     } else {
         banner.style.display = 'none';
     }
@@ -327,7 +331,7 @@ export const sincronizarVentasPendientes = async () => {
             return;
         }
 
-        mostrarToast(`Sincronizando ${cola.length} venta(s) pendiente(s) con el servidor...`, 'info');
+        mostrarToast(`Enviando ${cola.length} venta(s) guardada(s)…`, 'info');
         const sesionTurnos = await asegurarSesionYTurnosParaSincronizacion();
         if (!sesionTurnos.ok) {
             mostrarToast(sesionTurnos.error, 'peligro');
@@ -443,11 +447,8 @@ const inicializarTogglesVisibilidad = () => {
 const limpiarCredencialesFormularioLogin = ({ resetearFormulario = false } = {}) => {
     if (resetearFormulario) {
         $('form-login')?.reset();
-        const detalleToken = document.querySelector('#form-login .acceso-tecnico-toggle');
-        if (detalleToken) detalleToken.open = false;
     } else {
         if ($('input-password')) $('input-password').value = '';
-        if ($('input-token-jwt')) $('input-token-jwt').value = '';
     }
     restablecerVisibilidadCredencialesLogin();
 };
@@ -458,6 +459,9 @@ const actualizarUIUsuario = () => {
 
     if (!estadoApp.tokenJwt) {
         restablecerVisibilidadCredencialesLogin();
+        if ($('btn-config-servidor-header')) {
+            $('btn-config-servidor-header').style.display = 'none';
+        }
         if (pantallaLogin) pantallaLogin.style.display = 'flex';
         return;
     }
@@ -510,6 +514,11 @@ const actualizarUIUsuario = () => {
 const configurarVisibilidadPorRol = (rol) => {
     const esCajero = rol === 'CAJERO';
 
+    const btnConfigHeader = $('btn-config-servidor-header');
+    if (btnConfigHeader) {
+        btnConfigHeader.style.display = rol === 'DUENIO' ? 'flex' : 'none';
+    }
+
     if ($('caja-panel-cajero-ciego')) {
         $('caja-panel-cajero-ciego').style.display = 'block';
     }
@@ -538,7 +547,7 @@ const intentarReanudarSesionOffline = (usernameSolicitado = '') => {
 
     if (!tokenVigente) {
         const estadoEl = $('mensaje-auth');
-        const msg = 'Sin conexión al servidor y sin sesión JWT válida en caché. Conectate para iniciar sesión.';
+        const msg = 'No hay conexión y no hay una sesión guardada. Conectate para ingresar.';
         if (estadoEl) estadoEl.textContent = msg;
         mostrarToast(msg, 'advertencia');
         return false;
@@ -551,7 +560,7 @@ const intentarReanudarSesionOffline = (usernameSolicitado = '') => {
         && claims.username.toLowerCase() !== String(usernameSolicitado).trim().toLowerCase()
     ) {
         const estadoEl = $('mensaje-auth');
-        const msg = 'Sin conexión: solo podés continuar con el usuario de la sesión JWT vigente en caché.';
+        const msg = 'Sin conexión: solo podés seguir con el usuario de la sesión guardada.';
         if (estadoEl) estadoEl.textContent = msg;
         mostrarToast(msg, 'advertencia');
         return false;
@@ -573,24 +582,13 @@ const intentarReanudarSesionOffline = (usernameSolicitado = '') => {
     if (estadoApp.turnoActivo) {
         actualizarCardTurnoActivo(estadoApp.turnoActivo);
     }
-    actualizarEstadoSocketUI(false, '(Contingencia Offline)');
+    actualizarEstadoSocketUI(false, 'Trabajando sin internet');
     actualizarIndicadorColaOffline();
-    mostrarToast(`Sesión offline reanudada con JWT vigente (${estadoApp.usuario.username}).`, 'advertencia');
+    mostrarToast('Seguís trabajando sin internet con tu sesión guardada.', 'advertencia');
     return true;
 };
 
-const ejecutarLogin = async (username, password, tokenManual = '') => {
-    if (tokenManual) {
-        estadoApp.tokenJwt = tokenManual;
-        sessionStorage.setItem('cafe_jwt', tokenManual);
-        limpiarCredencialesFormularioLogin();
-        actualizarUIUsuario();
-        conectarSocketTiempoReal();
-        cargarDatosIniciales();
-        mostrarToast('Sesión iniciada con token de acceso.', 'exito');
-        return;
-    }
-
+const ejecutarLogin = async (username, password) => {
     if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
         intentarReanudarSesionOffline(username);
         return;
@@ -664,12 +662,12 @@ const cerrarSesion = () => {
 // ============================================================
 export const conectarSocketTiempoReal = () => {
     if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
-        actualizarEstadoSocketUI(false, '(Modo Offline)');
+        actualizarEstadoSocketUI(false, 'Trabajando sin internet');
         return;
     }
 
     if (!window.io) {
-        actualizarEstadoSocketUI(false, '(Cliente no disponible)');
+        actualizarEstadoSocketUI(false, 'Sin conexión');
         return;
     }
 
@@ -678,7 +676,7 @@ export const conectarSocketTiempoReal = () => {
     }
 
     if (!estadoApp.tokenJwt) {
-        actualizarEstadoSocketUI(false, '(Sin sesión activa)');
+        actualizarEstadoSocketUI(false, 'Sin sesión iniciada');
         return;
     }
 
@@ -692,22 +690,22 @@ export const conectarSocketTiempoReal = () => {
     });
 
     socket.on('connect', () => {
-        actualizarEstadoSocketUI(true, 'En Línea');
+        actualizarEstadoSocketUI(true, 'Conectado');
     });
 
     socket.on('disconnect', () => {
-        actualizarEstadoSocketUI(false, 'Reconectando...');
+        actualizarEstadoSocketUI(false, 'Reconectando…');
     });
 
     socket.on('connect_error', () => {
-        actualizarEstadoSocketUI(false, 'Error de Enlace');
+        actualizarEstadoSocketUI(false, 'Sin conexión');
     });
 
     socket.on('presencia.actualizada', (datos) => {
         const el = $('insignia-presencia');
         if (el) {
             const cant = datos.totalUsuarios ?? 1;
-            el.textContent = `${cant} terminal${cant !== 1 ? 'es' : ''} activa${cant !== 1 ? 's' : ''}`;
+            el.textContent = cant === 1 ? '1 equipo conectado' : `${cant} equipos conectados`;
         }
     });
 
@@ -741,7 +739,7 @@ const actualizarEstadoSocketUI = (conectado, texto = '') => {
     const el = $('insignia-socket');
     if (!el) return;
     el.className = `pildora-socket ${conectado ? 'conectado' : 'desconectado'}`;
-    el.textContent = `Sistema ${texto}`;
+    el.textContent = texto;
 };
 
 const registrarEventoEnFeed = (nombreEvento, payload) => {
@@ -1006,9 +1004,9 @@ const registrarCobroEnColaOffline = (payload, resumen, metodoPago) => {
     estadoApp.carrito = [];
     renderizarCarritoTicket();
     if ($('estado-caja')) {
-        $('estado-caja').textContent = `Venta guardada en cola offline (${resultadoCola.totalEnCola} pendiente/s).`;
+        $('estado-caja').textContent = 'Sin internet: la venta quedó guardada y se enviará sola.';
     }
-    mostrarToast('Sin conexión: venta registrada en Cola de Sincronización Offline.', 'advertencia');
+    mostrarToast('Sin internet: la venta quedó guardada y se enviará sola.', 'advertencia');
 };
 
 const cobrarTicketVenta = async () => {
@@ -1501,7 +1499,7 @@ const mostrarEstadoArchivoPdf = (mensaje, tipo = 'info') => {
 
 const procesarArchivoPdfSeleccionado = async (archivo, origenSelector = 'ia') => {
     if (!archivo) return;
-    mostrarEstadoArchivoPdf(`Extrayendo texto de "${archivo.name}" con pdf.js local...`, 'info');
+    mostrarEstadoArchivoPdf(`Leyendo el PDF “${archivo.name}”…`, 'info');
     try {
         const pdfjsLib = configurarPdfJsLocal();
         const buffer = await leerArchivoComoArrayBuffer(archivo);
@@ -1528,19 +1526,21 @@ const procesarArchivoPdfSeleccionado = async (archivo, origenSelector = 'ia') =>
         } else {
             estadoApp.csvContingenciaFallback = null;
         }
+        const etiquetaPaginas = resultado.paginas === 1 ? '1 página' : `${resultado.paginas} páginas`;
         mostrarEstadoArchivoPdf(
-            `PDF "${archivo.name}" procesado localmente (${resultado.paginas} página(s), ${resultado.lineas} líneas extraídas). Listo para analizar con IA.`,
+            `PDF “${archivo.name}” leído (${etiquetaPaginas}). Listo para analizar con la IA.`,
             'info'
         );
         mostrarToast(
-            `Texto extraído del PDF (${resultado.lineas} renglones listos para analizar).`,
+            `Archivo leído: ${resultado.lineas} renglones listos para revisar`,
             'exito'
         );
         if (origenSelector === 'csv') {
             $('textarea-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
         }
     } catch (err) {
-        const msg = err?.message || 'Error al procesar el archivo PDF localmente.';
+        console.error('Error al leer PDF:', err);
+        const msg = err?.message || 'No se pudo leer el archivo PDF.';
         mostrarEstadoArchivoPdf(msg, 'advertencia');
         mostrarToast(msg, 'peligro');
     }
@@ -1548,7 +1548,7 @@ const procesarArchivoPdfSeleccionado = async (archivo, origenSelector = 'ia') =>
 
 const procesarArchivoExcelSeleccionado = async (archivo, origenSelector = 'csv') => {
     if (!archivo) return;
-    mostrarEstadoArchivoPdf(`Procesando planilla Excel "${archivo.name}" localmente con SheetJS...`, 'info');
+    mostrarEstadoArchivoPdf(`Leyendo la planilla “${archivo.name}”…`, 'info');
     try {
         const xlsxLib = typeof window !== 'undefined' ? window.XLSX : null;
         const buffer = await leerArchivoComoArrayBuffer(archivo);
@@ -1558,13 +1558,13 @@ const procesarArchivoExcelSeleccionado = async (archivo, origenSelector = 'csv')
         if (compatible && resultado.items.length > 0) {
             aplicarCsvParseadoEnPreview(resultado, 'archivo CSV');
             const avisoHojas =
-                totalHojas > 1 ? ` (primera hoja "${nombreHoja}" de ${totalHojas})` : '';
+                totalHojas > 1 ? ` (primera hoja “${nombreHoja}” de ${totalHojas})` : '';
             mostrarEstadoArchivoPdf(
-                `Excel "${archivo.name}"${avisoHojas} compatible con plantilla CSV directa: ${resultado.items.length} ítems listos sin IA.`,
+                `Archivo leído: ${resultado.items.length} renglones listos para revisar (sin IA)${avisoHojas}.`,
                 'info'
             );
             mostrarToast(
-                `Excel parseado directamente (sin IA): ${resultado.items.length} ítems listos en Previsualización de CSV.`,
+                `Archivo leído: ${resultado.items.length} renglones listos para revisar`,
                 'exito'
             );
             if (origenSelector === 'ia') {
@@ -1582,20 +1582,21 @@ const procesarArchivoExcelSeleccionado = async (archivo, origenSelector = 'csv')
         if ($('textarea-lista-ia')) {
             $('textarea-lista-ia').value = csv;
         }
-        const avisoHojas = totalHojas > 1 ? ` (primera hoja "${nombreHoja}")` : '';
+        const avisoHojas = totalHojas > 1 ? ` (primera hoja “${nombreHoja}”)` : '';
         mostrarEstadoArchivoPdf(
-            `Excel "${archivo.name}"${avisoHojas} convertido a texto CSV (${lineas} líneas). Las columnas no coinciden con la plantilla directa; listo para analizar con IA.`,
+            `Planilla “${archivo.name}”${avisoHojas} leída (${lineas} renglones). Lista para analizar con la IA.`,
             'info'
         );
         mostrarToast(
-            `Excel extraído (${lineas} renglones). Listo para analizar con IA.`,
+            `Archivo leído: ${lineas} renglones listos para revisar`,
             'info'
         );
         if (origenSelector === 'csv') {
             $('textarea-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
         }
     } catch (err) {
-        const msg = err?.message || 'Error al procesar el archivo Excel localmente.';
+        console.error('Error al leer Excel:', err);
+        const msg = err?.message || 'No se pudo leer la planilla.';
         mostrarEstadoArchivoPdf(msg, 'advertencia');
         mostrarToast(msg, 'peligro');
     }
@@ -1603,7 +1604,7 @@ const procesarArchivoExcelSeleccionado = async (archivo, origenSelector = 'csv')
 
 const procesarArchivoDocxSeleccionado = async (archivo, origenSelector = 'ia') => {
     if (!archivo) return;
-    mostrarEstadoArchivoPdf(`Extrayendo texto de "${archivo.name}" con Mammoth local...`, 'info');
+    mostrarEstadoArchivoPdf(`Leyendo el Word “${archivo.name}”…`, 'info');
     try {
         const mammothLib = typeof window !== 'undefined' ? window.mammoth : null;
         const buffer = await leerArchivoComoArrayBuffer(archivo);
@@ -1620,18 +1621,19 @@ const procesarArchivoDocxSeleccionado = async (archivo, origenSelector = 'ia') =
             estadoApp.csvContingenciaFallback = null;
         }
         mostrarEstadoArchivoPdf(
-            `Word "${archivo.name}" procesado localmente (${resultado.lineas} líneas extraídas). Listo para analizar con IA.`,
+            `Word “${archivo.name}” leído (${resultado.lineas} renglones). Listo para analizar con la IA.`,
             'info'
         );
         mostrarToast(
-            `Texto extraído de Word (${resultado.lineas} renglones listos para analizar).`,
+            `Archivo leído: ${resultado.lineas} renglones listos para revisar`,
             'exito'
         );
         if (origenSelector === 'csv') {
             $('textarea-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
         }
     } catch (err) {
-        const msg = err?.message || 'Error al procesar el archivo Word (.docx) localmente.';
+        console.error('Error al leer Word:', err);
+        const msg = err?.message || 'No se pudo leer el archivo Word.';
         mostrarEstadoArchivoPdf(msg, 'advertencia');
         mostrarToast(msg, 'peligro');
     }
@@ -1688,7 +1690,7 @@ const procesarArchivoImportacionSeleccionado = async (archivo, origenSelector = 
         if (resultado.items.length > 0) {
             aplicarCsvParseadoEnPreview(resultado, 'archivo CSV');
             mostrarToast(
-                `CSV parseado directamente (sin IA): ${resultado.items.length} ítems listos en Previsualización de CSV.`,
+                `Archivo leído: ${resultado.items.length} renglones listos para revisar`,
                 'exito'
             );
             return;
@@ -1719,7 +1721,7 @@ const previsualizarCsvDesdeTexto = () => {
     aplicarCsvParseadoEnPreview(resultado, 'texto pegado');
     $('panel-preview-csv')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     mostrarToast(
-        `Previsualización de CSV (sin IA): ${resultado.items.length} ítems detectados para confirmar.`,
+        `Vista previa sin IA: ${resultado.items.length} renglones listos para revisar.`,
         'exito'
     );
 };
@@ -1733,7 +1735,7 @@ const renderizarPreviewCsv = (resultadoCsv) => {
     const etiquetaDelimitador =
         resultadoCsv.delimitadorDetectado === '\t' ? 'TAB' : resultadoCsv.delimitadorDetectado || ',';
     panel.style.display = 'block';
-    resumen.textContent = `${resultadoCsv.items.length} filas detectadas · Importación directa CSV (sin IA) · Envío total acumulado: ${formatearMoneda(resultadoCsv.envioTotal)} · Delimitador: "${etiquetaDelimitador}"`;
+    resumen.textContent = `${resultadoCsv.items.length} renglones detectados · Sin IA · Envío total: ${formatearMoneda(resultadoCsv.envioTotal)} · Separador: "${etiquetaDelimitador}"`;
     tbody.innerHTML = '';
 
     for (const item of resultadoCsv.items) {
@@ -1773,7 +1775,7 @@ const construirHtmlAlertaContingenciaIA = ({
     const botonCsvHtml = mostrarBotonCsvDirecto
         ? `<div class="alerta-contingencia-ia-acciones">
                 <button type="button" id="btn-contingencia-usar-csv-directo" class="btn-exito-comercial">
-                    Usar Importación directa CSV (sin IA)
+                    Ver vista previa sin IA
                 </button>
            </div>`
         : '';
@@ -1841,7 +1843,8 @@ const enviarCsvAlCircuitoAprobacion = async () => {
                 mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
             }
         } else {
-            const motivo = data?.mensaje || `El servidor respondió HTTP ${res.status}.`;
+            console.warn('Error al enviar lista al servicio de IA:', res.status, data);
+            const motivo = mensajeErrorParaUsuario(res.status, data?.mensaje);
             renderizarPropuestaIAComercial({
                 _id: null,
                 estado: 'CONTINGENCIA',
@@ -1917,7 +1920,7 @@ const confirmarCsvDirectoEnInventario = async () => {
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
             mostrarToast(
-                `Importación directa CSV confirmada (sin IA): ${data.compras_creadas?.length || csv.items.length} compras registradas y costos recalculados en cascada.`,
+                `Precios confirmados sin IA: ${data.compras_creadas?.length || csv.items.length} compras registradas y costos actualizados.`,
                 'exito'
             );
             estadoApp.csvParseadoActual = null;
@@ -1929,10 +1932,12 @@ const confirmarCsvDirectoEnInventario = async () => {
             await cargarInsumos();
             await cargarCatalogo();
         } else {
-            mostrarToast(data.mensaje || 'No se pudo confirmar el lote de compras.', 'peligro');
+            console.warn('Error al confirmar importación directa:', res.status, data);
+            mostrarToast(mensajeErrorParaUsuario(res.status, data?.mensaje), 'peligro');
         }
     } catch (err) {
-        mostrarToast(`Error de red al confirmar importación: ${err.message}`, 'peligro');
+        console.error('Error de red al confirmar importación:', err);
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
     } finally {
         confirmacionCsvDirectaEnCurso = false;
         const btnActual = $('btn-csv-confirmar-directo');
@@ -1964,12 +1969,13 @@ const consultarDetalleImportacion = async (importacionId, intento = 1) => {
             return datos;
         }
 
+        console.warn('Error al consultar resultado de importación IA:', res.status, datos);
         const docError = {
             _id: importacionId,
             estado: 'CONTINGENCIA',
             contingencia: true,
             proveedorIa: 'contingencia',
-            mensajeContingencia: datos?.mensaje || `Error HTTP ${res.status} al consultar el resultado de la IA.`,
+            mensajeContingencia: mensajeErrorParaUsuario(res.status, datos?.mensaje),
             salida: { items: [] },
         };
         renderizarPropuestaIAComercial(docError);
@@ -2061,7 +2067,7 @@ const renderizarPropuestaIAComercial = (doc) => {
                 renderizarPreviewCsv(estadoApp.csvParseadoActual);
                 $('panel-preview-csv')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
                 mostrarToast(
-                    `Previsualización de CSV (sin IA): ${estadoApp.csvParseadoActual.items.length} ítems listos para confirmar.`,
+                    `Vista previa sin IA: ${estadoApp.csvParseadoActual.items.length} renglones listos para confirmar.`,
                     'info'
                 );
             });
@@ -3107,7 +3113,8 @@ const consultarDiagnosticoStockIA = async () => {
                     dataAi = await resAi.json();
                 } else {
                     const errBody = await resAi.json().catch(() => ({}));
-                    errorAi = errBody?.mensaje || `El servicio respondió HTTP ${resAi.status}`;
+                    console.warn('Error al consultar diagnóstico IA:', resAi.status, errBody);
+                    errorAi = mensajeErrorParaUsuario(resAi.status, errBody?.mensaje);
                 }
             } else {
                 errorAi = 'No hay datos de catálogo o sesión activa para consultar la IA.';
@@ -3550,7 +3557,7 @@ const cambiarSeccion = (nombreSeccion) => {
     const titulos = {
         pos: { titulo: 'Punto de Venta', sub: 'Facturación rápida de mostrador y emisión de tickets' },
         caja: { titulo: 'Caja & Arqueo Ciego', sub: 'Control de turnos, arqueo ciego y auditoría de fondos' },
-        compras: { titulo: 'Compras & Listas IA', sub: 'Importación CSV y extracción inteligente de listas de distribuidores' },
+        compras: { titulo: 'Compras & Listas IA', sub: 'Listas de precios de proveedores, en planilla o con ayuda de la IA' },
         recetas: { titulo: 'Ingeniería de Recetas & Rentabilidad', sub: 'Costeo dinámico por insumos, descartables y mano de obra' },
         finanzas: { titulo: 'Reportes, Trazabilidad & Finanzas', sub: 'Trazabilidad por fechas, facturación real, margen bruto y punto de equilibrio' },
         personal: { titulo: 'Equipo & Permisos', sub: 'Gobernanza de personal y control granular de accesos' },
@@ -3601,8 +3608,7 @@ const inicializarEventosDOM = () => {
         e.preventDefault();
         const username = $('input-username')?.value.trim();
         const password = $('input-password')?.value;
-        const token = $('input-token-jwt')?.value.trim();
-        ejecutarLogin(username, password, token);
+        ejecutarLogin(username, password);
     });
 
     // 3. Logout
@@ -3904,7 +3910,8 @@ Flete y entrega a local: $4500`;
                     mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
                 }
             } else {
-                const motivo = data?.mensaje || `El servidor respondió HTTP ${res.status}.`;
+                console.warn('Error al analizar lista con IA:', res.status, data);
+                const motivo = mensajeErrorParaUsuario(res.status, data?.mensaje);
                 renderizarPropuestaIAComercial({
                     _id: null,
                     estado: 'CONTINGENCIA',
@@ -3972,12 +3979,14 @@ Flete y entrega a local: $4500`;
                 await cargarCatalogo();
                 return;
             }
+            console.warn('Error al aprobar propuesta IA:', res.status, data);
             mostrarToast(
-                data.mensaje || `Error ${res.status} al aprobar la propuesta en el servidor.`,
+                mensajeErrorParaUsuario(res.status, data?.mensaje),
                 'peligro'
             );
         } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
+            console.error('Error de red al aprobar propuesta IA:', err);
+            mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
         }
     });
 
@@ -4292,14 +4301,14 @@ Flete y entrega a local: $4500`;
 
     window.addEventListener('online', () => {
         actualizarIndicadorColaOffline();
-        mostrarToast('Conexión a internet restablecida. Sincronizando ventas pendientes...', 'info');
+        mostrarToast('Volvió internet. Enviando ventas guardadas…', 'info');
         sincronizarVentasPendientes();
     });
 
     window.addEventListener('offline', () => {
         actualizarIndicadorColaOffline();
-        actualizarEstadoSocketUI(false, '(Sin Internet)');
-        mostrarToast('Se detectó corte de internet. Modo Sin Internet Activo habilitado automáticamente.', 'advertencia');
+        actualizarEstadoSocketUI(false, 'Trabajando sin internet');
+        mostrarToast('Se cortó internet. Podés seguir vendiendo; las ventas se guardarán para enviarse solas.', 'advertencia');
     });
 
     // 22. Cierre de todos los modales con botón data-cerrar

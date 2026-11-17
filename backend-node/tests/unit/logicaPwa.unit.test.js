@@ -42,6 +42,7 @@ import {
     MENSAJE_DOC_ANTIGUO,
     MENSAJE_IA_NO_DISPONIBLE,
     MENSAJE_PDF_ESCANEADO,
+    mensajeErrorParaUsuario,
     obtenerContenidoPlantillaCsv,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
@@ -156,6 +157,9 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             });
             expect(evImp.nivel).toBe('info');
             expect(evImp.titulo).toContain('5 ítems');
+
+            const evOtro = formatearEventoTiempoReal('otro.evento', { ok: true });
+            expect(evOtro.titulo).toBe('Actividad en el local');
         });
     });
 
@@ -1216,6 +1220,32 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             const carritoMultiple = agregarProductoAlCarrito(carritoValido, catalogoReal[1], 1);
             const resOk = validarCarritoContraCatalogo(carritoMultiple, catalogoReal);
             expect(resOk).toEqual({ valido: true, mensaje: '' });
+        });
+    });
+
+    describe('Mensajes de error legibles para el usuario (sin códigos HTTP técnicos)', () => {
+        it('mensajeErrorParaUsuario mapea 401, 403, 429, 400/422 con mensajeApi y errores de servidor/red', () => {
+            expect(mensajeErrorParaUsuario(403)).toBe('No tenés permiso para hacer esto.');
+            expect(mensajeErrorParaUsuario(401)).toBe('Tu sesión venció. Volvé a ingresar.');
+            expect(mensajeErrorParaUsuario(429)).toBe(
+                'Demasiados intentos seguidos. Esperá unos minutos y probá de nuevo.'
+            );
+            expect(mensajeErrorParaUsuario(400, 'El insumo es obligatorio')).toBe(
+                'El insumo es obligatorio'
+            );
+            expect(mensajeErrorParaUsuario(422, 'Cantidad inválida')).toBe('Cantidad inválida');
+            expect(mensajeErrorParaUsuario(400, '')).toBe(
+                'No se pudo completar la operación. Probá de nuevo en unos minutos.'
+            );
+            expect(mensajeErrorParaUsuario(500, 'Internal Server Error')).toBe(
+                'No se pudo completar la operación. Probá de nuevo en unos minutos.'
+            );
+            expect(mensajeErrorParaUsuario(502)).toBe(
+                'No se pudo completar la operación. Probá de nuevo en unos minutos.'
+            );
+            expect(mensajeErrorParaUsuario(0)).toBe(
+                'No se pudo completar la operación. Probá de nuevo en unos minutos.'
+            );
         });
     });
 });

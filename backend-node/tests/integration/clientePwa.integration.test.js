@@ -14,8 +14,10 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('filtro-fecha-hasta');
         expect(res.text).toContain('tabla-trazabilidad-reportes');
         expect(res.text).toContain('ia-alerta-contingencia');
-        expect(res.text).toContain('Importación Directa CSV (sin IA)');
-        expect(res.text).toContain('Previsualización de CSV');
+        expect(res.text).toContain('Cargar planilla del proveedor');
+        expect(res.text).toContain('Vista previa');
+        expect(res.text).toContain('¿No podés conectarte?');
+        expect(res.text).not.toContain('input-token-jwt');
         expect(res.text).toContain('btn-csv-confirmar-directo');
         expect(res.text).toContain('btn-csv-desde-texto');
         expect(res.text).toContain('btn-modal-nuevo-producto');
