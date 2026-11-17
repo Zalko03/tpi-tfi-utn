@@ -11,7 +11,7 @@ import { guardarSnapshot } from './snapshotCosteo.service.js';
  */
 export const procesarImportacionEnSegundoPlano = async (
     importacionId,
-    { textoLista, proveedorNombre = null, versionPrompt = 'v1' }
+    { textoLista, proveedorNombre = null, versionPrompt = 'v1', origenArchivo = 'texto' }
 ) => {
     try {
         await importacionRepo.actualizarImportacionPorId(importacionId, {
@@ -22,42 +22,79 @@ export const procesarImportacionEnSegundoPlano = async (
             textoLista,
             proveedorNombre,
             versionPrompt,
+            origenArchivo,
         });
 
-        const estadoFinal = resultadoIA.contingencia ? 'CONTINGENCIA' : 'LISTA';
+        const esContingencia =
+            Boolean(resultadoIA.contingencia) || resultadoIA.proveedorIa === 'contingencia';
+        const estadoFinal = esContingencia ? 'CONTINGENCIA' : 'LISTA';
+        const advertencias = Array.isArray(resultadoIA.advertencias)
+            ? resultadoIA.advertencias.map(String)
+            : [];
+        const mensajeContingencia = esContingencia
+            ? resultadoIA.mensajeContingencia ||
+              resultadoIA.error ||
+              'No se pudo usar la IA, revisá la configuración. Podés cargar los precios de forma manual o por CSV.'
+            : null;
+        const proveedorIaFinal =
+            resultadoIA.proveedorIa || (esContingencia ? 'contingencia' : 'desconocido');
 
         const actualizada = await importacionRepo.actualizarImportacionPorId(importacionId, {
             estado: estadoFinal,
             salida: {
                 proveedorDetectado: resultadoIA.proveedorDetectado,
-                envioDetectado: resultadoIA.envioDetectado,
+                envioDetectado: esContingencia ? '0.00' : resultadoIA.envioDetectado,
                 moneda: resultadoIA.moneda,
-                items: resultadoIA.items,
-                advertencias: resultadoIA.advertencias,
+                items: esContingencia ? [] : resultadoIA.items,
+                advertencias,
             },
+            advertencias,
             versionPrompt: resultadoIA.versionPrompt,
-            proveedorIa: resultadoIA.proveedorIa,
+            proveedorIa: proveedorIaFinal,
             latenciaMs: resultadoIA.latenciaMs,
-            contingencia: resultadoIA.contingencia,
-            mensajeError: resultadoIA.mensajeContingencia || resultadoIA.error || null,
+            contingencia: esContingencia,
+            mensajeContingencia,
+            mensajeError: mensajeContingencia || resultadoIA.error || null,
         });
 
         // Paso 3 del flujo de arquitectura: aviso en tiempo real por Socket.IO
         emitirImportacionLista({
             importacionId: String(importacionId),
             estado: estadoFinal,
-            contingencia: resultadoIA.contingencia,
+            contingencia: esContingencia,
+            proveedorIa: proveedorIaFinal,
+            mensajeContingencia,
+            advertencias,
             proveedorDetectado: resultadoIA.proveedorDetectado,
-            cantidadItems: resultadoIA.items.length,
+            cantidadItems: esContingencia ? 0 : resultadoIA.items.length,
         });
 
         return actualizada;
     } catch (error) {
-        return await importacionRepo.actualizarImportacionPorId(importacionId, {
+        const detalleError = error.message || 'Error inesperado durante el procesamiento de IA';
+        const actualizada = await importacionRepo.actualizarImportacionPorId(importacionId, {
             estado: 'FALLIDA',
             contingencia: true,
-            mensajeError: error.message || 'Error inesperado durante el procesamiento de IA',
+            proveedorIa: 'contingencia',
+            mensajeContingencia: 'No se pudo usar la IA, revisá la configuración.',
+            mensajeError: detalleError,
+            advertencias: [detalleError],
+            'salida.advertencias': [detalleError],
+            'salida.items': [],
         });
+
+        emitirImportacionLista({
+            importacionId: String(importacionId),
+            estado: 'FALLIDA',
+            contingencia: true,
+            proveedorIa: 'contingencia',
+            mensajeContingencia: 'No se pudo usar la IA, revisá la configuración.',
+            advertencias: [detalleError],
+            proveedorDetectado: null,
+            cantidadItems: 0,
+        });
+
+        return actualizada;
     }
 };
 
@@ -70,17 +107,23 @@ export const iniciarImportacionPrecios = async ({
     textoLista,
     proveedorNombre = null,
     versionPrompt = 'v1',
+    origenArchivo = 'texto',
 }) => {
     const textoLimpio = typeof textoLista === 'string' ? textoLista.trim() : '';
     if (!usuarioId || !textoLimpio) {
-        const error = new Error('usuarioId y textoLista son obligatorios');
+        const error = new Error('Faltan los datos de tu usuario o la lista de precios.');
         error.statusCode = 400;
         throw error;
     }
 
+    const origenLimpio = ['texto', 'csv', 'pdf'].includes(String(origenArchivo || '').toLowerCase())
+        ? String(origenArchivo).toLowerCase()
+        : 'texto';
+
     const datosEntrada = {
         textoLista: textoLimpio,
         proveedorNombre: proveedorNombre ? String(proveedorNombre).trim() : null,
+        origenArchivo: origenLimpio,
     };
     const versionLimpia = versionPrompt ? String(versionPrompt).trim() : 'v1';
 
@@ -97,6 +140,7 @@ export const iniciarImportacionPrecios = async ({
             textoLista: datosEntrada.textoLista,
             proveedorNombre: datosEntrada.proveedorNombre,
             versionPrompt: versionLimpia,
+            origenArchivo: origenLimpio,
         }).catch(() => {
             // El error ya es capturado y persistido dentro de procesarImportacionEnSegundoPlano
         });
@@ -140,16 +184,27 @@ export const aprobarImportacionPrecios = async (
 
     if (importacion.estado === 'APROBADA' || importacion.estado === 'RECHAZADA') {
         const error = new Error(
-            `La importación ya se encuentra en estado ${importacion.estado} y no puede volver a procesarse`
+            'Esta importación ya fue procesada y no se puede volver a aprobar.'
         );
         error.statusCode = 400;
         throw error;
     }
 
-    if (importacion.estado !== 'LISTA' && importacion.estado !== 'CONTINGENCIA') {
+    if (
+        importacion.contingencia === true ||
+        importacion.estado === 'CONTINGENCIA' ||
+        importacion.estado === 'FALLIDA' ||
+        importacion.proveedorIa === 'contingencia'
+    ) {
         const error = new Error(
-            `La importación en estado ${importacion.estado} aún no puede ser aprobada`
+            'No se puede aprobar una importación en modo contingencia porque no fue generada por la IA. Usá la importación directa CSV o la carga manual.'
         );
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (importacion.estado !== 'LISTA') {
+        const error = new Error('Esta importación todavía no está lista para aprobar.');
         error.statusCode = 400;
         throw error;
     }
@@ -241,9 +296,7 @@ export const rechazarImportacionPrecios = async (id, { usuarioId, motivo = null 
     const importacion = await obtenerImportacion(id);
 
     if (importacion.estado === 'APROBADA' || importacion.estado === 'RECHAZADA') {
-        const error = new Error(
-            `La importación ya se encuentra en estado ${importacion.estado} y no puede rechazarse`
-        );
+        const error = new Error('Esta importación ya fue cerrada y no se puede descartar.');
         error.statusCode = 400;
         throw error;
     }

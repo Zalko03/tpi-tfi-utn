@@ -177,9 +177,14 @@ class TestApiPermisosNegativosSistematicos:
     # MÓDULO RECETAS Y PRODUCTOS
     # ==========================================
 
-    def test_productos_get_rechaza_cajero_sin_recetas_ver(self, client, cajero):
-        """Cajero sin 'recetas.ver' recibe 403 al listar productos."""
-        client.force_authenticate(user=cajero)
+    def test_productos_get_rechaza_usuario_sin_recetas_ver_ni_cobrar_ticket(self, client):
+        """Usuario sin 'recetas.ver' ni 'ventas.cobrar_ticket' recibe 403 al listar productos."""
+        operador_sin_permiso = crear_personal(
+            datos_usuario={"username": "sin_carta_test", "password": "password123"},
+            rol=ROL_CAJERO,
+            permisos={"recetas.ver": False, "ventas.cobrar_ticket": False},
+        )
+        client.force_authenticate(user=operador_sin_permiso)
         res = client.get("/api/productos/")
         self._verificar_403(res)
 

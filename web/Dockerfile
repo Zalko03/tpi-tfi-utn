@@ -8,6 +8,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY index.html manifest.webmanifest sw.js /usr/share/nginx/html/
 COPY css/ /usr/share/nginx/html/css/
 COPY js/ /usr/share/nginx/html/js/
+COPY vendor/ /usr/share/nginx/html/vendor/
 
 # Ajustar permisos para usuario nginx
 RUN chown -R nginx:nginx /usr/share/nginx/html && \

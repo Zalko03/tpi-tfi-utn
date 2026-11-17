@@ -14,9 +14,13 @@ router.get('/', listarHistorial);
 router.post(
     '/',
     [
-        check('productoId').notEmpty().withMessage('El productoId es obligatorio').isNumeric().withMessage('productoId debe ser numérico'),
-        check('costoAnterior').notEmpty().withMessage('El costoAnterior es obligatorio'),
-        check('costoNuevo').notEmpty().withMessage('El costoNuevo es obligatorio'),
+        check('productoId')
+            .notEmpty()
+            .withMessage('Tenés que indicar un producto.')
+            .isNumeric()
+            .withMessage('El producto indicado no es válido.'),
+        check('costoAnterior').notEmpty().withMessage('Falta el costo anterior del producto.'),
+        check('costoNuevo').notEmpty().withMessage('Falta el costo nuevo del producto.'),
         validarCampos,
     ],
     crearHistorial

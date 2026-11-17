@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.comun.filtros import extraer_rango_fechas, filtrar_queryset_por_rango_fechas
 from apps.insumos.models import Compra, Insumo, Proveedor
 from apps.insumos.serializers import (
     CompraSerializer,
@@ -13,8 +14,11 @@ from apps.insumos.serializers import (
     InsumoSerializer,
     ProveedorSerializer,
 )
-from apps.insumos.services import registrar_lote_compras_importacion
-from apps.usuarios.permissions import TienePermiso
+from apps.insumos.services import (
+    obtener_movimientos_stock_trazabilidad,
+    registrar_lote_compras_importacion,
+)
+from apps.usuarios.permissions import TienePermiso, usuario_tiene_permiso
 
 
 class ProveedorViewSet(viewsets.ModelViewSet):
@@ -56,7 +60,7 @@ class InsumoViewSet(viewsets.ModelViewSet):
     ordering = ["nombre"]
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve"):
+        if self.action in ("list", "retrieve", "movimientos"):
             return [TienePermiso("insumos.ver")()]
         elif self.action == "create":
             return [TienePermiso("insumos.crear")()]
@@ -66,6 +70,41 @@ class InsumoViewSet(viewsets.ModelViewSet):
             return [TienePermiso("insumos.eliminar")()]
         return [IsAuthenticated()]
 
+    @action(detail=False, methods=["get"], url_path="movimientos")
+    def movimientos(self, request):
+        """
+        Trazabilidad de movimientos de stock (ingresos por compra y egresos teóricos
+        por ventas con receta) filtrable por fecha_desde, fecha_hasta, insumo y tipo.
+        """
+        dt_desde, dt_hasta = extraer_rango_fechas(request.query_params)
+
+        insumo_raw = request.query_params.get("insumo")
+        insumo_id = None
+        if insumo_raw not in (None, ""):
+            try:
+                insumo_id = int(insumo_raw)
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError(
+                    "El parámetro 'insumo' debe ser un ID numérico entero."
+                ) from exc
+
+        tipo_param = request.query_params.get("tipo")
+        if tipo_param and str(tipo_param).strip().upper() not in ("INGRESO", "EGRESO"):
+            raise serializers.ValidationError("El parámetro 'tipo' debe ser 'INGRESO' o 'EGRESO'.")
+
+        incluir_costos = usuario_tiene_permiso(
+            request, "recetas.ver_costos"
+        ) or usuario_tiene_permiso(request, "compras.ver")
+
+        datos = obtener_movimientos_stock_trazabilidad(
+            fecha_desde=dt_desde,
+            fecha_hasta=dt_hasta,
+            insumo_id=insumo_id,
+            tipo=tipo_param,
+            incluir_costos=incluir_costos,
+        )
+        return Response({"datos": datos, "total": len(datos)}, status=status.HTTP_200_OK)
+
 
 class CompraViewSet(viewsets.ModelViewSet):
     queryset = Compra.objects.select_related("proveedor", "insumo").all()
@@ -74,6 +113,14 @@ class CompraViewSet(viewsets.ModelViewSet):
     filterset_fields = ["proveedor", "insumo"]
     ordering_fields = ["fecha", "precio_total", "id"]
     ordering = ["-fecha", "-id"]
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        if self.action == "list":
+            qs = filtrar_queryset_por_rango_fechas(
+                qs, self.request.query_params, campo_fecha="fecha"
+            )
+        return qs
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):

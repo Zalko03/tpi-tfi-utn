@@ -61,7 +61,8 @@ describe('Endpoint POST /v1/resumen-semanal (Consultor IA)', () => {
 
         expect(res.status).toBe(400);
         expect(res.body.mensaje).toBe('Datos de entrada inválidos');
-        expect(Array.isArray(res.body.detalles)).toBe(true);
+        expect(res.body.detalles).toEqual(['El resumen tiene que incluir al menos un producto.']);
+        expect(res.body.detalles.join(' ')).not.toMatch(/productos|:/);
     });
 
     it('responde 200 invocando generarResumenSemanalIA en ai-service para Dueño/Encargado', async () => {
@@ -93,5 +94,51 @@ describe('Endpoint POST /v1/resumen-semanal (Consultor IA)', () => {
         expect(res.body.resumen_ejecutivo).toContain('Margen operativo saludable');
         expect(res.body.contingencia).toBe(false);
         expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('propaga contingencia: true y oculta resumen ficticio si ai-service responde en contingencia o cae', async () => {
+        const tokenDuenio = generarTokenTest({ rol: 'DUENIO', permisos: [] });
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                resumen_ejecutivo: 'Demostración comercial ficticia',
+                productos_destacados: ['Latte Vainilla'],
+                sugerencias_rotacion: [],
+                alertas_costos: ['Aviso técnico: GROQ_API_KEY no configurada.'],
+                version_prompt: 'v1',
+                proveedor_ia: 'contingencia',
+                latencia_ms: 1,
+                contingencia: true,
+                mensaje_contingencia: 'No se pudo usar la IA, revisá la configuración.',
+            }),
+        });
+
+        const resContingencia = await request(app)
+            .post('/v1/resumen-semanal')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send(payloadValido);
+
+        expect(resContingencia.status).toBe(200);
+        expect(resContingencia.body.contingencia).toBe(true);
+        expect(resContingencia.body.proveedor_ia).toBe('contingencia');
+        expect(resContingencia.body.mensaje_contingencia).toContain(
+            'No se pudo usar la IA, revisá la configuración'
+        );
+        expect(resContingencia.body.resumen_ejecutivo).toBeNull();
+
+        global.fetch = jest.fn().mockRejectedValue(new Error('ECONNREFUSED ai-service'));
+        const resCaida = await request(app)
+            .post('/v1/resumen-semanal')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send(payloadValido);
+
+        expect(resCaida.status).toBe(200);
+        expect(resCaida.body.contingencia).toBe(true);
+        expect(resCaida.body.proveedor_ia).toBe('contingencia');
+        expect(resCaida.body.mensaje_contingencia).toContain(
+            'No se pudo usar la IA, revisá la configuración'
+        );
+        expect(resCaida.body.resumen_ejecutivo).toBeNull();
     });
 });

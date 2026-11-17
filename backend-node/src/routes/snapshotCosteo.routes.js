@@ -15,9 +15,13 @@ router.get('/:id/ultimo', obtenerUltimo);
 router.post(
     '/',
     [
-        check('productoId').notEmpty().withMessage('El productoId es obligatorio').isNumeric().withMessage('productoId debe ser numérico'),
-        check('costoTotal').notEmpty().withMessage('El costoTotal es obligatorio'),
-        check('margenBruto').notEmpty().withMessage('El margenBruto es obligatorio'),
+        check('productoId')
+            .notEmpty()
+            .withMessage('Tenés que indicar un producto.')
+            .isNumeric()
+            .withMessage('El producto indicado no es válido.'),
+        check('costoTotal').notEmpty().withMessage('Falta el costo total del producto.'),
+        check('margenBruto').notEmpty().withMessage('Falta el margen del producto.'),
         validarCampos,
     ],
     crearSnapshot

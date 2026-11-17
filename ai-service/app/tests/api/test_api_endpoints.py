@@ -85,10 +85,45 @@ class TestApiEndpointsAIService:
         assert datos["items"] == []
         assert datos["mensaje_contingencia"] is not None
 
+    def test_post_extraer_precios_con_groq_api_key_vacia_entra_en_contingencia(self, monkeypatch):
+        """Simula GROQ_API_KEY='' (vacía): responde contingencia explícita sin fingir IA."""
+        monkeypatch.setenv("AI_PROVIDER", "groq")
+        monkeypatch.setenv("GROQ_API_KEY", "")
+
+        respuesta = cliente.post(
+            "/v1/extraer-precios",
+            json={
+                "texto_lista": "Café Tostado 5 kg: $115000\nLeche Entera 12 l: $16200",
+                "proveedor_nombre": "Mayorista Sin Key",
+            },
+        )
+
+        assert respuesta.status_code == 200
+        datos = respuesta.json()
+        assert datos["contingencia"] is True
+        assert datos["proveedor_ia"] == "contingencia"
+        assert "No se pudo usar la IA, revisá la configuración" in (
+            datos["mensaje_contingencia"] or ""
+        )
+        assert any("GROQ_API_KEY" in adv for adv in datos["advertencias"])
+
     def test_post_extraer_precios_datos_invalidos_responde_400_formato_unico(self):
         respuesta = cliente.post(
             "/v1/extraer-precios",
             json={"texto_lista": ""},
+        )
+        assert respuesta.status_code == 400
+        cuerpo = respuesta.json()
+        assert cuerpo["mensaje"] == "Datos de entrada inválidos"
+        assert "texto_lista" in cuerpo["detalles"]
+
+    def test_post_extraer_precios_rechaza_pdf_binario_sin_extraer_400(self):
+        respuesta = cliente.post(
+            "/v1/extraer-precios",
+            json={
+                "texto_lista": "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>",
+                "origen_archivo": "pdf",
+            },
         )
         assert respuesta.status_code == 400
         cuerpo = respuesta.json()

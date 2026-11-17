@@ -37,7 +37,7 @@
 
                 <div class="login-propuesta-valor">
                     <p class="login-descripcion">
-                        Diseñado específicamente para cafeterías de especialidad y gastronomía de alto flujo. Control total de stock por gramo/mililitro, costeo dinámico de recetas y arqueo de caja con seguridad comercial.
+                        Diseñado específicamente para cafeterías de especialidad y gastronomía de alto flujo. Costo de cada receta calculado al gramo y al mililitro, y arqueo de caja con seguridad comercial.
                     </p>
                     <ul class="login-beneficios-lista">
                         <li>
@@ -54,13 +54,13 @@
                         </li>
                         <li>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            <span>Importación CSV y procesamiento inteligente de listas de proveedores</span>
+                            <span>Carga de listas de precios de proveedores (Excel, PDF, Word o WhatsApp)</span>
                         </li>
                     </ul>
                 </div>
 
                 <div class="login-demo-selector">
-                    <span class="demo-selector-etiqueta">Autocompletar Usuario de Demostración Local:</span>
+                    <span class="demo-selector-etiqueta">Probar con un usuario de demostración:</span>
                     <div class="demo-tarjetas-grilla">
                         <button type="button" class="btn-demo-acceso" id="btn-demo-duenio" data-usuario="duenio_demo">
                             <span class="demo-avatar">
@@ -68,7 +68,7 @@
                             </span>
                             <div class="demo-info">
                                 <strong>Dueño / Gerencia</strong>
-                                <small>Finanzas, IA y Recalcular Costos</small>
+                                <small>Finanzas, costos y asistente IA</small>
                             </div>
                         </button>
                         <button type="button" class="btn-demo-acceso" id="btn-demo-encargado" data-usuario="encargado_demo">
@@ -97,7 +97,7 @@
             <div class="login-formulario-panel">
                 <div class="login-form-cabecera">
                     <h2>Ingreso al Sistema</h2>
-                    <p>Acceda a su terminal de trabajo con sus credenciales de cafetería.</p>
+                    <p>Ingresá con tu usuario y contraseña.</p>
                 </div>
 
                 <form id="form-login" class="form-login-comercial">
@@ -111,19 +111,30 @@
 
                     <div class="campo-grupo">
                         <label for="input-password">Contraseña</label>
-                        <div class="input-con-icono">
+                        <div class="input-con-icono input-con-accion">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                             <input id="input-password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+                            <button
+                                type="button"
+                                id="btn-toggle-password"
+                                class="btn-toggle-visibilidad"
+                                aria-label="Mostrar contraseña"
+                                aria-pressed="false"
+                                data-target-input="input-password"
+                                data-label-mostrar="Mostrar contraseña"
+                                data-label-ocultar="Ocultar contraseña"
+                            >
+                                <svg class="icono-ojo-mostrar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                                <svg class="icono-ojo-ocultar" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                                </svg>
+                            </button>
                         </div>
                     </div>
-
-                    <details class="acceso-tecnico-toggle">
-                        <summary>Opciones de conexión avanzada</summary>
-                        <div class="campo-grupo mt-2">
-                            <label for="input-token-jwt">Token de Acceso Directo</label>
-                            <input id="input-token-jwt" type="text" placeholder="Pegar token de sesión..." />
-                        </div>
-                    </details>
 
                     <button type="submit" id="btn-login-submit" class="btn-cta-primario">
                         <span>Ingresar a Sapori Stock</span>
@@ -131,19 +142,16 @@
                     </button>
 
                     <div id="mensaje-auth" class="mensaje-estado-login">
-                        Seleccione uno de los 3 perfiles de demostración o ingrese sus credenciales.
+                        Elegí uno de los 3 perfiles de demostración o ingresá tu usuario y contraseña.
                     </div>
                 </form>
 
                 <div class="login-footer-seguridad" style="display: flex; flex-direction: column; gap: 0.65rem;">
                     <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                        <span>Ambiente comercial seguro · Operación híbrida Cloud / LAN / Offline</span>
+                        <span>Funciona con y sin internet</span>
                     </div>
-                    <button type="button" id="btn-config-servidor-login" class="btn-secundario-comercial" style="font-size: 0.78rem; padding: 0.45rem 0.85rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        <span>Configuración de Servidor / Modo de Conexión</span>
-                    </button>
+                    <button type="button" id="btn-config-servidor-login" class="btn-enlace-magico" style="font-size: 0.78rem; font-weight: 500; align-self: center;">¿No podés conectarte?</button>
                 </div>
             </div>
         </div>
@@ -193,7 +201,7 @@
 
                 <button type="button" class="nav-item" data-seccion="finanzas">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
-                    <span>Finanzas & Metas</span>
+                    <span>Reportes & Finanzas</span>
                 </button>
 
                 <button type="button" class="nav-item" data-seccion="personal">
@@ -231,7 +239,7 @@
                     <!-- Indicador de Contingencia Offline y Cola Local -->
                     <div id="banner-cola-offline" class="pildora-offline-alerta" style="display: none;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
-                        <span id="texto-cola-offline">Modo Sin Internet Activo — 0 ventas en cola local</span>
+                        <span id="texto-cola-offline">Sin internet: 0 ventas guardadas, se enviarán al volver la conexión</span>
                         <button type="button" id="btn-sincronizar-offline" class="btn-sincronizar-cola">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                             <span>Sincronizar Ventas Pendientes</span>
@@ -245,11 +253,11 @@
                     </div>
 
                     <!-- Presencia y Sockets -->
-                    <span id="insignia-presencia" class="pildora-presencia">1 terminal activa</span>
-                    <span id="insignia-socket" class="pildora-socket conectado">Sistema en Línea</span>
+                    <span id="insignia-presencia" class="pildora-presencia">1 equipo conectado</span>
+                    <span id="insignia-socket" class="pildora-socket conectado">Conectado</span>
 
                     <!-- Botón de Configuración de Servidor / Modo de Conexión -->
-                    <button type="button" id="btn-config-servidor-header" class="btn-icono-panel" title="Configuración de Servidor / Modo de Conexión">
+                    <button type="button" id="btn-config-servidor-header" class="btn-icono-panel" title="Conexión del sistema" style="display: none;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     </button>
 
@@ -285,7 +293,7 @@
                                             autocomplete="off"
                                             autofocus
                                         />
-                                        <span class="laser-badge-estado">Lector Láser Listo (F4)</span>
+                                        <span class="laser-badge-estado">Lector de códigos listo (F4)</span>
                                     </div>
                                 </div>
 
@@ -441,7 +449,7 @@
                                     </div>
                                     <div class="aviso-contenido">
                                         <strong>Modo Arqueo Ciego Activo</strong>
-                                        <p>Ingrese el recuento físico exacto de los billetes y monedas presentes en el cajón. El saldo esperado por el sistema permanece confidencial para auditoría de gerencia.</p>
+                                        <p>Ingresá el recuento físico exacto de los billetes y monedas presentes en el cajón. El saldo esperado por el sistema permanece confidencial para auditoría de gerencia.</p>
                                     </div>
                                 </div>
 
@@ -519,7 +527,7 @@
                 <section id="vista-compras" class="vista-modulo">
                     <div class="modulo-compras-tabs">
                         <button type="button" class="tab-compras-btn activa" data-tab="ia">
-                            <span>Importación de Listas de Precios (CSV / IA)</span>
+                            <span>Listas de precios de proveedores</span>
                         </button>
                         <button type="button" class="tab-compras-btn" data-tab="insumos">
                             <span>Inventario de Insumos & Compras Manuales</span>
@@ -529,41 +537,41 @@
                     <!-- Pestaña 1: Importador CSV + IA -->
                     <div id="subtab-ia" class="subtab-contenido activa">
                         <div class="asistente-ia-layout">
-                            <!-- Zona de Importación de Archivo CSV / TXT con Drag & Drop -->
+                            <!-- Zona de Importación Directa CSV / TXT (100% sin IA) -->
                             <div class="tarjeta-panel-blanca">
                                 <div class="panel-cabecera-linea">
                                     <div>
-                                        <h3>Importar Archivo de Lista de Precios (.CSV / .TXT)</h3>
-                                        <p class="text-muted">Suba planillas exportadas de Excel (separadas por coma o punto y coma) para actualización masiva de costos.</p>
+                                        <h3>Cargar planilla del proveedor</h3>
+                                        <p class="text-muted">Subí la planilla del proveedor para revisar los precios antes de aplicarlos. También podés subir un PDF o un Word para que lo lea la IA.</p>
                                     </div>
                                     <button type="button" id="btn-descargar-plantilla-csv" class="btn-secundario-comercial" style="display: inline-flex; align-items: center; gap: 0.45rem;">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                        <span>Descargar Plantilla CSV Modelo</span>
+                                        <span>Descargar planilla modelo</span>
                                     </button>
                                 </div>
 
                                 <div id="zona-drop-csv" class="zona-drop-csv">
-                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt" class="sr-only" />
+                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt,.pdf,.xlsx,.xls,.docx" class="sr-only" />
                                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
                                     <div>
-                                        <strong>Arrastre aquí su archivo .CSV o .TXT de proveedor</strong>
-                                        <p class="text-muted">o haga clic para seleccionar desde su equipo (soporta delimitador <code>,</code> y <code>;</code>)</p>
+                                        <strong>Arrastrá aquí la planilla, el PDF o el Word del proveedor</strong>
+                                        <p class="text-muted">o hacé clic para elegirlo (máx. 5 MB)</p>
                                     </div>
                                 </div>
 
-                                <!-- Previsualización formal de filas CSV -->
+                                <!-- Previsualización formal de filas CSV (sin IA) -->
                                 <div id="panel-preview-csv" class="mt-4" style="display: none;">
                                     <div class="panel-cabecera-linea">
                                         <div>
-                                            <h4>Previsualización de Planilla Cargada</h4>
+                                            <h4>Vista previa <span class="badge-csv-sin-ia">Sin IA</span></h4>
                                             <span id="resumen-preview-csv" class="text-muted">0 filas detectadas</span>
                                         </div>
                                         <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
-                                            <button type="button" id="btn-csv-circuito-ia" class="btn-secundario-comercial">
-                                                Enviar al Circuito de Aprobación
-                                            </button>
                                             <button type="button" id="btn-csv-confirmar-directo" class="btn-exito-comercial">
-                                                Confirmar Directamente en Inventario y Recalcular
+                                                Confirmar precios
+                                            </button>
+                                            <button type="button" id="btn-csv-circuito-ia" class="btn-secundario-comercial">
+                                                Analizar Planilla con IA
                                             </button>
                                         </div>
                                     </div>
@@ -594,7 +602,7 @@
                                     <div class="paso-circulo">1</div>
                                     <div>
                                         <h3>Pegar Lista o Mensaje del Proveedor</h3>
-                                        <p class="text-muted">Pegue el mensaje de WhatsApp, texto de PDF o presupuesto enviado por su distribuidor.</p>
+                                        <p class="text-muted">Pegá el mensaje de WhatsApp o subí un archivo (Excel, PDF, Word o texto; máx. 5 MB).</p>
                                     </div>
                                 </div>
 
@@ -605,13 +613,20 @@
                                     </div>
 
                                     <div class="campo-grupo">
-                                        <div class="flex-justify-between">
-                                            <label for="textarea-lista-ia">Texto de la Lista de Precios</label>
-                                            <button type="button" id="btn-ejemplo-proveedor" class="btn-enlace-magico">
-                                                <span>Cargar Ejemplo de Proveedor</span>
-                                            </button>
+                                        <div class="flex-justify-between" style="gap: 0.65rem; flex-wrap: wrap;">
+                                            <label for="textarea-lista-ia">Texto de la Lista de Precios, Excel, Word o PDF</label>
+                                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                                                <input type="file" id="archivo-lista-ia" accept=".pdf,.txt,.csv,.xlsx,.xls,.docx" class="sr-only" />
+                                                <button type="button" id="btn-cargar-archivo-ia" class="btn-secundario-comercial" style="padding: 0.35rem 0.75rem; font-size: 0.82rem;">
+                                                    <span>Subir archivo</span>
+                                                </button>
+                                                <button type="button" id="btn-ejemplo-proveedor" class="btn-enlace-magico">
+                                                    <span>Cargar Ejemplo de Proveedor</span>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <textarea id="textarea-lista-ia" rows="5" placeholder="Pegue aquí el texto recibido por WhatsApp o escaneo..." required>Café tostado en grano 1 kg: $24500
+                                        <div id="estado-archivo-lista-ia" class="alerta-archivo-pdf" role="status" style="display: none;"></div>
+                                        <textarea id="textarea-lista-ia" rows="5" placeholder="Pegá aquí el texto que te mandó el proveedor por WhatsApp o subí un archivo..." required>Café tostado en grano 1 kg: $24500
 Leche entera 12 l: $15600
 Envío: $2000</textarea>
                                     </div>
@@ -621,8 +636,11 @@ Envío: $2000</textarea>
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"></path><path d="M12 18v4"></path><path d="M4.93 4.93l2.83 2.83"></path><path d="M16.24 16.24l2.83 2.83"></path><path d="M2 12h4"></path><path d="M18 12h4"></path><path d="M4.93 19.07l2.83-2.83"></path><path d="M16.24 7.76l2.83-2.83"></path></svg>
                                             <span>Analizar Lista con Inteligencia Artificial</span>
                                         </button>
+                                        <button type="button" id="btn-csv-desde-texto" class="btn-secundario-comercial">
+                                            <span>Ver vista previa sin IA</span>
+                                        </button>
                                         <div id="estado-importacion-ia" class="estado-ia-pill">
-                                            La IA analiza las cantidades y precios para su posterior validación.
+                                            La IA analiza las cantidades y precios para que los revises después.
                                         </div>
                                     </div>
                                 </form>
@@ -631,12 +649,14 @@ Envío: $2000</textarea>
                             <!-- Paso 2: Propuesta analizada para revisión humana -->
                             <div id="panel-revision-ia" class="tarjeta-panel-blanca panel-revision-ia-animado" style="display: none;">
                                 <div class="ia-paso-cabecera">
-                                    <div class="paso-circulo exito">2</div>
+                                    <div class="paso-circulo exito" id="ia-paso2-circulo">2</div>
                                     <div>
                                         <h3>Revisión y Aprobación de la Propuesta</h3>
-                                        <p class="text-muted">Verifique los ítems detectados. Al aprobar, se actualizarán los costos en las recetas automáticamente.</p>
+                                        <p class="text-muted">Revisá los ítems detectados. Al aprobar, se actualizarán los costos en las recetas automáticamente.</p>
                                     </div>
                                 </div>
+
+                                <div id="ia-alerta-contingencia" class="alerta-contingencia-ia" role="alert" style="display: none;"></div>
 
                                 <div class="ia-resumen-deteccion" id="ia-resumen-banner">
                                     <!-- Datos de resumen del parseo -->
@@ -650,7 +670,7 @@ Envío: $2000</textarea>
                                                 <th class="col-centro">Cantidad</th>
                                                 <th class="col-centro">Unidad</th>
                                                 <th class="col-numero">Precio Detectado</th>
-                                                <th class="col-centro">Confianza IA</th>
+                                                <th class="col-centro">Certeza de la IA</th>
                                             </tr>
                                         </thead>
                                         <tbody id="tabla-items-ia-body">
@@ -717,9 +737,14 @@ Envío: $2000</textarea>
                                     <h3>Carta de Productos, Costos y Rentabilidad</h3>
                                     <p class="text-muted">Monitoreo exacto de margen por producto combinando insumos, minutos de barista y descartables.</p>
                                 </div>
-                                <button type="button" id="btn-recalcular-toda-carta" class="btn-secundario-comercial">
-                                    <span>Recalcular Costos de toda la Carta</span>
-                                </button>
+                                <div class="panel-cabecera-acciones">
+                                    <button type="button" id="btn-modal-nuevo-producto" class="btn-primario-comercial" style="display: none;">
+                                        <span>+ Nuevo producto</span>
+                                    </button>
+                                    <button type="button" id="btn-recalcular-toda-carta" class="btn-secundario-comercial">
+                                        <span>Recalcular Costos de toda la Carta</span>
+                                    </button>
+                                </div>
                             </div>
 
                             <div class="tabla-contenedor-responsive">
@@ -727,11 +752,11 @@ Envío: $2000</textarea>
                                     <thead>
                                         <tr>
                                             <th class="col-texto">Producto</th>
-                                            <th class="col-centro">Código EAN-13</th>
+                                            <th class="col-centro">Código de barras</th>
                                             <th class="col-numero">Precio en Carta</th>
                                             <th class="col-numero">Costo Receta Exacto</th>
-                                            <th class="col-numero">Ganancia Neta ($)</th>
-                                            <th class="col-texto" style="min-width: 170px;">Margen de Rentabilidad (%)</th>
+                                            <th class="col-numero">Ganancia por unidad ($)</th>
+                                            <th class="col-texto" style="min-width: 170px;">Margen bruto (%)</th>
                                             <th class="col-centro">Acciones</th>
                                         </tr>
                                     </thead>
@@ -761,6 +786,7 @@ Envío: $2000</textarea>
                                             <th class="col-centro">Cantidad Requerida</th>
                                             <th class="col-numero">Costo Unitario Insumo</th>
                                             <th class="col-numero">Subtotal en Receta</th>
+                                            <th class="col-centro" id="th-receta-item-acciones" style="display: none;">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tabla-receta-items-body">
@@ -768,15 +794,72 @@ Envío: $2000</textarea>
                                     </tbody>
                                 </table>
                             </div>
+                            <form id="form-agregar-receta-item" class="receta-agregar-insumo-form" style="display: none;">
+                                <div class="receta-agregar-insumo-campos">
+                                    <div class="campo-grupo">
+                                        <label for="select-receta-insumo">Insumo</label>
+                                        <select id="select-receta-insumo" required></select>
+                                    </div>
+                                    <div class="campo-grupo">
+                                        <label for="input-receta-cantidad">Cantidad</label>
+                                        <input id="input-receta-cantidad" type="number" step="0.0001" min="0.0001" placeholder="18.00" required />
+                                    </div>
+                                    <div class="campo-grupo">
+                                        <label for="select-receta-unidad">Unidad</label>
+                                        <select id="select-receta-unidad" required>
+                                            <option value="g">g (Gramos)</option>
+                                            <option value="kg">kg (Kilogramos)</option>
+                                            <option value="ml">ml (Mililitros)</option>
+                                            <option value="l">l (Litros)</option>
+                                            <option value="un">un (Unidades)</option>
+                                        </select>
+                                    </div>
+                                    <div class="receta-agregar-insumo-submit">
+                                        <button type="submit" class="btn-primario-comercial">Agregar insumo</button>
+                                    </div>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </section>
 
                 <!-- ============================================================
-                     5. MÓDULO FINANZAS, GANANCIA REAL Y METAS
+                     5. MÓDULO REPORTES, TRAZABILIDAD, FINANZAS Y METAS
                      ============================================================ -->
                 <section id="vista-finanzas" class="vista-modulo">
                     <div id="finanzas-contenido-gerencia" class="finanzas-layout">
+                        <!-- Barra de Filtro por Rango de Fechas (Reportes y Trazabilidad) -->
+                        <div class="tarjeta-panel-blanca barra-filtro-fechas" id="barra-filtro-fechas-reportes">
+                            <div class="filtro-fechas-cabecera">
+                                <div>
+                                    <h3>Reportes y Trazabilidad por Período</h3>
+                                    <p class="text-muted">Filtrá ventas, consumo de insumos, cierres de caja y métricas financieras por rango de fechas.</p>
+                                </div>
+                                <div id="indicador-rango-reportes" class="indicador-rango-activo">
+                                    Mostrando todo el historial · 0 registros
+                                </div>
+                            </div>
+                            <div class="filtro-fechas-controles">
+                                <div class="campo-grupo filtro-fecha-campo">
+                                    <label for="filtro-fecha-desde">Desde</label>
+                                    <input type="date" id="filtro-fecha-desde" />
+                                </div>
+                                <div class="campo-grupo filtro-fecha-campo">
+                                    <label for="filtro-fecha-hasta">Hasta</label>
+                                    <input type="date" id="filtro-fecha-hasta" />
+                                </div>
+                                <div class="filtro-fechas-atajos" aria-label="Atajos de período">
+                                    <button type="button" class="btn-refrescar-mini btn-atajo-fecha" data-atajo="hoy">Hoy</button>
+                                    <button type="button" class="btn-refrescar-mini btn-atajo-fecha" data-atajo="7dias">Últimos 7 días</button>
+                                    <button type="button" class="btn-refrescar-mini btn-atajo-fecha" data-atajo="mes">Este mes</button>
+                                </div>
+                                <div class="filtro-fechas-acciones">
+                                    <button type="button" id="btn-filtrar-fechas" class="btn-primario-comercial">Filtrar</button>
+                                    <button type="button" id="btn-limpiar-fechas" class="btn-secundario-comercial">Limpiar</button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Fila 1: KPIs Financieros Ejecutivos en Vivo -->
                         <div class="kpis-financieros-grilla">
                             <div class="tarjeta-kpi">
@@ -796,7 +879,7 @@ Envío: $2000</textarea>
                             </div>
 
                             <div class="tarjeta-kpi destacada-verde">
-                                <span class="kpi-titulo">Ganancia Neta Real de Bolsillo</span>
+                                <span class="kpi-titulo">Ganancia bruta del período</span>
                                 <div class="kpi-valor-fila">
                                     <strong id="fin-ganancia-neta" class="kpi-monto text-exito">$ 0,00</strong>
                                 </div>
@@ -812,17 +895,58 @@ Envío: $2000</textarea>
                             </div>
                         </div>
 
+                        <!-- Trazabilidad Unificada: Ventas, Movimientos de Stock y Cierres de Caja -->
+                        <div class="tarjeta-panel-blanca" id="panel-trazabilidad-reportes">
+                            <div class="panel-cabecera-linea">
+                                <div>
+                                    <h3>Historial de ventas, consumo de insumos y cierres de caja</h3>
+                                    <p class="text-muted">Historial auditable unificado ordenado cronológicamente para el período seleccionado.</p>
+                                </div>
+                                <div class="trazabilidad-resumen-pills">
+                                    <span class="trazabilidad-pill" id="pill-conteo-ventas">Ventas: 0</span>
+                                    <span class="trazabilidad-pill" id="pill-conteo-stock">Insumos: 0</span>
+                                    <span class="trazabilidad-pill" id="pill-conteo-cierres">Cierres de Caja: 0</span>
+                                </div>
+                            </div>
+
+                            <div class="trazabilidad-tabs" role="tablist" aria-label="Filtrar categoría de trazabilidad">
+                                <button type="button" class="btn-trazabilidad-tab activa" data-categoria="todos">Todos (<span id="tab-count-todos">0</span>)</button>
+                                <button type="button" class="btn-trazabilidad-tab" data-categoria="venta">Ventas (<span id="tab-count-ventas">0</span>)</button>
+                                <button type="button" class="btn-trazabilidad-tab" data-categoria="stock">Consumo de insumos (<span id="tab-count-stock">0</span>)</button>
+                                <button type="button" class="btn-trazabilidad-tab" data-categoria="caja">Cierres de Caja (<span id="tab-count-caja">0</span>)</button>
+                            </div>
+
+                            <div class="tabla-contenedor-responsive">
+                                <table class="tabla-comercial" id="tabla-trazabilidad-reportes">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-centro">Fecha / Hora</th>
+                                            <th class="col-centro">Tipo</th>
+                                            <th class="col-texto">Detalle</th>
+                                            <th class="col-numero">Monto / Cantidad</th>
+                                            <th class="col-texto">Usuario / Responsable</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tabla-trazabilidad-body">
+                                        <tr>
+                                            <td colspan="5" class="col-centro text-muted py-4">Cargando registros de trazabilidad...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
                         <!-- Panel de Consultoría IA para el Dueño: Stock Crítico y Auditoría de Caja -->
                         <div class="tarjeta-panel-blanca" id="panel-consultor-ia">
                             <div class="panel-cabecera-linea">
                                 <div>
-                                    <h3>Consultor IA de Stock y Cierre de Caja</h3>
+                                    <h3>Consultor IA de insumos y cierre de caja</h3>
                                     <p class="text-muted">Dictámenes analíticos y auditoría en tiempo real para gerencia, basados en el inventario real y arqueo contable.</p>
                                 </div>
                                 <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                                     <button type="button" id="btn-ia-diagnostico-stock" class="btn-primario-comercial">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                                        <span>Consultar Diagnóstico de Stock e Insumos a Reponer con IA</span>
+                                        <span>Consultar a la IA: insumos a reponer (estimado por ventas)</span>
                                     </button>
                                     <button type="button" id="btn-ia-auditar-caja" class="btn-secundario-comercial">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
@@ -842,8 +966,8 @@ Envío: $2000</textarea>
                         <div class="tarjeta-panel-blanca">
                             <div class="panel-cabecera-linea">
                                 <div>
-                                    <h3>Simulador Comercial de Punto de Equilibrio (Break-Even)</h3>
-                                    <p class="text-muted">Determine el volumen de ventas necesario para cubrir sus costos fijos (alquiler, luz, salarios) sin generar pérdidas.</p>
+                                    <h3>Punto de equilibrio: cuánto tenés que vender</h3>
+                                    <p class="text-muted">Determiná el volumen de ventas necesario para cubrir tus costos fijos (alquiler, luz, salarios) sin generar pérdidas.</p>
                                 </div>
                             </div>
 
@@ -989,9 +1113,10 @@ Envío: $2000</textarea>
                     <span id="metrica-alertas-margen" class="metrica-numero text-advertencia">0</span>
                     <span class="metrica-sub">Margen &lt; 30%</span>
                 </div>
-                <div class="metrica-item-drawer">
+                <!-- Oculta hasta que exista control de stock: hoy nadie emite 'stock.bajo' (emitirStockBajo queda en backend-node). -->
+                <div class="metrica-item-drawer" style="display: none;">
                     <span id="metrica-alertas-stock" class="metrica-numero text-peligro">0</span>
-                    <span class="metrica-sub">Stock Bajo</span>
+                    <span class="metrica-sub">Alertas de insumos</span>
                 </div>
             </div>
 
@@ -1005,7 +1130,7 @@ Envío: $2000</textarea>
                             <small>Ahora</small>
                         </div>
                         <div class="evento-detalle">
-                            Conectado al bus de eventos de salón (ventas, alertas de margen y stock).
+                            Avisos del local en vivo: ventas y alertas de margen.
                         </div>
                     </li>
                 </ul>
@@ -1084,7 +1209,7 @@ Envío: $2000</textarea>
                     <div class="ticket-codigo-barras-simulado">
                         ||||| |||| |||||| ||||| |||| |||||||| ||| |||||||
                     </div>
-                    <p class="ticket-agradecimiento">¡GRACIAS POR SU VISITA!</p>
+                    <p class="ticket-agradecimiento">¡GRACIAS POR TU VISITA!</p>
                     <p id="ticket-termico-leyenda" class="ticket-leyenda">Comprobante comercial no fiscal emitido por Sapori Stock</p>
                 </div>
             </div>
@@ -1242,8 +1367,8 @@ Envío: $2000</textarea>
         <div class="modal-tarjeta">
             <div class="modal-cabecera">
                 <div>
-                    <h3>Configuración de Servidor / Modo de Conexión</h3>
-                    <p class="text-muted">Arquitectura híbrida Cloud, Red Local (LAN) y Contingencia Offline</p>
+                    <h3>Conexión del sistema</h3>
+                    <p class="text-muted">Dónde está instalado Sapori Stock</p>
                 </div>
                 <button type="button" class="btn-cerrar-modal" data-cerrar="modal-config-servidor" aria-label="Cerrar">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -1253,22 +1378,93 @@ Envío: $2000</textarea>
                 <div class="campo-grupo">
                     <label for="select-modo-conexion">Modo Operativo de Conexión</label>
                     <select id="select-modo-conexion">
-                        <option value="local">Servidor Local LAN (PC de Mostrador / Docker)</option>
-                        <option value="cloud">Servidor Cloud Remoto (Render + Aiven + Atlas)</option>
-                        <option value="offline">Modo Contingencia Offline (Sin Internet)</option>
+                        <option value="local">En la computadora del local</option>
+                        <option value="cloud">En internet</option>
+                        <option value="offline">Sin internet (temporal)</option>
                     </select>
                 </div>
                 <div class="campo-grupo">
-                    <label for="input-config-django-url">URL Backend Transaccional (Django API)</label>
+                    <label for="input-config-django-url">Dirección del sistema de ventas</label>
                     <input id="input-config-django-url" type="text" placeholder="http://localhost:8000" required />
                 </div>
                 <div class="campo-grupo">
-                    <label for="input-config-node-url">URL Backend Tiempo Real & IA (Node / Socket.IO)</label>
+                    <label for="input-config-node-url">Dirección del sistema de avisos e IA</label>
                     <input id="input-config-node-url" type="text" placeholder="http://localhost:3000" required />
                 </div>
                 <div class="modal-footer-acciones">
                     <button type="button" class="btn-secundario-comercial" data-cerrar="modal-config-servidor">Cancelar</button>
                     <button type="submit" class="btn-primario-comercial">Guardar y Aplicar Conexión</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 7. MODAL NUEVO PRODUCTO EN CARTA -->
+    <div id="modal-nuevo-producto" class="modal-overlay" style="display: none;">
+        <div class="modal-tarjeta">
+            <div class="modal-cabecera">
+                <div>
+                    <h3>Nuevo Producto en la Carta</h3>
+                    <p class="text-muted">Alta de producto comercial para costeo por receta y venta en POS</p>
+                </div>
+                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-nuevo-producto" aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <form id="form-nuevo-producto" class="modal-cuerpo">
+                <div class="campo-grupo">
+                    <label for="input-nuevo-producto-nombre">Nombre del producto</label>
+                    <input id="input-nuevo-producto-nombre" type="text" maxlength="150" placeholder="Ej. Café Flat White" required />
+                </div>
+                <div class="campos-dos-columnas">
+                    <div class="campo-grupo">
+                        <label for="input-nuevo-producto-codigo">Código de barras (opcional)</label>
+                        <input id="input-nuevo-producto-codigo" type="text" maxlength="50" placeholder="7790001000099" />
+                    </div>
+                    <div class="campo-grupo">
+                        <label for="input-nuevo-producto-precio">Precio de venta ($)</label>
+                        <input id="input-nuevo-producto-precio" type="number" step="0.01" min="0.01" placeholder="3800.00" required />
+                    </div>
+                </div>
+                <div class="campos-dos-columnas">
+                    <div class="campo-grupo">
+                        <label for="input-nuevo-producto-minutos">Minutos de mano de obra</label>
+                        <input id="input-nuevo-producto-minutos" type="number" step="0.01" min="0" value="0.00" required />
+                    </div>
+                    <div class="campo-grupo">
+                        <label for="input-nuevo-producto-costo-hora">Costo hora mano de obra ($)</label>
+                        <input id="input-nuevo-producto-costo-hora" type="number" step="0.01" min="0" value="2500.00" required />
+                    </div>
+                </div>
+                <div class="modal-footer-acciones">
+                    <button type="button" class="btn-secundario-comercial" data-cerrar="modal-nuevo-producto">Cancelar</button>
+                    <button type="submit" class="btn-primario-comercial">Crear Producto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 8. MODAL EDITAR PRECIO DE VENTA DE PRODUCTO -->
+    <div id="modal-editar-precio-producto" class="modal-overlay" style="display: none;">
+        <div class="modal-tarjeta">
+            <div class="modal-cabecera">
+                <div>
+                    <h3>Editar Precio de Venta</h3>
+                    <p class="text-muted" id="editar-precio-producto-nombre"></p>
+                </div>
+                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-editar-precio-producto" aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <form id="form-editar-precio-producto" class="modal-cuerpo">
+                <input id="input-editar-precio-id" type="hidden" />
+                <div class="campo-grupo">
+                    <label for="input-editar-precio-venta">Nuevo precio de venta ($)</label>
+                    <input id="input-editar-precio-venta" type="number" step="0.01" min="0.01" required />
+                </div>
+                <div class="modal-footer-acciones">
+                    <button type="button" class="btn-secundario-comercial" data-cerrar="modal-editar-precio-producto">Cancelar</button>
+                    <button type="submit" class="btn-primario-comercial">Guardar Precio</button>
                 </div>
             </form>
         </div>
@@ -1294,7 +1490,10 @@ Envío: $2000</textarea>
         <button id="btn-unirse-turno" type="button">Unirse a Turno</button>
     </div>
 
-    <!-- Scripts de Socket.IO y Aplicación -->
+    <!-- Scripts locales (Offline-First): PDF.js, SheetJS, Mammoth, Socket.IO y Aplicación -->
+    <script src="/app/vendor/pdfjs/pdf.min.js"></script>
+    <script src="/app/vendor/sheetjs/xlsx.full.min.js"></script>
+    <script src="/app/vendor/mammoth/mammoth.browser.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="/app/js/app.js"></script>
 </body>

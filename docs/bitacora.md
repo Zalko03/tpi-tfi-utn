@@ -21,6 +21,225 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-17
+Tarea: Trato de vos en la interfaz web y mensajes de validación de Node en lenguaje simple
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Trato de vos en la interfaz (`web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`):**
+  - Se pasaron a vos rioplatense los textos visibles al usuario (login, arqueo ciego, importación de listas, filtros de reportes, simulador de punto de equilibrio, ticket, alertas de turno/planilla/PDF y carta).
+- **Mensajes de validación simples en Node (`backend-node/src/`):**
+  - `validarCampos` ahora devuelve `detalles` solo con `err.msg` sin repetir mensajes ni exponer nombres internos de campo (`err.path`), registrando los campos fallidos en el log estructurado (`logger.warn`) para depuración.
+  - Se reescribieron los `withMessage` y mensajes de error de `importacionIA`, `resumenSemanal`, `productoResumen`, `snapshotCosteo`, `historialPrecio` y `ai.client.js` en español simple, de vos y sin nombres de campos internos.
+- **Tests (`backend-node/tests/`):**
+  - Se agregó `tests/unit/validarCampos.unit.test.js` y se actualizaron `importacionIA.integration.test.js`, `resumenSemanal.integration.test.js` y `seguridadHardening.integration.test.js`.
+Archivos tocados:
+- `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`
+- `backend-node/src/middlewares/validarCampos.middleware.js`
+- `backend-node/src/routes/importacionIA.routes.js`, `resumenSemanal.routes.js`, `productoResumen.routes.js`, `snapshotCosteo.routes.js`, `historialPrecio.routes.js`
+- `backend-node/src/services/importacionIA.service.js`, `backend-node/src/clients/ai.client.js`
+- `backend-node/tests/unit/validarCampos.unit.test.js`, `tests/integration/importacionIA.integration.test.js`, `resumenSemanal.integration.test.js`, `seguridadHardening.integration.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (25 suites, 181 tests passed)
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+Fecha: 2026-11-17
+Tarea: Textos simples en pantalla, menú según permisos, aviso POS sin carta y rate limiting por usuario/IA
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Parte 1 — Textos simples en pantalla y eliminación de acceso por token en login (`web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`):**
+  - Se reemplazaron textos técnicos en barra superior, presencia, lector POS, cola offline, login, compras/importación y modal de conexión por textos claros en español para el dueño del café.
+  - Se eliminó del login el bloque "Token de Acceso Directo" (`#input-token-jwt` / `#btn-toggle-token-jwt`) y la lógica de token manual en `ejecutarLogin`, manteniendo intacta la restauración de sesión vía `sessionStorage` (`cafe_jwt` / `cafe_user`).
+  - Se convirtió `#btn-config-servidor-login` en un enlace discreto ("¿No podés conectarte?") y se ocultó `#btn-config-servidor-header` para cualquier rol distinto de `DUENIO` y al cerrar sesión.
+  - Se creó e integró `mensajeErrorParaUsuario(status, mensajeApi)` en `web/js/logicaPwa.js` para mapear 401/403/429/400/422 y fallos de red/5xx sin exponer códigos HTTP ni tecnicismos en pantalla (dejando detalles en `console.warn`/`console.error`).
+- **Parte 2 — Menú lateral según permisos (`web/js/logicaPwa.js`, `web/js/app.js`):**
+  - Se exportaron `PERMISOS_POR_SECCION` y `seccionesVisiblesParaUsuario(usuario)` en `web/js/logicaPwa.js`.
+  - Tras iniciar o restaurar sesión se ocultan los ítems del menú no habilitados, se redirige la sección activa si quedó oculta, `cambiarSeccion` impide abrir secciones ocultas, los atajos `F2`/`F4` respetan el permiso de `pos` y `cargarDatosIniciales` evita consultar secciones ocultas.
+- **Parte 3 — Aviso de cobro bloqueado sin carta (`web/js/app.js`):**
+  - `renderizarCatalogoPOS` actualiza `#estado-caja` con `"Cobro bloqueado: no hay carta cargada."` cuando la carta está vacía y vuelve a `"Listo para escanear productos o cobrar."` cuando hay productos cargados.
+- **Parte 4 — Límites de peticiones y documentación (`backend-node/`, `backend-django/`, `.env.example`, `render.yaml`, `docs/seguridad.md`):**
+  - En `backend-node/app.js`: se configuró `app.set('trust proxy', nodeTrustProxySaltos)` desde `NODE_TRUST_PROXY_SALTOS` (default `0`, `1` en `render.yaml`, nunca `true`) y se montaron `/app` y `/health` antes de `limitadorGeneral` para que no consuman cupo ni emitan cabeceras `RateLimit`.
+  - En `backend-node/src/middlewares/auth.middleware.js` y `rateLimit.middleware.js`: se extrajo `obtenerUsuarioIdDeToken(cabecera)` reutilizando la verificación RS256; `limitadorGeneral` aplica 600 req/15 min por `usuario:<id>` autenticado y 100 req/15 min por IP (`ipKeyGenerator`) si falta token o es inválido; se creó `limitadorIA` (20 req/15 min por usuario/IP) en `POST /api/importaciones`, `POST /importaciones` y `POST /v1/resumen-semanal` (conservando `limitadorConsultasCostosas` en `productoResumen.routes.js`).
+  - En `backend-django/config/settings/base.py` y `.env.example`: se actualizó `DJANGO_THROTTLE_USER` por defecto de `2000/day` a `10000/day`.
+  - Se documentaron los límites en `docs/seguridad.md` (§8).
+- **Tests (`backend-node/tests/`):**
+  - Se actualizaron `clientePwa.integration.test.js` y `logicaPwa.unit.test.js` (errores legibles y menú por permisos) y se ampliaron `rateLimit.unit.test.js` y `seguridadHardening.integration.test.js`.
+Archivos tocados:
+- `web/index.html`
+- `web/js/app.js`
+- `web/js/logicaPwa.js`
+- `backend-node/app.js`
+- `backend-node/src/config/env.js`
+- `backend-node/src/middlewares/auth.middleware.js`
+- `backend-node/src/middlewares/rateLimit.middleware.js`
+- `backend-node/src/routes/importacionIA.routes.js`
+- `backend-node/src/routes/resumenSemanal.routes.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/unit/rateLimit.unit.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `backend-node/tests/integration/seguridadHardening.integration.test.js`
+- `backend-django/config/settings/base.py`
+- `.env.example`
+- `render.yaml`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q` (407 passed)
+- `cd backend-node && npm test && npm run lint` (24 suites, 179 tests passed)
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+- `.venv/bin/ruff check backend-django/config/settings/base.py && .venv/bin/ruff format --check backend-django/config/settings/base.py`
+---
+Fecha: 2026-11-16
+Tarea: Corrección de `RecetaItemSerializer` (`producto`) y gestión de carta/recetas por permisos en "Recetas & Rentabilidad"
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Backend Django (`backend-django/apps/recetas/`):**
+  - En `serializers.py`: se agregó `"producto"` a `RecetaItemSerializer.Meta.fields` y se implementó `validate()` para rechazar con HTTP 400 cualquier actualización (`self.instance`) que intente cambiar el `producto` de un ítem existente.
+  - En `tests/api/test_api_recetas.py`: se agregaron pruebas API verificando creación de `RecetaItem` con `recetas.crear` y recálculo automático del producto, rechazo HTTP 400 al intentar cambiar `producto` vía `PATCH`, actualización de cantidad con recálculo y rechazo HTTP 403 sin `recetas.crear`.
+- **Frontend PWA (`web/`):**
+  - En `web/js/logicaPwa.js`: se agregaron los helpers puros `usuarioTienePermiso`, `obtenerUnidadesCompatiblesReceta`, `calcularFactorConversionReceta` y `extraerMensajeErrorApi`.
+  - En `web/index.html`, `web/css/estilos.css` y `web/js/app.js`: se incorporó en **Recetas & Rentabilidad** la gestión de la carta controlada por permisos granulares (`recetas.crear`, `recetas.editar`, `recetas.eliminar`):
+    - Botón **+ Nuevo producto** y modal (`#modal-nuevo-producto`) con nombre, código de barras opcional (`null` si está vacío), precio de venta, minutos de mano de obra y costo hora (`POST /api/productos/`).
+    - En el desglose de receta: formulario para agregar insumo (`POST /api/recetas-items/`), edición inline de cantidad (`PATCH /api/recetas-items/{id}/`) y botón para quitar insumo (`DELETE /api/recetas-items/{id}/`), refrescando la tabla y el desglose tras cada operación.
+    - Modal para editar el precio de venta de un producto (`PATCH /api/productos/{id}/`), sin borrado de productos.
+    - Todo texto proveniente de la base se renderiza escapado con `escaparHtml` o `textContent`.
+- **Documentación e integridad (`web/vendor/mammoth/README.md`, `docs/CONNECTIONS.md`, `docs/bitacora.md`):**
+  - Se incluyó en el commit la corrección del hash SHA-256 en `web/vendor/mammoth/README.md` y se actualizó `docs/CONNECTIONS.md` con `/api/productos/` y `/api/recetas-items/`.
+- **Tests PWA (`backend-node/tests/`):**
+  - Ampliación de `logicaPwa.unit.test.js` y `clientePwa.integration.test.js` cubriendo los helpers de permisos/unidades/errores y los nuevos elementos de interfaz.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Cliente Mínimo PWA (`web/`) ↔ `backend-django` (`/api/productos/`, `/api/recetas-items/`).
+Problemas y decisiones técnicas:
+- Se envía `codigo_barras: null` cuando el campo opcional queda vacío para no colisionar con la restricción `unique=True` de `Producto.codigo_barras`.
+- En `RecetaItemSerializer.validate`, bloquear cambios de `producto` preserva la integridad de los ítems existentes sin impedir actualizaciones parciales de `cantidad` o `unidad`.
+Archivos tocados:
+- `backend-django/apps/recetas/serializers.py`
+- `backend-django/apps/recetas/tests/api/__init__.py`
+- `backend-django/apps/recetas/tests/api/test_api_recetas.py`
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `web/vendor/mammoth/README.md`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/` (400 tests en verde)
+- `cd backend-node && npm test && npm run lint` (24 suites, 167 tests en verde)
+- `.venv/bin/ruff check backend-django/apps/recetas/ && .venv/bin/ruff format --check backend-django/apps/recetas/`
+
+---
+Fecha: 2026-11-16
+Tarea: Preservación de números formateados en Excel (`rawNumbers: true`), test real con SheetJS v0.20.3 y verificación SHA-256 de Mammoth
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Extracción CSV desde Excel (`web/js/logicaPwa.js`):** En `extraerCsvDeExcelBuffer`, se actualizó la llamada a `xlsx.utils.sheet_to_csv(primeraHoja, { blankrows: false, rawNumbers: true })` para evitar que formatos de miles o moneda (ej. `#,##0` o `"$"#,##0.00`) introduzcan comas o símbolos que alteren el parseo posterior en `parsearCsvProveedor`.
+- **Tests unitarios y de integración real (`backend-node/tests/unit/logicaPwa.unit.test.js`):**
+  - Se actualizó la aserción del mock de `sheet_to_csv` para exigir `{ blankrows: false, rawNumbers: true }`.
+  - Se incorporó un test de integración real cargando `web/vendor/sheetjs/xlsx.full.min.js` (`0.20.3`) con `fs.readFileSync` + `vm.runInNewContext`, armando un libro con celdas numéricas formateadas (`18000` con `z = '#,##0'` y `14000.5` con `z = '"$"#,##0.00'`), serializando con `XLSX.write` y validando que `extraerCsvDeExcelBuffer` + `parsearCsvProveedor` devuelven exactamente 2 ítems con `precio_total` `"18000.00"` y `"14000.50"`.
+- **Verificación de integridad (`web/vendor/mammoth/README.md`):** Se ejecutó `sha256sum web/vendor/mammoth/mammoth.browser.min.js` confirmando el hash completo `92914a3708cfdf1e62cb553d1856a7fedab21da83d8ee82845de2f897b368cab` ya presente en `web/vendor/mammoth/README.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna; se mantienen sin cambios los contratos entre cliente web y backends.
+Problemas y decisiones técnicas:
+- Sin `rawNumbers: true`, `sheet_to_csv` exportaba números formateados (p. ej. `"18,000"` o `"$14,000.50"`), rompiendo la normalización numérica cuando el delimitador CSV es coma (`,`). Usar `rawNumbers: true` preserva el valor numérico crudo de SheetJS sin perder compatibilidad.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `node --check web/js/logicaPwa.js`
+- `cd backend-node && npm test && npm run lint`
+---
+
+---
+Fecha: 2026-11-16
+Tarea: Importación offline-first de listas de proveedores en Excel (.xlsx/.xls) y Word (.docx)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Librerías vendored offline-first (`web/vendor/`):**
+  - Se descargó e incorporó **SheetJS `0.20.3`** (`web/vendor/sheetjs/xlsx.full.min.js`) desde el CDN oficial (`https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js`) evitando la versión `0.18.5` de npm (CVE-2023-30533 y CVE-2024-22363), junto con `web/vendor/sheetjs/README.md`.
+  - Se descargó e incorporó **Mammoth.js `1.13.0`** (`web/vendor/mammoth/mammoth.browser.min.js`) desde jsDelivr/npm oficial, junto con `web/vendor/mammoth/README.md`.
+- **Lógica PWA (`web/js/logicaPwa.js`):**
+  - Se incorporaron validación de tamaño máximo de 5 MB (`TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES`, `validarTamanoArchivoImportacion`) y detección de formatos (`esArchivoExcel`, `esArchivoDocx`, `esArchivoDocAntiguo` con `MENSAJE_DOC_ANTIGUO`).
+  - Se implementó `extraerCsvDeExcelBuffer` para leer únicamente la primera hoja (`SheetNames[0]`) con `XLSX.utils.sheet_to_csv` y lanzar error claro si no hay hojas o está vacía, junto con `evaluarCsvPlantillaDirecta` para distinguir planillas compatibles con importación directa sin IA.
+  - Se implementó `extraerTextoDeDocxBuffer` para extraer únicamente texto plano con `mammoth.extractRawText({ arrayBuffer })`, validando buffers o documentos vacíos.
+- **UI y flujo cliente (`web/index.html`, `web/js/app.js`):**
+  - Se cargaron ambos scripts locales en `web/index.html`, se ampliaron `accept` (`.xlsx,.xls,.docx`) y textos de ayuda en `#input-archivo-csv` y `#archivo-lista-ia`.
+  - En `web/js/app.js`, `procesarArchivoImportacionSeleccionado` rechaza `.doc` antiguo con `"Guardá el archivo como .docx y volvé a subirlo"`, valida el tope de 5 MB antes de leer el archivo, enruta Excel compatible a importación directa sin IA o al editor IA si difieren las columnas, y extrae texto plano de `.docx` hacia el flujo IA igual que `.pdf` usando `textContent` / `escaparHtml`.
+- **Service Worker (`web/sw.js`) y tests (`backend-node/tests/`):**
+  - Se incrementó `NOMBRE_CACHE` a `cafe-gestion-pwa-v2` y se agregaron `xlsx.full.min.js` y `mammoth.browser.min.js` al precaché. Se verificó que `web/Dockerfile` copia `vendor/` completo.
+  - Se agregaron tests unitarios en `backend-node/tests/unit/logicaPwa.unit.test.js` (con mocks de `XLSX` y `mammoth`) y se actualizó `backend-node/tests/integration/clientePwa.integration.test.js`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna; el cliente web envía el texto extraído por las rutas existentes (`POST /api/compras/confirmar-importacion/` o `POST /api/importaciones` con `origenArchivo: 'csv' | 'texto'`).
+Problemas y decisiones técnicas:
+- Se mantuvo `ultimoOrigenArchivo` en `'csv'` (para Excel convertido a CSV) y `'texto'` (para Word `.docx` en texto plano) para mantener compatibilidad estricta con el enum `['texto', 'csv', 'pdf']` de `ImportacionIA` y `importacionIA.routes.js`.
+- En `esArchivoExcel` se excluyó explícitamente `.csv` cuando el navegador reporta MIME `application/vnd.ms-excel`.
+Archivos tocados:
+- `web/vendor/sheetjs/xlsx.full.min.js`, `web/vendor/sheetjs/README.md`
+- `web/vendor/mammoth/mammoth.browser.min.js`, `web/vendor/mammoth/README.md`
+- `web/js/logicaPwa.js`, `web/js/app.js`, `web/index.html`, `web/sw.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `node --check web/js/logicaPwa.js && node --check web/js/app.js && node --check web/sw.js`
+- `cd backend-node && npm test && npm run lint`
+---
+
+---
+Fecha: 2026-11-16
+Tarea: Botones mostrar/ocultar en contraseña (`#input-password`) y token JWT (`#input-token-jwt`) del login
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **HTML (`web/index.html`):**
+  - Se envolvió `#input-password` en `.input-con-icono.input-con-accion` y se agregó el botón `#btn-toggle-password` (`type="button"`, `aria-label="Mostrar contraseña"`, `aria-pressed="false"`) con íconos SVG inline de ojo abierto y ojo tachado.
+  - Se configuró `#input-token-jwt` oculto por defecto (`type="password"`, `autocomplete="off"`), envuelto en `.input-con-accion` con su botón `#btn-toggle-token-jwt` (`type="button"`, `aria-label="Mostrar token JWT"`, `aria-pressed="false"`) e íconos SVG equivalentes.
+- **Estilos (`web/css/estilos.css`):**
+  - Se acotó `.input-con-icono svg` a hijo directo (`.input-con-icono > svg`) para no afectar el posicionamiento de los íconos de acción a la derecha.
+  - Se incorporaron las clases `.input-con-accion` (con `padding-right: 2.85rem` en el `<input>`) y `.btn-toggle-visibilidad` (posicionamiento centrado a la derecha, hover, `focus-visible` y ocultamiento explícito de `svg[hidden]`).
+- **Lógica de UI (`web/js/app.js`):**
+  - Se implementaron los helpers reutilizables `actualizarEstadoVisibilidadCampo`, `restablecerVisibilidadCredencialesLogin`, `inicializarTogglesVisibilidad` y `limpiarCredencialesFormularioLogin` para alternar `type`, `aria-label`, `aria-pressed` y visibilidad de íconos SVG en ambos campos.
+  - Se garantizó el retorno al estado oculto (`type="password"`, `aria-pressed="false"`) en inicialización, evento `reset` de `#form-login`, selección de perfiles demo, login exitoso y `cerrarSesion`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna; los cambios son estrictamente de UI/accesibilidad en el formulario de ingreso del cliente web.
+Problemas y decisiones técnicas:
+- Se restringió la regla `.input-con-icono svg` a `.input-con-icono > svg` para evitar que los SVG del botón de ojo heredaran `position: absolute; left: 0.9rem;` del ícono izquierdo del campo.
+- Se centralizó el comportamiento de ambos toggles mediante atributos `data-target-input`, `data-label-mostrar` y `data-label-ocultar` en HTML, evitando duplicación de manejadores en `web/js/app.js`.
+Archivos tocados:
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/app.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `node --check web/js/app.js`
+- `cd backend-node && npm test && npm run lint`
+---
+
+---
+Fecha: 2026-11-16
+Tarea: Mitigación CVE-2024-4367 en pdf.js, guardia anti-doble envío CSV directo y ajuste de etiquetas de margen bruto
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Seguridad PDF (`web/js/logicaPwa.js`):** En `extraerTextoDePdfBuffer`, se agregó `isEvalSupported: false` después de `...opciones` en la llamada a `pdfjs.getDocument(...)` para mitigar CVE-2024-4367 sin posibilidad de sobrescritura por parte del caller.
+- **Guardia anti-doble envío (`web/js/app.js`):** En `confirmarCsvDirectoEnInventario`, se incorporó la bandera `confirmacionCsvDirectaEnCurso`, deshabilitación temporal de `#btn-csv-confirmar-directo` (`disabled = true` con preservación de texto) y bloque `try { ... } finally { ... }` para restaurar siempre bandera y botón incluso ante errores o retornos tempranos.
+- **Etiquetas de finanzas (`web/js/app.js`):** Se actualizó `"Margen neto promedio"` a `"Margen bruto promedio"` y `"margen neto"` a `"margen bruto"` en el subtítulo de la sección Finanzas para mantener coherencia con el cálculo de margen bruto.
+- **Tests (`backend-node/tests/unit/logicaPwa.unit.test.js`):** Se agregó un test unitario que verifica que `extraerTextoDePdfBuffer` pasa `isEvalSupported: false` a `pdfjs.getDocument` incluso cuando `opciones` intenta pasar `isEvalSupported: true`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna; se mantienen sin cambios los contratos de endpoints y módulos.
+Problemas y decisiones técnicas:
+- Se ubicó `isEvalSupported: false` al final del objeto pasado a `pdfjs.getDocument` para garantizar que ningún parámetro en `opciones` reactive `eval` al procesar PDFs externos.
+- Se reconsulta `$('btn-csv-confirmar-directo')` dentro del `finally` para restaurar su estado únicamente si continúa presente en el DOM.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+---
+
+---
 Fecha: 2026-11-15
 Tarea: Idempotencia en ventas, arqueo ciego estricto, cola offline y eliminación de credenciales hardcodeadas
 Rama: feature/pos-comercial-sapori-stock
@@ -1212,6 +1431,247 @@ Cómo probarlo:
   - `.venv/bin/ruff check backend-django/ ai-service/`
   - `cd backend-node && npm run lint`
 ---
+Fecha: 2026-11-16
+Tarea: Filtro visual por rango de fechas (Desde / Hasta) en Reportes y Trazabilidad (Punto 1)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **1. Backend (`backend-django`) — Filtrado inclusivo por `fecha_desde` y `fecha_hasta`:**
+  - Se creó `backend-django/apps/comun/filtros.py` con utilidades reutilizables (`parsear_parametro_fecha`, `extraer_rango_fechas`, `filtrar_queryset_por_rango_fechas`) que normalizan `YYYY-MM-DD` desde `00:00:00` hasta `23:59:59.999999` en la zona horaria activa (`America/Argentina/Buenos_Aires`), manteniendo compatibilidad hacia atrás con `fecha_inicio`/`fecha_fin` y sin parámetros.
+  - Se extendieron `VentaViewSet` (`/api/ventas/`, `/api/ventas/ganancia-diaria/`, `/api/ventas/ranking-productos/`, `/api/ventas/reporte-por-producto/`, `/api/ventas/punto-equilibrio/`), `CompraViewSet` (`/api/compras/`), `TurnoCajaViewSet` (`/api/caja/turnos/` por `cierre` o `apertura` si está abierto), `MovimientoCajaViewSet` (`/api/caja/movimientos/`) y `RegistroAuditoriaViewSet` (`/api/usuarios/auditoria/`).
+  - Se agregó `usuario_nombre` en `VentaSerializer` y el endpoint `GET /api/insumos/movimientos/` (`obtener_movimientos_stock_trazabilidad`) que unifica ingresos por compras y egresos por consumo de recetas en ventas filtrados por rango de fechas y protegidos por `insumos.ver`.
+- **2. Frontend PWA (`web/`):**
+  - Se incorporó en `#vista-finanzas` (`web/index.html`, `web/css/estilos.css`) la barra de filtro con `<input type="date" id="filtro-fecha-desde">`, `<input type="date" id="filtro-fecha-hasta">`, atajos rápidos (`Hoy`, `Últimos 7 días`, `Este mes`), botones `Filtrar` y `Limpiar`, indicador de rango activo/cantidad de registros y tabla unificada de trazabilidad con pestañas (`Todos`, `Ventas`, `Movimientos de Stock`, `Cierres de Caja`).
+  - Se agregaron utilidades puras en `web/js/logicaPwa.js` (`validarRangoFechas`, `estaFechaEnRango`, `filtrarRegistrosPorRangoFechas`, `construirQueryRangoFechas`, `unificarTrazabilidadRegistros`) para filtrar tanto las respuestas del backend como la cola offline/caché local, y se integró el rango seleccionado en KPIs, punto de equilibrio y botones de diagnóstico/auditoría IA.
+- **3. Tests:**
+  - Se agregaron pruebas de API en `backend-django/apps/comun/tests/api/test_api_filtros_fechas_trazabilidad.py` y pruebas unitarias/integración PWA en `backend-node/tests/unit/logicaPwa.unit.test.js` y `backend-node/tests/integration/clientePwa.integration.test.js`.
+Archivos tocados:
+- `backend-django/apps/comun/filtros.py`
+- `backend-django/apps/ventas/views.py`
+- `backend-django/apps/ventas/serializers.py`
+- `backend-django/apps/insumos/services.py`
+- `backend-django/apps/insumos/views.py`
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/usuarios/views.py`
+- `backend-django/apps/comun/tests/api/test_api_filtros_fechas_trazabilidad.py`
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test`
+- `.venv/bin/ruff check backend-django/ && .venv/bin/ruff format --check backend-django/ && cd backend-node && npm run lint`
+---
+Fecha: 2026-11-16
+Tarea: Visibilidad explícita de modo contingencia / fallo de IA sin propuestas heurísticas engañosas (Punto 2)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **1. `ai-service`:**
+  - En `proveedor_ia.py`, `GroqAdapter` propaga el motivo técnico de contingencia (`GROQ_API_KEY` faltante, timeout, error HTTP o respuesta inesperada) en `advertencias` / `alertas_costos` al activar `fallback_determinista_demostracion`.
+  - En `extraccion.py` y `resumen.py`, se unificaron los mensajes `MENSAJE_CONTINGENCIA_EXTRACCION` y `MENSAJE_CONTINGENCIA_RESUMEN` indicando explícitamente `"No se pudo usar la IA, revisá la configuración"`.
+- **2. `backend-node`:**
+  - En `src/clients/ai.client.js`: `validarYNormalizarSalidaIA` y `extraerPreciosIA` detectan `contingencia: true` o `proveedor_ia === "contingencia"`, descartan ítems heurísticos falsos (`items: []`), preservan `advertencias` y exponen `mensajeContingencia` claro; `generarResumenSemanalIA` oculta textos ficticios (`resumen_ejecutivo: null`) cuando hay contingencia o caída de red.
+  - En `src/models/ImportacionIA.js`, `src/services/importacionIA.service.js` y `src/controllers/importacionIA.controller.js`: se agregaron `mensajeContingencia` y `advertencias` al esquema y a las respuestas (`POST /api/importaciones`, `GET /api/importaciones/:id` y evento `importacion.lista`), y se bloqueó con HTTP 400 aprobar importaciones en estado `CONTINGENCIA` / `FALLIDA` o con `proveedorIa === "contingencia"`.
+- **3. Frontend PWA (`web/`):**
+  - En `web/js/logicaPwa.js` se agregaron `MENSAJE_IA_NO_DISPONIBLE`, `evaluarEstadoImportacionIA` y `evaluarEstadoResumenIA`, y se actualizó `formatearEventoTiempoReal` para `importacion.lista` en contingencia.
+  - En `web/index.html`, `web/css/estilos.css` y `web/js/app.js`: se agregó `#ia-alerta-contingencia` en el Paso 2 de importación, se eliminó la pre-renderización local/heurística (`local-csv` / `local-ia` / `extraerItemsDesdeTextoLista`), se muestra `"Analizando con IA..."` mientras está en curso, se muestra el cartel prominente `"No se pudo usar la IA, revisá la configuración"` con detalle técnico y sugerencia de CSV directo o carga manual al fallar/entrar en contingencia (deshabilitando la aprobación engañosa), y se aplicó el mismo aviso en el Consultor IA de Reportes (`/v1/resumen-semanal`).
+- **4. Tests:**
+  - Actualizadas y ampliadas las pruebas en `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`, `backend-node/tests/unit/aiClient.unit.test.js`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/importacionIA.integration.test.js`, `backend-node/tests/integration/resumenSemanal.integration.test.js` y `backend-node/tests/integration/clientePwa.integration.test.js`.
+Archivos tocados:
+- `ai-service/app/services/proveedor_ia.py`
+- `ai-service/app/services/extraccion.py`
+- `ai-service/app/services/resumen.py`
+- `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`
+- `backend-node/src/clients/ai.client.js`
+- `backend-node/src/models/ImportacionIA.js`
+- `backend-node/src/services/importacionIA.service.js`
+- `backend-node/src/controllers/importacionIA.controller.js`
+- `backend-node/tests/unit/aiClient.unit.test.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/integration/importacionIA.integration.test.js`
+- `backend-node/tests/integration/resumenSemanal.integration.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `web/index.html`
+- `web/css/estilos.css`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `docs/CONNECTIONS.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `ai-service/.venv/bin/pytest ai-service/`
+- `cd backend-node && npm test`
+- `.venv/bin/ruff check ai-service/ && .venv/bin/ruff format --check ai-service/ && cd backend-node && npm run lint`
+---
+Fecha: 2026-11-16
+Tarea: Importación directa CSV sin IA (`GROQ_API_KEY=""`) y soporte Offline-First de `.pdf` con `pdf.js` local (Punto 3)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Etapa A — Importación directa CSV sin IA:**
+  - En `web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js` y `web/js/app.js`: se etiquetó explícitamente el flujo como **"Importación Directa CSV (sin IA)"** y **"Previsualización de CSV"** (`#btn-csv-confirmar-directo`, `#btn-csv-desde-texto`), se añadió `evaluarTextoComoCsvDirecto` con soporte de `,`, `;` y tabulación, y se incorporó el botón directo `#btn-contingencia-usar-csv-directo` dentro de `#ia-alerta-contingencia` cuando el texto o planilla en contingencia es CSV compatible, confirmando directo contra `POST /api/compras/confirmar-importacion/` en Django sin depender de `GROQ_API_KEY`.
+  - Pruebas explícitas con `GROQ_API_KEY=""` en `ai-service/app/tests/api/test_api_endpoints.py`, `backend-django/apps/insumos/tests/api/test_api_confirmar_importacion.py`, `backend-node/tests/unit/logicaPwa.unit.test.js` y `backend-node/tests/integration/clientePwa.integration.test.js`.
+- **Etapa B (Punto 3) — Soporte `.pdf` con `pdf.js` local Offline-First:**
+  - Se incorporaron `web/vendor/pdfjs/pdf.min.js` y `web/vendor/pdfjs/pdf.worker.min.js` (`pdfjs-dist@3.11.174`) sin CDN externos, registrados en `web/sw.js` (`RECURSOS_CASCARA`) y copiados en `web/Dockerfile`.
+  - En `web/js/logicaPwa.js` y `web/js/app.js`: se lee `.pdf` como `ArrayBuffer` (nunca `FileReader.readAsText`), se extrae el texto página por página reconstruyendo renglones por coordenadas X/Y (`reconstruirLineasDeItemsPdf`, `extraerTextoDePdfBuffer`), y se detectan PDFs escaneados sin texto mostrando `"El PDF parece ser una imagen escaneada sin texto seleccionable. Convertilo a texto/CSV o usá un PDF con texto."`.
+  - En `backend-node` (`importacionIA.routes.js`, `importacionIA.controller.js`, `importacionIA.model`, `importacionIA.service.js`, `ai.client.js`) y `ai-service/app/schemas/extraccion.py`: se agregó soporte opcional de `origenArchivo` / `origen_archivo` y rechazo HTTP 400 si llega binario `%PDF-` sin extraer.
+  - Verificación automatizada con dos PDFs reales distintos y un tercer PDF escaneado sin texto en `logicaPwa.unit.test.js` e `importacionIA.integration.test.js`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/` carga `pdf.js` local (`/app/vendor/pdfjs/`) cacheado en `web/sw.js` y envía `origenArchivo` opcional a `POST /api/importaciones` (`backend-node` -> `ai-service`).
+Archivos tocados:
+- `web/vendor/pdfjs/pdf.min.js`, `web/vendor/pdfjs/pdf.worker.min.js`, `web/sw.js`, `web/Dockerfile`
+- `web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`
+- `backend-node/src/{routes/importacionIA.routes.js,controllers/importacionIA.controller.js,models/ImportacionIA.js,services/importacionIA.service.js,clients/ai.client.js}`
+- `ai-service/app/schemas/extraccion.py`
+- `backend-node/tests/{unit/logicaPwa.unit.test.js,integration/clientePwa.integration.test.js,integration/importacionIA.integration.test.js}`
+- `ai-service/app/tests/api/test_api_endpoints.py`, `backend-django/apps/insumos/tests/api/test_api_confirmar_importacion.py`
+- `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+---
+Fecha: 2026-11-16
+Tarea: Actualización de etiquetas visibles en Costeo de Recetas y Reportes (`web/index.html`)
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- En `web/index.html` se actualizaron únicamente textos visibles (sin modificar lógica, clases, IDs ni atributos) para mayor claridad financiera:
+  - `"Código EAN-13"` → `"Código de barras"`
+  - `"Ganancia Neta ($)"` → `"Ganancia por unidad ($)"`
+  - `"Margen de Rentabilidad (%)"` → `"Margen bruto (%)"`
+  - `"Ganancia Neta Real de Bolsillo"` → `"Ganancia bruta del período"`
+- Se verificó con búsqueda global que ningún test ni documentación técnica activa referenciara las etiquetas anteriores en la interfaz.
+Archivos tocados:
+- `web/index.html`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test` (24 suites, 158 tests en verde).
+---
+Fecha: 2026-11-16
+Tarea: Corrección del filtro de fechas y control de concurrencia en Reportes, Trazabilidad & Finanzas
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Disparo y validación del filtro de fechas (`web/js/app.js`, `web/js/logicaPwa.js`):**
+  - Se eliminaron los listeners `change` de `#filtro-fecha-desde` y `#filtro-fecha-hasta` para evitar recargas intermedias al tipear fechas en Chrome (`0002`, `0020`, etc.).
+  - El filtro ahora se aplica únicamente con el botón `#btn-filtrar-fechas`, presionando `Enter` dentro de `#filtro-fecha-desde` o `#filtro-fecha-hasta`, o mediante los atajos rápidos (`Hoy`, `Últimos 7 días`, `Este mes`, además de `Limpiar`).
+  - Se amplió `validarRangoFechas` en `web/js/logicaPwa.js` para exigir fechas de calendario válidas con año entre `2000` y `2100` (`ANIO_MINIMO_FILTRO_REPORTES` / `ANIO_MAXIMO_FILTRO_REPORTES`) y `desde <= hasta`, aceptando rangos vacíos/abiertos. Ante rango inválido, se muestra aviso con `mostrarToast` sin lanzar peticiones.
+- **Control de respuestas fuera de orden y manejo de fallos (`web/js/app.js`, `web/js/logicaPwa.js`):**
+  - Se incorporaron las funciones puras `siguienteIdCarga` y `esCargaVigente` en `web/js/logicaPwa.js` y el contador `estadoApp.idCargaReportes` en `web/js/app.js`.
+  - Tanto `cargarFinanzas` como `cargarTrazabilidadReportes` y `calcularPuntoEquilibrio` descartan cualquier respuesta obsoleta sin modificar el estado ni el DOM, y `estadoApp.trazabilidad` guarda el rango efectivo cargado para mantener consistente el indicador al cambiar de pestaña.
+  - Cuando falla un `fetch` de tarjetas financieras, ranking o punto de equilibrio (`!res.ok` o error de red), se limpian las tarjetas afectadas mostrando `"-"` (en lugar de conservar valores previos) y se muestra un aviso de advertencia.
+- **Tests unitarios (`backend-node/tests/unit/logicaPwa.unit.test.js`):**
+  - Se agregaron pruebas unitarias para `validarRangoFechas` (fechas vacías, límites `2000`–`2100`, años inválidos como `0002`/`1999`/`2101`, `desde > hasta`, fecha inexistente) y para `siguienteIdCarga` / `esCargaVigente`.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (24 suites, 169 tests en verde).
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
 
 
 
+Fecha: 2026-11-16
+Tarea: Corrección de acceso del cajero a la carta real en POS y eliminación de catálogo de respaldo inventado
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Por qué:** El rol `CAJERO` no posee `recetas.ver`, por lo que `GET /api/productos/` respondía HTTP 403 y el cliente web caía en `CATALOGO_RESPALDO` con 5 productos ficticios cuyos IDs no coincidían con los de la base de datos, permitiendo registrar ventas de otro producto o productos inexistentes.
+- **Backend (`backend-django`):**
+  - En `apps/usuarios/permissions.py`: se agregó la fábrica reutilizable `TieneAlgunPermiso(*claves_permiso)` usando `usuario_tiene_permiso` y el mismo mensaje estándar (`"No tiene permisos para realizar esta acción"`).
+  - En `apps/recetas/views.py`: `ProductoViewSet.get_permissions` habilita `list` y `retrieve` para `TieneAlgunPermiso("recetas.ver", "ventas.cobrar_ticket")()`, manteniendo intactos los permisos de escritura, cálculo/costos, `RecetaItemViewSet` y los permisos por defecto de `ROL_CAJERO` en `apps/usuarios/constantes.py`.
+  - En `apps/recetas/serializers.py`: `ProductoSerializer.to_representation` ahora también enmascara `costo_hora_mano_obra` y `descartables` en `None` cuando falta `recetas.ver_costos`, sin alterar la visibilidad de costos para Dueño/Encargado.
+- **Frontend (`web/`):**
+  - En `web/js/logicaPwa.js`: se agregaron las funciones puras `prepararCatalogoParaCache(productos)` (conserva únicamente `id`, `nombre`, `codigo_barras`, `precio_venta` y `estado_activo`, sin costos, márgenes ni recetas) y `validarCarritoContraCatalogo(carrito, catalogo)` (exige carta no vacía y coincidencia exacta de cada ítem por `id` y precio en centavos).
+  - En `web/js/app.js` y `web/css/estilos.css`: se eliminó por completo `CATALOGO_RESPALDO`; `leerCacheCatalogoLocal` devuelve la última carta real sanitizada de `localStorage` o `[]`; `cargarCatalogo` guarda la versión limpia en `CLAVE_CATALOGO_CACHE` y avisa si falla el servidor o la red; `renderizarCatalogoPOS` muestra un aviso claro y deshabilita el botón de cobro cuando la carta está vacía; y `cobrarTicketVenta` valida el carrito contra la carta actual antes de cobrar tanto online como en la cola offline.
+- **Tests:**
+  - `backend-django/apps/usuarios/tests/unit/test_unit_permisos_drf.py`: tests unitarios de `TieneAlgunPermiso` y enmascaramiento de `costo_hora_mano_obra`/`descartables`.
+  - `backend-django/apps/recetas/tests/api/test_api_recetas.py`: tests de API para `CAJERO` (200 sin costos en `GET /api/productos/` y detalle; 403 en POST/PATCH/DELETE y `GET /api/recetas-items/`) y `DUENIO` (ve costos completos).
+  - `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`: actualización del test negativo de `GET /api/productos/` para verificar rechazo 403 cuando faltan tanto `recetas.ver` como `ventas.cobrar_ticket`.
+  - `backend-node/tests/unit/logicaPwa.unit.test.js`: pruebas unitarias de `prepararCatalogoParaCache` y `validarCarritoContraCatalogo`.
+Archivos tocados:
+- `backend-django/apps/usuarios/permissions.py`
+- `backend-django/apps/recetas/views.py`
+- `backend-django/apps/recetas/serializers.py`
+- `backend-django/apps/usuarios/tests/unit/test_unit_permisos_drf.py`
+- `backend-django/apps/recetas/tests/api/test_api_recetas.py`
+- `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `web/css/estilos.css`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q` (407 passed)
+- `cd backend-node && npm test` (24 suites, 171 tests passed)
+- `cd backend-node && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+- `.venv/bin/ruff check` y `.venv/bin/ruff format --check` sobre los archivos Python modificados.
+---
+
+
+
+Fecha: 2026-11-17
+Tarea: "Abrir Nuevo Turno" oculto con turno abierto y desglose de receta con mano de obra y descartables
+Rama: feature/reportes-filtro-fechas
+Qué se hizo y por qué:
+- `accionesCajaVisiblesParaUsuario(usuario, turnoActivo)` ahora oculta "Abrir Nuevo Turno" mientras el turno activo está `ABIERTO`, aunque el usuario tenga `caja.abrir_turno`. Se aplica en `aplicarAccionesCajaVisibles()` (`web/js/app.js`), que se llama al configurar la vista por rol y cada vez que se actualiza la tarjeta del turno, así el botón vuelve al cerrar el turno. Es solo pantalla: el backend todavía no impide abrir un segundo turno (pendiente en `TurnoCajaViewSet.perform_create`).
+- El desglose de receta mostraba solo los insumos (latte: $812), mientras el costo total del backend (`obtener_desglose_costeo_producto`) suma mano de obra y descartables ($975,33). La API ya mandaba `minutos_mano_obra`, `costo_hora_mano_obra` y `descartables`, así que se resolvió en el frontend: `calcularCostosExtraReceta` (`web/js/logicaPwa.js`) usa la misma fórmula (minutos × costo por hora / 60) y `mostrarDesgloseReceta` agrega los renglones "Mano de obra", "Descartables" y "Costo total por porción". Si la API ocultó los costos (sin `recetas.ver_costos`), no se muestran.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `web/css/estilos.css`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (25 suites, 190 tests en verde).
+- `cd backend-django && .venv/bin/python -m pytest -q` (407 passed; el backend no cambió).
+- En la web: Recetas → Café Latte muestra $812 de insumos + $83,33 de mano de obra + $80 de descartables = $975,33, igual a la columna de costo de la carta. En Caja, con un turno abierto no aparece "Abrir Nuevo Turno".
+---
+
+
+
+Fecha: 2026-11-17
+Tarea: El backend no deja abrir un segundo turno de caja si ya hay uno abierto
+Rama: feature/reportes-filtro-fechas
+Qué se hizo y por qué:
+- `TurnoCajaViewSet.perform_create` no validaba nada: con la API se podían abrir varios turnos a la vez para el mismo usuario (la web solo ocultaba el botón). Se agregó `apps/caja/services.py` con `abrir_turno(serializer, usuario)`, que responde 400 con el formato único ("Ya hay un turno de caja abierto para este usuario. Cerralo antes de abrir uno nuevo.") si el responsable ya tiene un turno `ABIERTO`.
+- La regla es por responsable, no por local: según PLAN_IMPLEMENTACION §3 el cajero opera "solo su turno", así que un encargado puede abrir el suyo aunque un cajero tenga uno abierto. Si se abre a nombre de otro usuario (`usuario` en el body), se valida a ese usuario.
+- Para que dos pedidos simultáneos no abran dos turnos, se bloquea la fila del usuario con `select_for_update` dentro de la transacción (en PostgreSQL; SQLite ya serializa las escrituras).
+- En la web, si falla la apertura se muestra el motivo de la API (`mensajeErrorParaUsuario`) en vez de "Error al abrir turno de caja.", y ante un 400 se recarga la caja para mostrar el turno abierto.
+Archivos tocados:
+- `backend-django/apps/caja/services.py` (nuevo)
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/caja/tests/api/test_api_turnos_apertura.py` (nuevo, 5 tests)
+- `web/js/app.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q` (412 passed).
+- `cd backend-node && npm test && npm run lint` (190 tests en verde).
+- Con un turno abierto, `POST /api/caja/turnos/` con el token del mismo usuario responde 400 y no crea otro turno.
+---
+
+
+
+Fecha: 2026-11-17
+Tarea: La web renueva la sesión sola y vuelve al login si no puede
+Rama: feature/reportes-filtro-fechas
+Qué se hizo y por qué:
+- El access token dura 15 minutos y la web no lo renovaba: pasado ese tiempo todos los pedidos daban 401 y cada pantalla mostraba un aviso engañoso ("Sin conexión", "No se pudieron cargar algunas métricas", "No se pudo actualizar la carta", "No se pudo usar la IA, revisá la configuración"), sin volver al login.
+- `crearFetchConSesion` (`web/js/logicaPwa.js`): agrega el token vigente; ante un 401 renueva una sola vez con el refresh (compartida entre pedidos simultáneos, porque el refresh rota y se invalida) y repite el pedido. Si no se puede renovar, cierra la sesión; si la renovación falla por red, no.
+- `web/js/app.js`: el login guarda el refresh en `sessionStorage`; los 41 `fetch` autenticados pasan por `fetchConSesion` (el del login no); al renovar se reconecta Socket.IO con el token nuevo, y si Node rechaza la conexión por token vencido se renueva la sesión; "Salir" revoca el refresh en el servidor. Al cerrar por vencimiento se muestra solo "Tu sesión venció. Volvé a ingresar." (los avisos en cadena de los pedidos que estaban en camino se silencian 5 segundos).
+- `docs/seguridad.md`: sección de renovación de sesión en la web.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js` (5 tests)
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (195 tests en verde).
+- En el navegador (Playwright, con tokens generados por `manage.py shell`): con un access vencido y un refresh válido hubo 1 solo 401 y 1 sola renovación, los reportes cargaron y la barra dijo "Conectado"; con un refresh inválido volvió al login con un único aviso; "Salir" revocó el refresh (la renovación posterior con ese refresh da 401).
+---

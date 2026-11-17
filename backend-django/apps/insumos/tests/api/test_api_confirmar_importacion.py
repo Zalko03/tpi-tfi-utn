@@ -132,3 +132,40 @@ class TestApiConfirmarImportacion:
         data = res.json()
         assert "mensaje" in data
         assert "detalles" in data
+
+    def test_api_importacion_csv_directa_sin_ia_y_sin_groq_api_key(
+        self, client, duenio, escenario_catalogo, monkeypatch
+    ):
+        """La importación directa CSV actualiza compras/insumos y recalcula recetas con GROQ_API_KEY=''."""
+        monkeypatch.setenv("GROQ_API_KEY", "")
+        client.force_authenticate(user=duenio)
+
+        payload_csv_directo = {
+            "proveedor_nombre": "Proveedor CSV Directo",
+            "envio": "1500.00",
+            "items": [
+                {
+                    "nombre_insumo": "Café Tostado Brasil",
+                    "cantidad": "2",
+                    "unidad": "kg",
+                    "precio_total": "58500.00",
+                    "iva_incluido": True,
+                    "alicuota": "21.00",
+                },
+                {
+                    "nombre_insumo": "Azúcar Orgánica CSV",
+                    "cantidad": "5",
+                    "unidad": "kg",
+                    "precio_total": "10000.00",
+                    "iva_incluido": True,
+                    "alicuota": "21.00",
+                },
+            ],
+        }
+
+        res = client.post("/api/compras/confirmar-importacion/", payload_csv_directo, format="json")
+        assert res.status_code == status.HTTP_201_CREATED
+        data = res.json()
+        assert len(data["compras_creadas"]) == 2
+        assert Insumo.objects.filter(nombre="Azúcar Orgánica CSV", unidad_base="g").exists()
+        assert len(data["productos_recalculados"]) >= 1

@@ -109,6 +109,8 @@ services:
     environment:
       NODE_ENV: production
       NODE_PORT: 3000
+      # Node solo es accesible a través del nginx del servicio "web" (1 salto de proxy).
+      NODE_TRUST_PROXY_SALTOS: 1
       MONGO_URI: mongodb://mongodb:27017/${POSTGRES_DB:-cafe_gestion}
       DJANGO_BASE_URL: http://backend-django:8000/api
       AI_SERVICE_URL: http://ai-service:8001

@@ -1,15 +1,12 @@
 """ViewSets para ventas y reportes operativos."""
 
-from datetime import datetime, time
-
-from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_datetime
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.comun.filtros import extraer_rango_fechas, filtrar_queryset_por_rango_fechas
 from apps.usuarios.permissions import PermisoObjetoVenta, TienePermiso, usuario_tiene_permiso
 from apps.ventas.models import Venta
 from apps.ventas.serializers import VentaSerializer
@@ -21,29 +18,12 @@ from apps.ventas.services import (
 )
 
 
-def _parsear_parametro_fecha(valor: str | None, es_fin: bool = False):
-    """Convierte una cadena ISO de fecha o fecha-hora en datetime con zona horaria."""
-    if not valor:
-        return None
-    texto = str(valor).strip()
-    dt = parse_datetime(texto)
-    if dt is not None:
-        if timezone.is_naive(dt):
-            return timezone.make_aware(dt)
-        return dt
-
-    fecha = parse_date(texto)
-    if fecha is not None:
-        hora = time(23, 59, 59, 999999) if es_fin else time(0, 0, 0)
-        return timezone.make_aware(datetime.combine(fecha, hora))
-
-    raise serializers.ValidationError(
-        f"Formato de fecha inválido: '{valor}'. Use YYYY-MM-DD o ISO-8601."
-    )
-
-
 class VentaViewSet(viewsets.ModelViewSet):
-    queryset = Venta.objects.prefetch_related("items__producto").all()
+    queryset = (
+        Venta.objects.select_related("turno_caja__usuario")
+        .prefetch_related("items__producto")
+        .all()
+    )
     serializer_class = VentaSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["turno_caja", "medio_pago", "origen"]
@@ -103,7 +83,12 @@ class VentaViewSet(viewsets.ModelViewSet):
         else:
             self.filterset_fields = ["turno_caja", "medio_pago", "origen"]
             self.ordering_fields = ["fecha", "total"]
-        return super().filter_queryset(queryset)
+        qs = super().filter_queryset(queryset)
+        if self.action == "list":
+            qs = filtrar_queryset_por_rango_fechas(
+                qs, self.request.query_params, campo_fecha="fecha"
+            )
+        return qs
 
     @action(detail=True, methods=["post"], url_path="anular")
     def anular(self, request, pk=None):
@@ -121,14 +106,9 @@ class VentaViewSet(viewsets.ModelViewSet):
     def reporte_por_producto(self, request):
         """
         Reporte agregado de ventas por producto filtrado por rango de fechas (T3.4).
-        Query params opcionales: fecha_inicio (YYYY-MM-DD), fecha_fin (YYYY-MM-DD).
+        Query params opcionales: fecha_desde / fecha_inicio (YYYY-MM-DD), fecha_hasta / fecha_fin (YYYY-MM-DD).
         """
-        fecha_inicio = _parsear_parametro_fecha(
-            request.query_params.get("fecha_inicio"), es_fin=False
-        )
-        fecha_fin = _parsear_parametro_fecha(request.query_params.get("fecha_fin"), es_fin=True)
-        if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
-            raise serializers.ValidationError("fecha_inicio no puede ser posterior a fecha_fin.")
+        fecha_inicio, fecha_fin = extraer_rango_fechas(request.query_params)
 
         datos = obtener_reporte_ventas_por_producto(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
         return Response(
@@ -144,20 +124,11 @@ class VentaViewSet(viewsets.ModelViewSet):
         """
         Reporte financiero de ganancia diaria y por período usando el costo congelado
         al momento de la venta (HU10 / CA10.1, permiso 'reportes.ver_financieros').
-         Soporta ?fecha=YYYY-MM-DD o ?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD.
+        Soporta ?fecha=YYYY-MM-DD o ?fecha_desde=YYYY-MM-DD&fecha_hasta=YYYY-MM-DD (y fecha_inicio/fecha_fin).
         """
-        fecha_unica = request.query_params.get("fecha")
-        if fecha_unica:
-            fecha_inicio = _parsear_parametro_fecha(fecha_unica, es_fin=False)
-            fecha_fin = _parsear_parametro_fecha(fecha_unica, es_fin=True)
-        else:
-            fecha_inicio = _parsear_parametro_fecha(
-                request.query_params.get("fecha_inicio"), es_fin=False
-            )
-            fecha_fin = _parsear_parametro_fecha(request.query_params.get("fecha_fin"), es_fin=True)
-
-        if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
-            raise serializers.ValidationError("fecha_inicio no puede ser posterior a fecha_fin.")
+        fecha_inicio, fecha_fin = extraer_rango_fechas(
+            request.query_params, permitir_fecha_unica=True
+        )
 
         resumen = obtener_ganancia_diaria(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
         return Response(resumen, status=status.HTTP_200_OK)
@@ -168,12 +139,7 @@ class VentaViewSet(viewsets.ModelViewSet):
         Ranking de productos más y menos vendidos en un rango de fechas
         (HU10 / CA10.2, permiso 'reportes.ver_operativos').
         """
-        fecha_inicio = _parsear_parametro_fecha(
-            request.query_params.get("fecha_inicio"), es_fin=False
-        )
-        fecha_fin = _parsear_parametro_fecha(request.query_params.get("fecha_fin"), es_fin=True)
-        if fecha_inicio and fecha_fin and fecha_inicio > fecha_fin:
-            raise serializers.ValidationError("fecha_inicio no puede ser posterior a fecha_fin.")
+        fecha_inicio, fecha_fin = extraer_rango_fechas(request.query_params)
 
         limite_param = request.query_params.get("limite", 10)
         try:
@@ -211,8 +177,7 @@ class VentaViewSet(viewsets.ModelViewSet):
         dias_operativos = fuente.get("dias_operativos", 26)
         dias_semana = fuente.get("dias_semana", 6)
 
-        fecha_inicio = _parsear_parametro_fecha(fuente.get("fecha_inicio"), es_fin=False)
-        fecha_fin = _parsear_parametro_fecha(fuente.get("fecha_fin"), es_fin=True)
+        fecha_inicio, fecha_fin = extraer_rango_fechas(fuente)
 
         try:
             resultado = calcular_punto_equilibrio_y_metas(

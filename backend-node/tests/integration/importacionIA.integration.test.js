@@ -1,3 +1,6 @@
+import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { jest } from '@jest/globals';
 import mongoose from 'mongoose';
 import request from 'supertest';
@@ -6,6 +9,10 @@ import { HistorialPrecio } from '../../src/models/HistorialPrecio.js';
 import { ImportacionIA } from '../../src/models/ImportacionIA.js';
 import { SnapshotCosteo } from '../../src/models/SnapshotCosteo.js';
 import { procesarImportacionEnSegundoPlano } from '../../src/services/importacionIA.service.js';
+import {
+    extraerTextoDePdfBuffer,
+    MENSAJE_PDF_ESCANEADO,
+} from '../../../web/js/logicaPwa.js';
 import { generarTokenTest } from '../helpers/auth.helper.js';
 
 describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)', () => {
@@ -91,7 +98,11 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
 
         expect(res.status).toBe(400);
         expect(res.body).toHaveProperty('mensaje', 'Datos de entrada inválidos');
-        expect(Array.isArray(res.body.detalles)).toBe(true);
+        expect(res.body.detalles).toEqual([
+            'La lista de precios tiene que tener entre 3 y 15.000 caracteres.',
+            'La versión de las instrucciones de la IA no es válida.',
+        ]);
+        expect(res.body.detalles.join(' ')).not.toMatch(/textoLista|versionPrompt|:/);
     });
 
     it('responde 202 Accepted sin bloquear y guarda entrada, salida, latencia y versión de prompt en Mongo', async () => {
@@ -135,6 +146,10 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
         expect(res.status).toBe(202);
         expect(res.body).toHaveProperty('importacionId');
         expect(res.body).toHaveProperty('versionPrompt', 'v1');
+        expect(res.body).toHaveProperty('contingencia', false);
+        expect(res.body).toHaveProperty('proveedorIa', null);
+        expect(res.body).toHaveProperty('mensajeContingencia', null);
+        expect(res.body).toHaveProperty('advertencias', []);
 
         const importacionId = res.body.importacionId;
 
@@ -188,7 +203,91 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
         const doc = await ImportacionIA.findById(importacionId);
         expect(doc.estado).toBe('CONTINGENCIA');
         expect(doc.contingencia).toBe(true);
+        expect(doc.proveedorIa).toBe('contingencia');
+        expect(doc.mensajeContingencia).toContain('No se pudo usar la IA, revisá la configuración');
+        expect(doc.advertencias).toContain('Timeout ai-service');
         expect(doc.mensajeError).toContain('manual o por CSV');
+
+        const resDetalle = await request(app)
+            .get(`/api/importaciones/${importacionId}`)
+            .set('Authorization', `Bearer ${tokenDuenio}`);
+
+        expect(resDetalle.status).toBe(200);
+        expect(resDetalle.body.estado).toBe('CONTINGENCIA');
+        expect(resDetalle.body.contingencia).toBe(true);
+        expect(resDetalle.body.proveedorIa).toBe('contingencia');
+        expect(resDetalle.body.mensajeContingencia).toContain(
+            'No se pudo usar la IA, revisá la configuración'
+        );
+        expect(resDetalle.body.advertencias).toContain('Timeout ai-service');
+        expect(resDetalle.body.salida.items).toEqual([]);
+    });
+
+    it('expone contingencia desde ai-service (sin ítems heurísticos falsos) y bloquea aprobación engañosa', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                proveedor_detectado: 'Distribuidora Heurística',
+                envio_detectado: '0.00',
+                moneda: 'ARS',
+                items: [
+                    {
+                        nombre_insumo: 'Café heurístico',
+                        cantidad: '1',
+                        unidad: 'kg',
+                        precio_total: '21000.00',
+                    },
+                ],
+                advertencias: ['GROQ_API_KEY no está configurada en el entorno.'],
+                version_prompt: 'v1',
+                proveedor_ia: 'contingencia',
+                latencia_ms: 2,
+                contingencia: true,
+                mensaje_contingencia: 'No se pudo usar la IA, revisá la configuración.',
+            }),
+        });
+
+        const res = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                textoLista: 'Café heurístico 1 kg $21000',
+                proveedorNombre: 'Distribuidora Heurística',
+            });
+
+        expect(res.status).toBe(202);
+        const importacionId = res.body.importacionId;
+
+        await procesarImportacionEnSegundoPlano(importacionId, {
+            textoLista: 'Café heurístico 1 kg $21000',
+            proveedorNombre: 'Distribuidora Heurística',
+            versionPrompt: 'v1',
+        });
+
+        const resDetalle = await request(app)
+            .get(`/api/importaciones/${importacionId}`)
+            .set('Authorization', `Bearer ${tokenDuenio}`);
+
+        expect(resDetalle.status).toBe(200);
+        expect(resDetalle.body.estado).toBe('CONTINGENCIA');
+        expect(resDetalle.body.contingencia).toBe(true);
+        expect(resDetalle.body.proveedorIa).toBe('contingencia');
+        expect(resDetalle.body.mensajeContingencia).toContain('No se pudo usar la IA');
+        expect(resDetalle.body.advertencias).toContain(
+            'GROQ_API_KEY no está configurada en el entorno.'
+        );
+        expect(resDetalle.body.salida.items).toEqual([]);
+
+        const resAprobar = await request(app)
+            .post(`/api/importaciones/${importacionId}/aprobar`)
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                items: [{ nombreInsumo: 'Café heurístico', cantidad: '1', unidad: 'kg', precioTotal: '21000.00' }],
+            });
+
+        expect(resAprobar.status).toBe(400);
+        expect(resAprobar.body.mensaje).toContain('modo contingencia');
     });
 
     it('permite listar importaciones paginadas y devuelve 404 ante ID inexistente', async () => {
@@ -420,5 +519,189 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
 
         const docActual = await ImportacionIA.findById(importacion._id);
         expect(docActual.estado).toBe('LISTA');
+    });
+
+    it('extrae texto real de dos PDFs distintos con pdf.js local, genera propuestas distintas y rechaza PDF binario o escaneado', async () => {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const requireLocal = createRequire(import.meta.url);
+        const pdfjsLocal = requireLocal(
+            path.resolve(__dirname, '../../../web/vendor/pdfjs/pdf.min.js')
+        );
+        pdfjsLocal.GlobalWorkerOptions.workerSrc = path.resolve(
+            __dirname,
+            '../../../web/vendor/pdfjs/pdf.worker.min.js'
+        );
+
+        const crearPdf = (lineas) => {
+            const ops = ['BT', '/F1 12 Tf'];
+            let y = 760;
+            for (const l of lineas) {
+                const esc = l.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+                ops.push(`1 0 0 1 72 ${y} Tm (${esc}) Tj`);
+                y -= 18;
+            }
+            ops.push('ET');
+            const stream = ops.join('\n');
+            const objs = [
+                '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+                '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+                '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+                `4 0 obj\n<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream\nendobj\n`,
+                '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+            ];
+            let pdf = '%PDF-1.4\n';
+            const offsets = [0];
+            for (const obj of objs) {
+                offsets.push(Buffer.byteLength(pdf, 'latin1'));
+                pdf += obj;
+            }
+            const xrefPos = Buffer.byteLength(pdf, 'latin1');
+            pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+            for (let i = 1; i < offsets.length; i++) {
+                pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+            }
+            pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;
+            return new Uint8Array(Buffer.from(pdf, 'latin1'));
+        };
+
+        const pdf1 = crearPdf(['Cafe Tostado 5 kg: $115000', 'Leche Entera 12 l: $16200']);
+        const pdf2 = crearPdf(['Azucar Organica 10 kg: $14500', 'Cacao Amargo 2 kg: $19400']);
+        const pdfEscaneado = crearPdf([]);
+
+        const ext1 = await extraerTextoDePdfBuffer(pdf1.buffer, pdfjsLocal, { disableWorker: true });
+        const ext2 = await extraerTextoDePdfBuffer(pdf2.buffer, pdfjsLocal, { disableWorker: true });
+        const ext3 = await extraerTextoDePdfBuffer(pdfEscaneado.buffer, pdfjsLocal, {
+            disableWorker: true,
+        });
+
+        expect(ext1.ok).toBe(true);
+        expect(ext2.ok).toBe(true);
+        expect(ext3.ok).toBe(false);
+        expect(ext3.esEscaneado).toBe(true);
+        expect(ext3.mensajeError).toBe(MENSAJE_PDF_ESCANEADO);
+
+        // Si alguien intenta enviar %PDF- crudo sin extraer, el backend rechaza con 400
+        const resBinario = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({ textoLista: '%PDF-1.4 binary raw stream' });
+        expect(resBinario.status).toBe(400);
+        expect(resBinario.body.detalles).toEqual([
+            'No se pudo leer el texto del PDF. Probá subiéndolo de nuevo.',
+        ]);
+
+        global.fetch = jest.fn(async (_url, opciones) => {
+            const body = JSON.parse(opciones.body);
+            if (body.texto_lista.includes('Cafe Tostado')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        proveedor_detectado: 'Tostadero PDF 1',
+                        envio_detectado: '0.00',
+                        moneda: 'ARS',
+                        items: [
+                            {
+                                nombre_insumo: 'Cafe Tostado',
+                                cantidad: '5',
+                                unidad: 'kg',
+                                precio_total: '115000.00',
+                            },
+                            {
+                                nombre_insumo: 'Leche Entera',
+                                cantidad: '12',
+                                unidad: 'l',
+                                precio_total: '16200.00',
+                            },
+                        ],
+                        advertencias: [],
+                        version_prompt: 'v1',
+                        proveedor_ia: 'groq',
+                        latencia_ms: 180,
+                        contingencia: false,
+                    }),
+                };
+            }
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    proveedor_detectado: 'Molino PDF 2',
+                    envio_detectado: '0.00',
+                    moneda: 'ARS',
+                    items: [
+                        {
+                            nombre_insumo: 'Azucar Organica',
+                            cantidad: '10',
+                            unidad: 'kg',
+                            precio_total: '14500.00',
+                        },
+                        {
+                            nombre_insumo: 'Cacao Amargo',
+                            cantidad: '2',
+                            unidad: 'kg',
+                            precio_total: '19400.00',
+                        },
+                    ],
+                    advertencias: [],
+                    version_prompt: 'v1',
+                    proveedor_ia: 'groq',
+                    latencia_ms: 195,
+                    contingencia: false,
+                }),
+            };
+        });
+
+        const resPost1 = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                textoLista: ext1.texto,
+                proveedorNombre: 'Tostadero PDF 1',
+                origenArchivo: 'pdf',
+            });
+        const resPost2 = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                textoLista: ext2.texto,
+                proveedorNombre: 'Molino PDF 2',
+                origenArchivo: 'pdf',
+            });
+
+        expect(resPost1.status).toBe(202);
+        expect(resPost2.status).toBe(202);
+
+        await procesarImportacionEnSegundoPlano(resPost1.body.importacionId, {
+            textoLista: ext1.texto,
+            proveedorNombre: 'Tostadero PDF 1',
+            versionPrompt: 'v1',
+            origenArchivo: 'pdf',
+        });
+        await procesarImportacionEnSegundoPlano(resPost2.body.importacionId, {
+            textoLista: ext2.texto,
+            proveedorNombre: 'Molino PDF 2',
+            versionPrompt: 'v1',
+            origenArchivo: 'pdf',
+        });
+
+        const det1 = await request(app)
+            .get(`/api/importaciones/${resPost1.body.importacionId}`)
+            .set('Authorization', `Bearer ${tokenDuenio}`);
+        const det2 = await request(app)
+            .get(`/api/importaciones/${resPost2.body.importacionId}`)
+            .set('Authorization', `Bearer ${tokenDuenio}`);
+
+        expect(det1.body.entrada.origenArchivo).toBe('pdf');
+        expect(det2.body.entrada.origenArchivo).toBe('pdf');
+        expect(det1.body.salida.items.map((i) => i.nombreInsumo)).toEqual([
+            'Cafe Tostado',
+            'Leche Entera',
+        ]);
+        expect(det2.body.salida.items.map((i) => i.nombreInsumo)).toEqual([
+            'Azucar Organica',
+            'Cacao Amargo',
+        ]);
     });
 });

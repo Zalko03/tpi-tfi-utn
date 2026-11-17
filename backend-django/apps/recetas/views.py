@@ -13,7 +13,7 @@ from apps.recetas.services import (
     actualizar_costo_y_margen_producto,
     listar_productos_con_costos_optimizado,
 )
-from apps.usuarios.permissions import TienePermiso
+from apps.usuarios.permissions import TieneAlgunPermiso, TienePermiso
 
 
 class ProductoViewSet(viewsets.ModelViewSet):
@@ -36,7 +36,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
-            return [TienePermiso("recetas.ver")()]
+            return [TieneAlgunPermiso("recetas.ver", "ventas.cobrar_ticket")()]
         elif self.action == "create":
             return [TienePermiso("recetas.crear")()]
         elif self.action in ("update", "partial_update"):

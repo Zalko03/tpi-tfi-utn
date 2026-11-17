@@ -21,6 +21,7 @@ from apps.usuarios.permissions import (
     EsEncargadoODuenio,
     PermisoObjetoTurnoCaja,
     PermisoObjetoVenta,
+    TieneAlgunPermiso,
     TienePermiso,
 )
 
@@ -119,6 +120,35 @@ class TestTienePermisoUnitario:
     def test_mensaje_estandar_tiene_permiso(self):
         permiso_cls = TienePermiso("insumos.ver")()
         assert permiso_cls.message == "No tiene permisos para realizar esta acción"
+
+
+class TestTieneAlgunPermisoUnitario:
+    """Evaluación unitaria de la fábrica TieneAlgunPermiso(*claves)."""
+
+    def test_permite_si_posee_al_menos_un_permiso(self):
+        perm = TieneAlgunPermiso("recetas.ver", "ventas.cobrar_ticket")()
+        solo_venta = MockUser(permisos_dict={"recetas.ver": False, "ventas.cobrar_ticket": True})
+        solo_receta = MockUser(permisos_dict={"recetas.ver": True, "ventas.cobrar_ticket": False})
+        assert perm.has_permission(MockRequest(solo_venta), None) is True
+        assert perm.has_permission(MockRequest(solo_receta), None) is True
+
+    def test_rechaza_si_no_posee_ningun_permiso(self):
+        perm = TieneAlgunPermiso("recetas.ver", "ventas.cobrar_ticket")()
+        sin_permisos = MockUser(permisos_dict={"recetas.ver": False, "ventas.cobrar_ticket": False})
+        assert perm.has_permission(MockRequest(sin_permisos), None) is False
+        assert perm.has_permission(MockRequest(MockUser(is_active=False)), None) is False
+        assert perm.has_permission(MockRequest(MockUser(is_authenticated=False)), None) is False
+
+    def test_fallback_jwt_y_mensaje_estandar(self):
+        perm = TieneAlgunPermiso("recetas.ver", "ventas.cobrar_ticket")()
+        assert perm.message == "No tiene permisos para realizar esta acción"
+        user_sin_perfil = MockUser()
+        req_ok = MockRequest(
+            user=user_sin_perfil, auth_payload={"permisos": ["ventas.cobrar_ticket"]}
+        )
+        req_no = MockRequest(user=user_sin_perfil, auth_payload={"permisos": ["caja.abrir_turno"]})
+        assert perm.has_permission(req_ok, None) is True
+        assert perm.has_permission(req_no, None) is False
 
 
 class TestEsDuenioYEncargadoUnitario:
@@ -364,7 +394,43 @@ class TestReglasArqueoCiegoYCostosUnitario:
         serializer = ProductoSerializer(producto, context={"request": req})
         data = serializer.data
 
+        assert data["costo_hora_mano_obra"] is None
+        assert data["descartables"] is None
         assert data["costo_total_calculado"] is None
         assert data["ganancia_bruta"] is None
         assert data["margen_bruto"] is None
         assert data["precio_venta"] == "4000.00"
+
+    def test_duenio_ve_costos_completos_en_producto_serializer(self):
+        duenio = MockUser(
+            id=1,
+            rol=ROL_DUENIO,
+            permisos_dict={"recetas.ver_costos": True},
+        )
+        req = MockRequest(user=duenio)
+
+        producto = MagicMock(
+            id=1,
+            nombre="Café Latte",
+            codigo_barras="12345",
+            precio_venta=Decimal("4000.00"),
+            minutos_mano_obra=Decimal("2.00"),
+            costo_hora_mano_obra=Decimal("2500.00"),
+            descartables=Decimal("100.00"),
+            costo_total_calculado=Decimal("2181.3333"),
+            ganancia_bruta=Decimal("1818.6667"),
+            margen_bruto=Decimal("0.4547"),
+            receta_items=MagicMock(all=lambda: []),
+            estado_activo=True,
+            creado_en="2026-10-28T10:00:00Z",
+            actualizado_en="2026-10-28T10:00:00Z",
+        )
+
+        serializer = ProductoSerializer(producto, context={"request": req})
+        data = serializer.data
+
+        assert data["costo_hora_mano_obra"] == "2500.00"
+        assert data["descartables"] == "100.00"
+        assert data["costo_total_calculado"] == "2181.3333"
+        assert data["ganancia_bruta"] == "1818.6667"
+        assert data["margen_bruto"] == "0.4547"

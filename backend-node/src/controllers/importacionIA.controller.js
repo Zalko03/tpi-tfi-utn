@@ -2,7 +2,7 @@ import * as importacionService from '../services/importacionIA.service.js';
 
 export const crearImportacion = async (req, res, next) => {
     try {
-        const { textoLista, proveedorNombre, versionPrompt } = req.body;
+        const { textoLista, proveedorNombre, versionPrompt, origenArchivo } = req.body;
         const usuarioId = req.usuario?.id;
 
         const importacion = await importacionService.iniciarImportacionPrecios({
@@ -10,6 +10,7 @@ export const crearImportacion = async (req, res, next) => {
             textoLista,
             proveedorNombre,
             versionPrompt,
+            origenArchivo,
         });
 
         return res.status(202).json({
@@ -17,6 +18,10 @@ export const crearImportacion = async (req, res, next) => {
             importacionId: importacion._id,
             estado: importacion.estado,
             versionPrompt: importacion.versionPrompt,
+            contingencia: Boolean(importacion.contingencia),
+            proveedorIa: importacion.proveedorIa ?? null,
+            mensajeContingencia: importacion.mensajeContingencia ?? null,
+            advertencias: Array.isArray(importacion.advertencias) ? importacion.advertencias : [],
             creadoEn: importacion.createdAt,
         });
     } catch (error) {

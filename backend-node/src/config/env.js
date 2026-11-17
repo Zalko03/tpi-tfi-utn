@@ -7,8 +7,23 @@ import { fileURLToPath } from 'url';
 const directorioActual = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(directorioActual, '../../../.env'), quiet: true });
 
+const parsearEnteroNoNegativo = (valor, defecto = 0) => {
+    if (valor === undefined || valor === null || String(valor).trim() === '') {
+        return defecto;
+    }
+    const parsed = Number.parseInt(String(valor).trim(), 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return defecto;
+    }
+    return parsed;
+};
+
 export const entorno = process.env.NODE_ENV || 'development';
 export const puerto = Number(process.env.NODE_PORT) || 3000;
+export const nodeTrustProxySaltos = parsearEnteroNoNegativo(
+    process.env.NODE_TRUST_PROXY_SALTOS,
+    0
+);
 export const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/cafe_gestion';
 export const djangoBaseUrl = process.env.DJANGO_BASE_URL || 'http://localhost:8000/api';
 export const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8001';

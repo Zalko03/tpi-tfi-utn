@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from apps.comun.filtros import filtrar_queryset_por_rango_fechas
 from apps.comun.throttling import LoginRateThrottle
 from apps.usuarios import services
 from apps.usuarios.models import RegistroAuditoria
@@ -243,3 +244,11 @@ class RegistroAuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
     ).all()
     serializer_class = RegistroAuditoriaSerializer
     permission_classes = (TienePermiso("auditoria.ver_logs"),)
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        if self.action == "list":
+            qs = filtrar_queryset_por_rango_fechas(
+                qs, self.request.query_params, campo_fecha="fecha"
+            )
+        return qs

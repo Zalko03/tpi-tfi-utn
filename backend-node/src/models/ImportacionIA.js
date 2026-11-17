@@ -73,6 +73,11 @@ const importacionIASchema = new mongoose.Schema(
                 default: null,
                 trim: true,
             },
+            origenArchivo: {
+                type: String,
+                enum: ['texto', 'csv', 'pdf'],
+                default: 'texto',
+            },
         },
         salida: {
             proveedorDetectado: {
@@ -123,6 +128,14 @@ const importacionIASchema = new mongoose.Schema(
         contingencia: {
             type: Boolean,
             default: false,
+        },
+        mensajeContingencia: {
+            type: String,
+            default: null,
+        },
+        advertencias: {
+            type: [String],
+            default: [],
         },
         mensajeError: {
             type: String,

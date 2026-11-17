@@ -44,6 +44,7 @@ class VentaSerializer(serializers.ModelSerializer):
     items = VentaItemDetailSerializer(many=True, read_only=True)
     items_entrada = VentaItemInputSerializer(many=True, write_only=True, required=True)
     id_operacion = serializers.UUIDField(required=False, allow_null=True)
+    usuario_nombre = serializers.ReadOnlyField(source="turno_caja.usuario.username")
 
     class Meta:
         model = Venta
@@ -51,6 +52,7 @@ class VentaSerializer(serializers.ModelSerializer):
             "id",
             "id_operacion",
             "turno_caja",
+            "usuario_nombre",
             "fecha",
             "medio_pago",
             "origen",
@@ -60,7 +62,14 @@ class VentaSerializer(serializers.ModelSerializer):
             "items_entrada",
             "creado_en",
         ]
-        read_only_fields = ["id", "fecha", "total", "costo_total_snapshot", "creado_en"]
+        read_only_fields = [
+            "id",
+            "usuario_nombre",
+            "fecha",
+            "total",
+            "costo_total_snapshot",
+            "creado_en",
+        ]
 
     def to_internal_value(self, data):
         if isinstance(data, dict):

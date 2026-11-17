@@ -18,8 +18,8 @@ from app.services.prompts import cargar_prompt
 from app.services.proveedor_ia import ErrorProveedorIA, ProveedorIA, obtener_proveedor_ia
 
 MENSAJE_CONTINGENCIA_EXTRACCION = (
-    "El servicio de IA no se encuentra disponible o devolvió un formato no válido. "
-    "Por favor, realice la carga de precios de forma manual o mediante importación CSV."
+    "No se pudo usar la IA, revisá la configuración. "
+    "Por favor, realizá la carga de precios de forma manual o mediante importación CSV."
 )
 
 
@@ -115,16 +115,20 @@ async def extraer_precios_de_lista(
                 envio_detectado=salida_validada.envio_detectado,
                 moneda=salida_validada.moneda,
                 items=salida_validada.items,
-                advertencias=salida_validada.advertencias,
+                advertencias=(
+                    salida_validada.advertencias
+                    if salida_validada.advertencias
+                    else (
+                        ["El proveedor de IA entró en modo contingencia."]
+                        if es_contingencia
+                        else []
+                    )
+                ),
                 version_prompt=solicitud.version_prompt,
                 proveedor_ia="contingencia" if es_contingencia else nombre_proveedor,
                 latencia_ms=max(0, latencia_ms),
                 contingencia=es_contingencia,
-                mensaje_contingencia=(
-                    "Extracción procesada mediante heurística local de contingencia."
-                    if es_contingencia
-                    else None
-                ),
+                mensaje_contingencia=(MENSAJE_CONTINGENCIA_EXTRACCION if es_contingencia else None),
             )
         except asyncio.TimeoutError:
             ultimo_error = (

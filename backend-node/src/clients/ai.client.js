@@ -35,33 +35,44 @@ export const validarYNormalizarSalidaIA = (datos) => {
         throw new Error('La respuesta de ai-service no contiene una estructura válida de items');
     }
 
-    const itemsNormalizados = datos.items.map((item, indice) => {
-        if (!validarItemExtraido(item)) {
-            throw new Error(`El ítem en posición ${indice} no cumple el esquema de validación`);
-        }
-        return {
-            nombreInsumo: item.nombre_insumo.trim(),
-            cantidad: String(item.cantidad),
-            unidad: item.unidad.trim().toLowerCase(),
-            precioTotal: String(item.precio_total),
-            ivaIncluido: Boolean(item.iva_incluido ?? true),
-            alicuota: String(item.alicuota ?? '21.00'),
-            confianza: String(item.confianza ?? '1.00'),
-            textoOriginal: item.texto_original ? String(item.texto_original) : null,
-        };
-    });
+    const esContingencia =
+        Boolean(datos.contingencia) || datos.proveedor_ia === 'contingencia';
+
+    const itemsNormalizados = esContingencia
+        ? []
+        : datos.items.map((item, indice) => {
+              if (!validarItemExtraido(item)) {
+                  throw new Error(`El ítem en posición ${indice} no cumple el esquema de validación`);
+              }
+              return {
+                  nombreInsumo: item.nombre_insumo.trim(),
+                  cantidad: String(item.cantidad),
+                  unidad: item.unidad.trim().toLowerCase(),
+                  precioTotal: String(item.precio_total),
+                  ivaIncluido: Boolean(item.iva_incluido ?? true),
+                  alicuota: String(item.alicuota ?? '21.00'),
+                  confianza: String(item.confianza ?? '1.00'),
+                  textoOriginal: item.texto_original ? String(item.texto_original) : null,
+              };
+          });
+
+    const advertencias = Array.isArray(datos.advertencias) ? datos.advertencias.map(String) : [];
 
     return {
         proveedorDetectado: datos.proveedor_detectado || null,
-        envioDetectado: String(datos.envio_detectado ?? '0.00'),
+        envioDetectado: esContingencia ? '0.00' : String(datos.envio_detectado ?? '0.00'),
         moneda: datos.moneda || 'ARS',
         items: itemsNormalizados,
-        advertencias: Array.isArray(datos.advertencias) ? datos.advertencias.map(String) : [],
+        advertencias,
         versionPrompt: datos.version_prompt || 'v1',
-        proveedorIa: datos.proveedor_ia || 'desconocido',
+        proveedorIa: datos.proveedor_ia || (esContingencia ? 'contingencia' : 'desconocido'),
         latenciaMs: Number.isFinite(Number(datos.latencia_ms)) ? Number(datos.latencia_ms) : 0,
-        contingencia: Boolean(datos.contingencia),
-        mensajeContingencia: datos.mensaje_contingencia || null,
+        contingencia: esContingencia,
+        mensajeContingencia:
+            datos.mensaje_contingencia ||
+            (esContingencia
+                ? 'No se pudo usar la IA, revisá la configuración. Podés cargar los precios de forma manual o por CSV.'
+                : null),
     };
 };
 
@@ -69,7 +80,7 @@ export const validarYNormalizarSalidaIA = (datos) => {
  * Consume POST /v1/extraer-precios de ai-service con timeout acotado y degradación elegante.
  */
 export const extraerPreciosIA = async (
-    { textoLista, proveedorNombre = null, versionPrompt = 'v1' },
+    { textoLista, proveedorNombre = null, versionPrompt = 'v1', origenArchivo = null },
     timeoutMs = 12000,
     correlationId = null
 ) => {
@@ -83,14 +94,19 @@ export const extraerPreciosIA = async (
             headers['X-Request-ID'] = correlationId;
         }
 
+        const cuerpo = {
+            texto_lista: textoLista,
+            proveedor_nombre: proveedorNombre,
+            version_prompt: versionPrompt,
+        };
+        if (origenArchivo) {
+            cuerpo.origen_archivo = origenArchivo;
+        }
+
         const respuesta = await fetch(`${aiServiceUrl}/v1/extraer-precios`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({
-                texto_lista: textoLista,
-                proveedor_nombre: proveedorNombre,
-                version_prompt: versionPrompt,
-            }),
+            body: JSON.stringify(cuerpo),
             signal: AbortSignal.timeout(timeoutMs),
         });
 
@@ -113,7 +129,7 @@ export const extraerPreciosIA = async (
             latenciaMs,
             contingencia: true,
             mensajeContingencia:
-                'No se pudo procesar la lista con el servicio de IA. Puede cargar los precios de forma manual o por CSV.',
+                'No se pudo usar la IA, revisá la configuración. Podés cargar los precios de forma manual o por CSV.',
             error: error.message,
         };
     }
@@ -148,21 +164,38 @@ export const generarResumenSemanalIA = async (
             throw new Error(`ai-service respondió con estado HTTP ${respuesta.status}`);
         }
 
-        return await respuesta.json();
+        const datos = await respuesta.json();
+        const esContingencia =
+            Boolean(datos?.contingencia) || datos?.proveedor_ia === 'contingencia';
+        const advertencias = Array.isArray(datos?.advertencias)
+            ? datos.advertencias.map(String)
+            : esContingencia && Array.isArray(datos?.alertas_costos)
+              ? datos.alertas_costos.map(String)
+              : [];
+
+        return {
+            ...datos,
+            resumen_ejecutivo: esContingencia ? null : (datos?.resumen_ejecutivo ?? null),
+            contingencia: esContingencia,
+            proveedor_ia: datos?.proveedor_ia || (esContingencia ? 'contingencia' : 'desconocido'),
+            mensaje_contingencia:
+                datos?.mensaje_contingencia ||
+                (esContingencia ? 'No se pudo usar la IA, revisá la configuración.' : null),
+            advertencias,
+        };
     } catch (error) {
         const latenciaMs = Math.max(0, Date.now() - inicio);
         return {
-            resumen_ejecutivo: `Análisis de contingencia: Rendimiento evaluado sobre facturación de $${payload?.total_ventas || '0.00'}. Operación comercial conforme.`,
-            productos_destacados: Array.isArray(payload?.productos)
-                ? payload.productos.slice(0, 3).map((p) => p.nombre)
-                : [],
+            resumen_ejecutivo: null,
+            productos_destacados: [],
             sugerencias_rotacion: [],
             alertas_costos: [`Aviso técnico: ${error.message}`],
+            advertencias: [error.message],
             version_prompt: payload?.version_prompt || 'v1',
             proveedor_ia: 'contingencia',
             latencia_ms: latenciaMs,
             contingencia: true,
-            mensaje_contingencia: 'Servicio de IA en contingencia local.',
+            mensaje_contingencia: 'No se pudo usar la IA, revisá la configuración.',
         };
     }
 };

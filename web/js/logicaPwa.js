@@ -192,14 +192,21 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
             };
         }
         case 'importacion.lista': {
-            const enContingencia = Boolean(payload.contingencia) || payload.estado === 'CONTINGENCIA';
+            const enContingencia =
+                Boolean(payload.contingencia) ||
+                payload.estado === 'CONTINGENCIA' ||
+                payload.estado === 'FALLIDA' ||
+                payload.proveedorIa === 'contingencia' ||
+                payload.proveedor_ia === 'contingencia';
             return {
                 evento: nombreEvento,
                 nivel: enContingencia ? 'advertencia' : 'info',
                 titulo: enContingencia
                     ? 'Importación IA en modo contingencia'
                     : `Propuesta IA lista (${payload.cantidadItems ?? 0} ítems)`,
-                detalle: `Proveedor: ${payload.proveedorDetectado || 'Sin especificar'} · Estado: ${payload.estado || 'LISTA'}`,
+                detalle: enContingencia
+                    ? `No se pudo usar la IA, revisá la configuración${payload.mensajeContingencia ? ` · ${payload.mensajeContingencia}` : ''}`
+                    : `Proveedor: ${payload.proveedorDetectado || 'Sin especificar'} · Estado: ${payload.estado || 'LISTA'}`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
             };
@@ -208,7 +215,7 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
             return {
                 evento: nombreEvento,
                 nivel: 'info',
-                titulo: `Evento ${nombreEvento}`,
+                titulo: 'Actividad en el local',
                 detalle: JSON.stringify(payload),
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
@@ -236,7 +243,14 @@ export const obtenerContenidoPlantillaCsv = () => {
 export const parsearCsvProveedor = (contenidoCsv = '') => {
     const texto = String(contenidoCsv || '').trim();
     if (!texto) {
-        return { items: [], envioTotal: '0.00', textoParaIa: '' };
+        return {
+            items: [],
+            envioTotal: '0.00',
+            delimitadorDetectado: ',',
+            textoParaIa: '',
+            origen: 'csv-directo',
+            requiereIa: false,
+        };
     }
 
     const lineas = texto
@@ -245,11 +259,24 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
         .filter((l) => l.length > 0 && !l.startsWith('#'));
 
     if (lineas.length === 0) {
-        return { items: [], envioTotal: '0.00', textoParaIa: '' };
+        return {
+            items: [],
+            envioTotal: '0.00',
+            delimitadorDetectado: ',',
+            textoParaIa: '',
+            origen: 'csv-directo',
+            requiereIa: false,
+        };
     }
 
     const primeraLinea = lineas[0];
-    const delimitador = primeraLinea.includes(';') ? ';' : ',';
+    const delimitador = primeraLinea.includes(';')
+        ? ';'
+        : primeraLinea.includes(',')
+          ? ','
+          : primeraLinea.includes('\t')
+            ? '\t'
+            : ',';
 
     const separarColumnas = (linea) => {
         const resultado = [];
@@ -305,7 +332,9 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
             c.includes('insumo') ||
             c.includes('producto') ||
             c.includes('cantidad') ||
-            c.includes('precio')
+            c.includes('precio') ||
+            c.includes('costo') ||
+            c.includes('importe')
     );
 
     const indiceInicio = tieneCabecera ? 1 : 0;
@@ -319,7 +348,14 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
         ? colsCabecera.findIndex((c) => c.includes('unid'))
         : 2;
     const idxPrecio = tieneCabecera
-        ? colsCabecera.findIndex((c) => c.includes('precio') || c.includes('total') || c.includes('importe'))
+        ? colsCabecera.findIndex(
+              (c) =>
+                  c.includes('precio') ||
+                  c.includes('total') ||
+                  c.includes('importe') ||
+                  c.includes('costo') ||
+                  c.includes('valor')
+          )
         : 3;
     const idxAlicuota = tieneCabecera
         ? colsCabecera.findIndex((c) => c.includes('iva') || c.includes('alicuota'))
@@ -338,11 +374,16 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
         const nombreInsumo = String(cols[idxInsumo >= 0 ? idxInsumo : 0] || '').trim();
         if (!nombreInsumo) continue;
 
-        const cantidad = normalizarCantidadTexto(cols[idxCantidad >= 0 ? idxCantidad : 1]);
-        const unidad = String(cols[idxUnidad >= 0 ? idxUnidad : 2] || 'un')
-            .trim()
-            .toLowerCase() || 'un';
-        const precioTotal = normalizarNumeroTexto(cols[idxPrecio >= 0 ? idxPrecio : 3], '0.00');
+        const cantidad =
+            idxCantidad >= 0 ? normalizarCantidadTexto(cols[idxCantidad]) : '1';
+        const unidad =
+            idxUnidad >= 0
+                ? String(cols[idxUnidad] || 'un')
+                      .trim()
+                      .toLowerCase() || 'un'
+                : 'un';
+        const precioTotal =
+            idxPrecio >= 0 ? normalizarNumeroTexto(cols[idxPrecio], '0.00') : '0.00';
         const alicuotaIva = normalizarNumeroTexto(
             idxAlicuota >= 0 ? cols[idxAlicuota] : '21.00',
             '21.00'
@@ -383,6 +424,35 @@ export const parsearCsvProveedor = (contenidoCsv = '') => {
         envioTotal,
         delimitadorDetectado: delimitador,
         textoParaIa: lineasTextoIa.join('\n'),
+        origen: 'csv-directo',
+        requiereIa: false,
+    };
+};
+
+/**
+ * Evalúa si un texto pegado o cargado corresponde a una planilla CSV/tabular compatible
+ * con la importación directa CSV (100% sin IA).
+ */
+export const evaluarTextoComoCsvDirecto = (textoCrudo = '') => {
+    const texto = String(textoCrudo || '').trim();
+    if (!texto || (!texto.includes(',') && !texto.includes(';') && !texto.includes('\t'))) {
+        return {
+            compatible: false,
+            resultado: {
+                items: [],
+                envioTotal: '0.00',
+                delimitadorDetectado: ',',
+                textoParaIa: '',
+                origen: 'csv-directo',
+                requiereIa: false,
+            },
+        };
+    }
+
+    const resultado = parsearCsvProveedor(texto);
+    return {
+        compatible: resultado.items.length > 0,
+        resultado,
     };
 };
 
@@ -769,7 +839,7 @@ export const procesarColaVentasOffline = async ({
             itemsMapeados = itemsRaw.map((it) => {
                 const prodId = Number(it.producto || it.producto_id || it.id);
                 if (!Number.isInteger(prodId) || prodId <= 0) {
-                    throw new Error('Producto faltante o inválido en una venta de la cola offline.');
+                    throw new Error('Una venta guardada sin internet tiene un producto que no es válido.');
                 }
                 const itemObj = {
                     producto: prodId,
@@ -786,7 +856,7 @@ export const procesarColaVentasOffline = async ({
         }
 
         if (errorMapeo || itemsMapeados.length === 0) {
-            const motivo = errorMapeo || 'Una venta en cola offline no contiene productos válidos.';
+            const motivo = errorMapeo || 'Una venta guardada sin internet no tiene productos válidos.';
             moverVentaARechazadas(itemCola, motivo, 400, storage);
             rechazadas += 1;
             if (typeof onItemRechazado === 'function') onItemRechazado(itemCola, motivo, 400);
@@ -835,14 +905,18 @@ export const procesarColaVentasOffline = async ({
                     ![401, 408, 429].includes(res.status);
 
                 if (esErrorClienteDefinitivo) {
-                    let motivo = `Error HTTP ${res.status}`;
+                    let mensajeApi = '';
                     try {
                         const errBody = await res.json();
-                        motivo = errBody?.mensaje || errBody?.detail || motivo;
+                        mensajeApi = errBody?.mensaje || errBody?.detail || '';
                     } catch {
                         // Mantener motivo por defecto
                     }
+                    const motivo = mensajeErrorParaUsuario(res.status, mensajeApi);
                     moverVentaARechazadas(itemCola, motivo, res.status, storage);
+                    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+                        console.warn('Venta offline rechazada por servidor:', res.status, mensajeApi);
+                    }
                     rechazadas += 1;
                     if (typeof onItemRechazado === 'function') {
                         onItemRechazado(itemCola, motivo, res.status);
@@ -864,6 +938,1296 @@ export const procesarColaVentasOffline = async ({
         restantes: obtenerVentasOffline(storage).length,
         sinTurnoAbierto,
         interrumpidoPorRedOServidor,
+    };
+};
+
+/**
+ * Formatea una fecha Date a 'YYYY-MM-DD' usando la zona horaria local.
+ */
+export const formatearFechaLocalInput = (fecha = new Date()) => {
+    const d = fecha instanceof Date ? fecha : new Date(fecha);
+    if (Number.isNaN(d.getTime())) return '';
+    const anio = d.getFullYear();
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const dia = String(d.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+};
+
+export const ANIO_MINIMO_FILTRO_REPORTES = 2000;
+export const ANIO_MAXIMO_FILTRO_REPORTES = 2100;
+
+const parsearFechaSoloDiaLocal = (valor, esFin = false) => {
+    const match = String(valor || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const anio = Number(match[1]);
+    const mes = Number(match[2]) - 1;
+    const dia = Number(match[3]);
+    const d = esFin
+        ? new Date(anio, mes, dia, 23, 59, 59, 999)
+        : new Date(anio, mes, dia, 0, 0, 0, 0);
+    d.setFullYear(anio);
+    if (
+        Number.isNaN(d.getTime()) ||
+        d.getFullYear() !== anio ||
+        d.getMonth() !== mes ||
+        d.getDate() !== dia
+    ) {
+        return null;
+    }
+    return d.getTime();
+};
+
+/**
+ * Valida que el rango [fechaDesde, fechaHasta] sea consistente (YYYY-MM-DD,
+ * año entre 2000 y 2100 y desde <= hasta). Acepta fechas vacías para historial completo.
+ */
+export const validarRangoFechas = (fechaDesde = '', fechaHasta = '') => {
+    const desde = String(fechaDesde ?? '').trim();
+    const hasta = String(fechaHasta ?? '').trim();
+
+    if (desde) {
+        if (parsearFechaSoloDiaLocal(desde, false) === null) {
+            return { valido: false, mensaje: 'La fecha "Desde" no tiene un formato válido.' };
+        }
+        const anioDesde = Number(desde.slice(0, 4));
+        if (anioDesde < ANIO_MINIMO_FILTRO_REPORTES || anioDesde > ANIO_MAXIMO_FILTRO_REPORTES) {
+            return {
+                valido: false,
+                mensaje: `El año de la fecha "Desde" debe estar entre ${ANIO_MINIMO_FILTRO_REPORTES} y ${ANIO_MAXIMO_FILTRO_REPORTES}.`,
+            };
+        }
+    }
+    if (hasta) {
+        if (parsearFechaSoloDiaLocal(hasta, true) === null) {
+            return { valido: false, mensaje: 'La fecha "Hasta" no tiene un formato válido.' };
+        }
+        const anioHasta = Number(hasta.slice(0, 4));
+        if (anioHasta < ANIO_MINIMO_FILTRO_REPORTES || anioHasta > ANIO_MAXIMO_FILTRO_REPORTES) {
+            return {
+                valido: false,
+                mensaje: `El año de la fecha "Hasta" debe estar entre ${ANIO_MINIMO_FILTRO_REPORTES} y ${ANIO_MAXIMO_FILTRO_REPORTES}.`,
+            };
+        }
+    }
+    if (desde && hasta && desde > hasta) {
+        return {
+            valido: false,
+            mensaje: 'La fecha "Desde" no puede ser posterior a la fecha "Hasta".',
+        };
+    }
+    return { valido: true, mensaje: '' };
+};
+
+/**
+ * Genera el siguiente identificador monotónico para descartar respuestas asíncronas obsoletas.
+ */
+export const siguienteIdCarga = (idActual = 0) => {
+    const numero = Number(idActual);
+    if (!Number.isFinite(numero) || numero < 0) {
+        return 1;
+    }
+    return Math.floor(numero) + 1;
+};
+
+/**
+ * Indica si una respuesta asíncrona corresponde a la carga más reciente todavía vigente.
+ */
+export const esCargaVigente = (idCargaRespuesta, idCargaActual) => {
+    const respuesta = Number(idCargaRespuesta);
+    const actual = Number(idCargaActual);
+    return Number.isFinite(respuesta) && Number.isFinite(actual) && respuesta > 0 && respuesta === actual;
+};
+
+/**
+ * Determina de forma inclusiva si un timestamp ISO o YYYY-MM-DD cae dentro de [fechaDesde, fechaHasta].
+ */
+export const estaFechaEnRango = (fechaValor, fechaDesde = '', fechaHasta = '') => {
+    const desde = String(fechaDesde || '').trim();
+    const hasta = String(fechaHasta || '').trim();
+    if (!desde && !hasta) return true;
+    if (!fechaValor) return false;
+
+    const texto = String(fechaValor).trim();
+    let ms = null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
+        const match = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        ms = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0).getTime();
+    } else {
+        ms = new Date(texto).getTime();
+    }
+    if (Number.isNaN(ms)) return false;
+
+    if (desde) {
+        const inicioMs = parsearFechaSoloDiaLocal(desde, false);
+        if (inicioMs !== null && ms < inicioMs) return false;
+    }
+    if (hasta) {
+        const finMs = parsearFechaSoloDiaLocal(hasta, true);
+        if (finMs !== null && ms > finMs) return false;
+    }
+    return true;
+};
+
+/**
+ * Filtra una lista de registros locales/offline por rango de fechas usando uno o varios campos candidatos.
+ */
+export const filtrarRegistrosPorRangoFechas = (
+    registros = [],
+    camposFecha = 'fecha',
+    fechaDesde = '',
+    fechaHasta = ''
+) => {
+    const lista = Array.isArray(registros) ? registros : [];
+    const desde = String(fechaDesde || '').trim();
+    const hasta = String(fechaHasta || '').trim();
+    if (!desde && !hasta) return [...lista];
+
+    const campos = Array.isArray(camposFecha) ? camposFecha : [camposFecha];
+    return lista.filter((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const valor = campos.map((c) => item[c]).find((v) => v !== null && v !== undefined && v !== '');
+        return estaFechaEnRango(valor, desde, hasta);
+    });
+};
+
+/**
+ * Construye query string con fecha_desde, fecha_hasta y parámetros adicionales sin omitir compatibilidad.
+ */
+export const construirQueryRangoFechas = (fechaDesde = '', fechaHasta = '', paramsExtra = {}) => {
+    const params = new URLSearchParams();
+    const desde = String(fechaDesde || '').trim();
+    const hasta = String(fechaHasta || '').trim();
+
+    if (desde) params.set('fecha_desde', desde);
+    if (hasta) params.set('fecha_hasta', hasta);
+
+    if (paramsExtra && typeof paramsExtra === 'object') {
+        for (const [clave, valor] of Object.entries(paramsExtra)) {
+            if (valor !== undefined && valor !== null && String(valor) !== '') {
+                params.set(clave, String(valor));
+            }
+        }
+    }
+    return params.toString();
+};
+
+const formatearMontoSimple = (valor) => {
+    const num = Number(valor);
+    if (!Number.isFinite(num)) return '-';
+    return `$ ${num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+/**
+ * Unifica y ordena cronológicamente Ventas, Movimientos de Stock (o Compras fallback),
+ * Cierres de Caja y Ventas Offline pendientes dentro del rango de fechas seleccionado.
+ */
+export const unificarTrazabilidadRegistros = ({
+    ventas = [],
+    movimientosStock = [],
+    comprasFallback = [],
+    cierresCaja = [],
+    ventasOffline = [],
+    fechaDesde = '',
+    fechaHasta = '',
+} = {}) => {
+    const ventasFiltradas = filtrarRegistrosPorRangoFechas(ventas, 'fecha', fechaDesde, fechaHasta);
+    const ventasOfflineFiltradas = filtrarRegistrosPorRangoFechas(
+        ventasOffline,
+        ['creadoEn', 'fecha'],
+        fechaDesde,
+        fechaHasta
+    );
+
+    const fuenteStock = Array.isArray(movimientosStock) && movimientosStock.length > 0
+        ? movimientosStock
+        : (Array.isArray(comprasFallback)
+            ? comprasFallback.map((c) => ({
+                id: `compra-${c.id}`,
+                fecha: c.fecha,
+                tipo: 'INGRESO',
+                subtipo: 'COMPRA',
+                insumo_nombre: c.insumo_nombre || `Insumo #${c.insumo}`,
+                cantidad: c.cantidad,
+                unidad: c.unidad,
+                monto: c.precio_total,
+                detalle: `Compra a ${c.proveedor_nombre || 'Proveedor'}`,
+                usuario_nombre: 'Gerencia / Compras',
+            }))
+            : []);
+    const stockFiltrado = filtrarRegistrosPorRangoFechas(
+        fuenteStock,
+        'fecha',
+        fechaDesde,
+        fechaHasta
+    );
+
+    const cierresFiltrados = filtrarRegistrosPorRangoFechas(
+        cierresCaja,
+        ['cierre', 'apertura'],
+        fechaDesde,
+        fechaHasta
+    );
+
+    const registros = [];
+
+    for (const v of ventasFiltradas) {
+        const items = Array.isArray(v.items) ? v.items : [];
+        const resumenItems = items.length > 0
+            ? items.map((it) => `${Number(it.cantidad || 1)}x ${it.producto_nombre || `Prod #${it.producto}`}`).join(', ')
+            : 'Ticket de mostrador';
+        const medio = v.medio_pago ? ` · ${v.medio_pago}` : '';
+        registros.push({
+            id: `venta-${v.id}`,
+            categoria: 'venta',
+            fechaIso: v.fecha || v.creado_en || '',
+            tipoEtiqueta: v.origen === 'offline' ? 'Venta (sin internet)' : 'Venta',
+            nivelBadge: 'exito',
+            detalle: `Ticket #${v.id}${medio} · ${resumenItems}`,
+            montoCantidad: v.total !== null && v.total !== undefined
+                ? formatearMontoSimple(v.total)
+                : 'Confidencial',
+            responsable: v.usuario_nombre || (v.turno_caja ? `Turno #${v.turno_caja}` : 'Mostrador'),
+        });
+    }
+
+    for (const vo of ventasOfflineFiltradas) {
+        const payload = vo.payload || {};
+        const items = payload.items_entrada || payload.items || [];
+        const cantItems = items.reduce((acc, it) => acc + (Number(it.cantidad) || 1), 0);
+        registros.push({
+            id: `offline-${vo.idTemporal || vo.creadoEn}`,
+            categoria: 'venta',
+            fechaIso: vo.creadoEn || '',
+            tipoEtiqueta: 'Venta (pendiente de envío)',
+            nivelBadge: 'advertencia',
+            detalle: `Pendiente sync (${payload.medio_pago || 'EFECTIVO'}) · ${cantItems} unidad(es)`,
+            montoCantidad: 'Pendiente sync',
+            responsable: 'Terminal Local',
+        });
+    }
+
+    for (const m of stockFiltrado) {
+        const esIngreso = String(m.tipo || '').toUpperCase() === 'INGRESO';
+        const signo = esIngreso ? '+' : '-';
+        const cantNum = Number(m.cantidad || 0);
+        const cantStr = Number.isFinite(cantNum)
+            ? `${signo}${cantNum.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${m.unidad || m.unidad_base || ''}`.trim()
+            : `${signo}${m.cantidad || 0} ${m.unidad || ''}`.trim();
+        const montoTexto = m.monto !== null && m.monto !== undefined
+            ? ` (${formatearMontoSimple(m.monto)})`
+            : '';
+
+        registros.push({
+            id: `stock-${m.id}`,
+            categoria: 'stock',
+            fechaIso: m.fecha || '',
+            tipoEtiqueta: esIngreso ? 'Insumos · Ingreso' : 'Insumos · Consumo',
+            nivelBadge: esIngreso ? 'info' : 'advertencia',
+            detalle: `${m.insumo_nombre || 'Insumo'} · ${m.detalle || m.subtipo || 'Movimiento'}`,
+            montoCantidad: `${cantStr}${montoTexto}`,
+            responsable: m.usuario_nombre || 'Sistema',
+        });
+    }
+
+    for (const t of cierresFiltrados) {
+        const esCerrado = t.estado === 'CERRADO' || Boolean(t.cierre);
+        const fechaTurno = t.cierre || t.apertura || '';
+        const difNum = t.diferencia !== null && t.diferencia !== undefined ? Number(t.diferencia) : null;
+        let difTexto = 'En curso';
+        let nivel = 'info';
+        if (esCerrado && difNum !== null) {
+            if (difNum > 0) {
+                difTexto = `Sobrante +${formatearMontoSimple(difNum)}`;
+                nivel = 'exito';
+            } else if (difNum < 0) {
+                difTexto = `Faltante ${formatearMontoSimple(difNum)}`;
+                nivel = 'peligro';
+            } else {
+                difTexto = 'Arqueo exacto ($ 0,00)';
+                nivel = 'exito';
+            }
+        }
+        const montoCaja = esCerrado
+            ? (t.efectivo_contado !== null && t.efectivo_contado !== undefined
+                ? `Declarado: ${formatearMontoSimple(t.efectivo_contado)}`
+                : 'Cerrado')
+            : (t.efectivo_inicial !== null && t.efectivo_inicial !== undefined
+                ? `Fondo: ${formatearMontoSimple(t.efectivo_inicial)}`
+                : 'Abierto');
+
+        registros.push({
+            id: `caja-${t.id}`,
+            categoria: 'caja',
+            fechaIso: fechaTurno,
+            tipoEtiqueta: esCerrado ? 'Cierre de Caja' : 'Turno Abierto',
+            nivelBadge: nivel,
+            detalle: `Turno #${t.id} · ${difTexto} (${t.cantidad_tickets ?? 0} tickets)`,
+            montoCantidad: montoCaja,
+            responsable: t.usuario_nombre || 'Operador',
+        });
+    }
+
+    registros.sort((a, b) => {
+        const ta = new Date(a.fechaIso).getTime() || 0;
+        const tb = new Date(b.fechaIso).getTime() || 0;
+        return tb - ta;
+    });
+
+    const conteos = {
+        total: registros.length,
+        ventas: ventasFiltradas.length + ventasOfflineFiltradas.length,
+        stock: stockFiltrado.length,
+        caja: cierresFiltrados.length,
+    };
+
+    return { registros, conteos };
+};
+
+export const MENSAJE_IA_NO_DISPONIBLE = 'No se pudo usar la IA, revisá la configuración';
+
+/**
+ * Evalúa el estado visual de una importación de precios IA sin disfrazar
+ * respuestas de contingencia o errores de red como propuestas válidas de IA.
+ */
+export const evaluarEstadoImportacionIA = (doc = null) => {
+    if (!doc || typeof doc !== 'object') {
+        return {
+            estadoVisual: 'contingencia',
+            esContingencia: true,
+            enProceso: false,
+            mensajePrincipal: MENSAJE_IA_NO_DISPONIBLE,
+            detalleTecnico: 'No se recibió respuesta del servicio de importación.',
+            advertencias: [],
+            sugerenciaAlternativa:
+                'Podés usar la Importación directa CSV (sin IA) desde la previsualización de CSV o registrar la compra de forma manual.',
+            puedeAprobar: false,
+        };
+    }
+
+    const estado = String(doc.estado || '').toUpperCase();
+    const proveedorIa = doc.proveedorIa ?? doc.proveedor_ia ?? null;
+    const esContingencia =
+        Boolean(doc.contingencia) ||
+        estado === 'CONTINGENCIA' ||
+        estado === 'FALLIDA' ||
+        proveedorIa === 'contingencia';
+
+    const enProceso = !esContingencia && (estado === 'PENDIENTE' || estado === 'PROCESANDO');
+
+    const salida = doc.salida || {};
+    const items = Array.isArray(salida.items)
+        ? salida.items
+        : Array.isArray(doc.items)
+          ? doc.items
+          : [];
+
+    const advertenciasCrudas = [
+        ...(Array.isArray(doc.advertencias) ? doc.advertencias : []),
+        ...(Array.isArray(salida.advertencias) ? salida.advertencias : []),
+    ]
+        .map((a) => String(a || '').trim())
+        .filter(Boolean);
+    const advertencias = [...new Set(advertenciasCrudas)];
+
+    const detalleCrudo =
+        doc.mensajeContingencia ||
+        doc.mensaje_contingencia ||
+        doc.mensajeError ||
+        doc.error ||
+        '';
+    const detalleTecnico = String(detalleCrudo || '').trim();
+
+    if (esContingencia) {
+        return {
+            estadoVisual: 'contingencia',
+            esContingencia: true,
+            enProceso: false,
+            mensajePrincipal: MENSAJE_IA_NO_DISPONIBLE,
+            detalleTecnico,
+            advertencias,
+            sugerenciaAlternativa:
+                'No se generó ninguna propuesta con IA. Podés usar la Importación directa CSV (sin IA) o registrar la compra de forma manual.',
+            puedeAprobar: false,
+        };
+    }
+
+    if (enProceso) {
+        return {
+            estadoVisual: 'procesando',
+            esContingencia: false,
+            enProceso: true,
+            mensajePrincipal: 'Analizando con IA...',
+            detalleTecnico: 'Consultando el servicio de IA para extraer insumos y precios.',
+            advertencias: [],
+            sugerenciaAlternativa: '',
+            puedeAprobar: false,
+        };
+    }
+
+    const tieneIdServidor = Boolean(doc._id && !String(doc._id).startsWith('local-'));
+    return {
+        estadoVisual: 'lista',
+        esContingencia: false,
+        enProceso: false,
+        mensajePrincipal: 'Propuesta generada por IA lista para revisión',
+        detalleTecnico: '',
+        advertencias,
+        sugerenciaAlternativa: '',
+        puedeAprobar: tieneIdServidor && items.length > 0,
+    };
+};
+
+/**
+ * Evalúa la respuesta del endpoint /v1/resumen-semanal (Consultor IA)
+ * diferenciando una respuesta real de IA del modo contingencia.
+ */
+export const evaluarEstadoResumenIA = (respuestaAi = null, errorRed = null) => {
+    if (errorRed || !respuestaAi || typeof respuestaAi !== 'object') {
+        const msgError =
+            typeof errorRed === 'string'
+                ? errorRed
+                : errorRed?.message || 'No se pudo comunicar con el servicio de IA.';
+        return {
+            esContingencia: true,
+            mensajePrincipal: MENSAJE_IA_NO_DISPONIBLE,
+            detalleTecnico: msgError,
+            advertencias: msgError ? [msgError] : [],
+            dictamenIa: '',
+            productosDestacados: [],
+            sugerenciasRotacion: [],
+            alertasCostos: [],
+        };
+    }
+
+    const proveedorIa = respuestaAi.proveedor_ia ?? respuestaAi.proveedorIa ?? null;
+    const esContingencia =
+        Boolean(respuestaAi.contingencia) || proveedorIa === 'contingencia';
+
+    const advertenciasCrudas = [
+        ...(Array.isArray(respuestaAi.advertencias) ? respuestaAi.advertencias : []),
+        ...(esContingencia && Array.isArray(respuestaAi.alertas_costos)
+            ? respuestaAi.alertas_costos
+            : []),
+    ]
+        .map((a) => String(a || '').trim())
+        .filter(Boolean);
+    const advertencias = [...new Set(advertenciasCrudas)];
+
+    const detalleTecnico = String(
+        respuestaAi.mensaje_contingencia || respuestaAi.mensajeContingencia || ''
+    ).trim();
+
+    if (esContingencia) {
+        return {
+            esContingencia: true,
+            mensajePrincipal: MENSAJE_IA_NO_DISPONIBLE,
+            detalleTecnico,
+            advertencias,
+            dictamenIa: '',
+            productosDestacados: [],
+            sugerenciasRotacion: [],
+            alertasCostos: [],
+        };
+    }
+
+    return {
+        esContingencia: false,
+        mensajePrincipal: '',
+        detalleTecnico: '',
+        advertencias: [],
+        dictamenIa: String(respuestaAi.resumen_ejecutivo || '').trim(),
+        productosDestacados: Array.isArray(respuestaAi.productos_destacados)
+            ? respuestaAi.productos_destacados
+            : [],
+        sugerenciasRotacion: Array.isArray(respuestaAi.sugerencias_rotacion)
+            ? respuestaAi.sugerencias_rotacion
+            : [],
+        alertasCostos: Array.isArray(respuestaAi.alertas_costos)
+            ? respuestaAi.alertas_costos
+            : [],
+    };
+};
+
+export const MENSAJE_PDF_ESCANEADO =
+    'El PDF parece ser una imagen escaneada sin texto seleccionable. Convertilo a texto/CSV o usá un PDF con texto.';
+
+/**
+ * Determina si un archivo seleccionado corresponde a un documento PDF por extensión o MIME type.
+ */
+export const esArchivoPdf = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    return tipo === 'application/pdf' || nombre.endsWith('.pdf');
+};
+
+/**
+ * Reconstruye líneas legibles a partir de los items devueltos por pdf.js `page.getTextContent()`,
+ * agrupando fragmentos por coordenada Y y ordenándolos por coordenada X para preservar
+ * la estructura de renglones (`insumo - precio - unidad`).
+ */
+export const reconstruirLineasDeItemsPdf = (items = []) => {
+    if (!Array.isArray(items) || items.length === 0) {
+        return '';
+    }
+
+    const filas = [];
+    const TOLERANCIA_Y = 2.5;
+
+    for (const item of items) {
+        if (!item || typeof item.str !== 'string') continue;
+        const textoCrudo = item.str;
+        if (!textoCrudo.trim()) continue;
+
+        const x = Array.isArray(item.transform) ? Number(item.transform[4] ?? 0) : 0;
+        const y = Array.isArray(item.transform) ? Number(item.transform[5] ?? 0) : 0;
+        const width = Number(item.width ?? 0);
+
+        let fila = filas.find((f) => Math.abs(f.y - y) <= TOLERANCIA_Y);
+        if (!fila) {
+            fila = { y, segmentos: [] };
+            filas.push(fila);
+        }
+        fila.segmentos.push({ x, width, str: textoCrudo });
+    }
+
+    filas.sort((a, b) => b.y - a.y);
+
+    const lineas = [];
+    for (const fila of filas) {
+        fila.segmentos.sort((a, b) => a.x - b.x);
+        let linea = '';
+        let prevEndX = null;
+
+        for (const seg of fila.segmentos) {
+            const textoSeg = seg.str;
+            if (!linea) {
+                linea = textoSeg;
+            } else {
+                const gap = prevEndX !== null ? seg.x - prevEndX : 10;
+                const necesitaEspacio =
+                    gap >= 1.5 && !linea.endsWith(' ') && !textoSeg.startsWith(' ');
+                linea += (necesitaEspacio ? ' ' : '') + textoSeg;
+            }
+            prevEndX = seg.x + (Number.isFinite(seg.width) ? seg.width : 0);
+        }
+
+        const lineaLimpia = linea.replace(/[ \t]+/g, ' ').trim();
+        if (lineaLimpia) {
+            lineas.push(lineaLimpia);
+        }
+    }
+
+    return lineas.join('\n');
+};
+
+/**
+ * Evalúa si el texto extraído de un PDF contiene texto seleccionable real
+ * o corresponde a un PDF escaneado / binario sin texto.
+ */
+export const evaluarTextoExtraidoPdf = (textoCrudo = '') => {
+    const texto = String(textoCrudo || '').trim();
+    if (texto.startsWith('%PDF-')) {
+        return {
+            valido: false,
+            esEscaneado: false,
+            texto: '',
+            mensajeError:
+                'No se pudo leer el texto del PDF. Probá subiéndolo de nuevo.',
+        };
+    }
+
+    const caracteresUtiles = texto.replace(/[\s\r\n]+/g, '');
+    if (caracteresUtiles.length < 6) {
+        return {
+            valido: false,
+            esEscaneado: true,
+            texto: '',
+            mensajeError: MENSAJE_PDF_ESCANEADO,
+        };
+    }
+
+    return {
+        valido: true,
+        esEscaneado: false,
+        texto,
+        mensajeError: null,
+    };
+};
+
+/**
+ * Lee un ArrayBuffer / Uint8Array de PDF página por página usando pdf.js local
+ * y devuelve el texto extraído preservando renglones, o un aviso explícito si es un PDF escaneado.
+ */
+export const extraerTextoDePdfBuffer = async (
+    bufferPdf,
+    pdfjsLibRef = null,
+    opciones = {}
+) => {
+    const pdfjs =
+        pdfjsLibRef ||
+        (typeof globalThis !== 'undefined' ? globalThis.pdfjsLib : null);
+
+    if (!pdfjs || typeof pdfjs.getDocument !== 'function') {
+        throw new Error('La librería local pdf.js no está disponible para procesar archivos PDF.');
+    }
+
+    const datos =
+        bufferPdf instanceof Uint8Array
+            ? bufferPdf
+            : bufferPdf instanceof ArrayBuffer
+              ? new Uint8Array(bufferPdf)
+              : new Uint8Array(bufferPdf?.buffer || bufferPdf);
+
+    const disableWorker =
+        opciones.disableWorker !== undefined
+            ? opciones.disableWorker
+            : typeof Worker === 'undefined';
+
+    const tareaCarga = pdfjs.getDocument({
+        data: datos,
+        verbosity: 0,
+        disableWorker,
+        ...opciones,
+        // Mitigación CVE-2024-4367: impedir ejecución de eval en fuentes PDF incluso si opciones lo habilita
+        isEvalSupported: false,
+    });
+
+    const pdfDoc = await tareaCarga.promise;
+    try {
+        const paginasTexto = [];
+        for (let numPagina = 1; numPagina <= pdfDoc.numPages; numPagina++) {
+            const pagina = await pdfDoc.getPage(numPagina);
+            const contenido = await pagina.getTextContent();
+            const textoPagina = reconstruirLineasDeItemsPdf(contenido?.items || []);
+            if (textoPagina) {
+                paginasTexto.push(textoPagina);
+            }
+        }
+
+        const textoUnido = paginasTexto.join('\n').trim();
+        const evaluacion = evaluarTextoExtraidoPdf(textoUnido);
+        return {
+            ok: evaluacion.valido,
+            esEscaneado: evaluacion.esEscaneado,
+            mensajeError: evaluacion.mensajeError,
+            texto: evaluacion.texto,
+            paginas: pdfDoc.numPages,
+            lineas: evaluacion.texto ? evaluacion.texto.split('\n').length : 0,
+        };
+    } finally {
+        if (typeof pdfDoc?.destroy === 'function') {
+            await pdfDoc.destroy().catch(() => {});
+        }
+    }
+};
+
+export const TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES = 5 * 1024 * 1024;
+export const MENSAJE_ARCHIVO_DEMASIADO_GRANDE =
+    'El archivo supera el límite máximo permitido de 5 MB.';
+export const MENSAJE_DOC_ANTIGUO = 'Guardá el archivo como .docx y volvé a subirlo';
+
+/**
+ * Valida antes de leer un archivo que no supere el tamaño máximo permitido (5 MB por defecto).
+ */
+export const validarTamanoArchivoImportacion = (
+    archivo,
+    maxBytes = TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES
+) => {
+    if (!archivo) {
+        return { valido: false, mensajeError: 'No se seleccionó ningún archivo.' };
+    }
+    const tamano = Number(archivo.size ?? 0);
+    if (Number.isFinite(tamano) && tamano > maxBytes) {
+        return { valido: false, mensajeError: MENSAJE_ARCHIVO_DEMASIADO_GRANDE };
+    }
+    return { valido: true, mensajeError: null };
+};
+
+/**
+ * Detecta archivos Word heredados en formato binario .doc (distinto de .docx).
+ */
+export const esArchivoDocAntiguo = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    if (nombre.endsWith('.docx')) return false;
+    return nombre.endsWith('.doc') || tipo === 'application/msword';
+};
+
+/**
+ * Determina si un archivo corresponde a una planilla Excel (.xlsx o .xls).
+ */
+export const esArchivoExcel = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    if (nombre.endsWith('.xlsx') || nombre.endsWith('.xls')) {
+        return true;
+    }
+    // En Windows algunos navegadores reportan .csv como application/vnd.ms-excel
+    if (
+        nombre.endsWith('.csv') ||
+        nombre.endsWith('.txt') ||
+        nombre.endsWith('.pdf') ||
+        nombre.endsWith('.doc') ||
+        nombre.endsWith('.docx')
+    ) {
+        return false;
+    }
+    return (
+        tipo === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        tipo === 'application/vnd.ms-excel'
+    );
+};
+
+/**
+ * Determina si un archivo corresponde a un documento Word moderno (.docx).
+ */
+export const esArchivoDocx = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    return (
+        nombre.endsWith('.docx') ||
+        tipo === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+};
+
+/**
+ * Verifica si un texto CSV (por ejemplo, exportado desde la primera hoja de un Excel)
+ * posee encabezados compatibles con la plantilla CSV directa del proyecto y filas válidas.
+ */
+export const evaluarCsvPlantillaDirecta = (contenidoCsv = '') => {
+    const vacio = {
+        compatible: false,
+        resultado: parsearCsvProveedor(''),
+    };
+    const texto = String(contenidoCsv || '').trim();
+    if (!texto) return vacio;
+
+    const lineas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+    if (lineas.length < 2) return vacio;
+
+    const primeraLinea = lineas[0];
+    const delimitador = primeraLinea.includes(';')
+        ? ';'
+        : primeraLinea.includes(',')
+          ? ','
+          : primeraLinea.includes('\t')
+            ? '\t'
+            : null;
+
+    if (!delimitador) return vacio;
+
+    const colsCabecera = primeraLinea.split(delimitador).map((c) =>
+        c
+            .replace(/["']/g, '')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+    );
+
+    const tieneColumnaInsumo = colsCabecera.some(
+        (c) => c.includes('insumo') || c.includes('producto') || c.includes('nombre')
+    );
+    const tieneColumnaPrecio = colsCabecera.some(
+        (c) =>
+            c.includes('precio') ||
+            c.includes('total') ||
+            c.includes('importe') ||
+            c.includes('costo') ||
+            c.includes('valor')
+    );
+
+    if (!tieneColumnaInsumo || !tieneColumnaPrecio) {
+        return vacio;
+    }
+
+    const evalCsv = evaluarTextoComoCsvDirecto(texto);
+    return {
+        compatible: evalCsv.compatible,
+        resultado: evalCsv.resultado,
+    };
+};
+
+/**
+ * Convierte la primera hoja de un archivo Excel (.xlsx / .xls) a texto CSV usando SheetJS local.
+ */
+export const extraerCsvDeExcelBuffer = (bufferExcel, xlsxRef = null) => {
+    const xlsx =
+        xlsxRef || (typeof globalThis !== 'undefined' ? globalThis.XLSX : null);
+
+    if (
+        !xlsx ||
+        typeof xlsx.read !== 'function' ||
+        typeof xlsx.utils?.sheet_to_csv !== 'function'
+    ) {
+        throw new Error(
+            'La librería local SheetJS no está disponible para procesar archivos Excel.'
+        );
+    }
+
+    if (!bufferExcel) {
+        throw new Error('El archivo Excel está vacío o no se pudo leer.');
+    }
+
+    const datos =
+        bufferExcel instanceof Uint8Array
+            ? bufferExcel
+            : bufferExcel instanceof ArrayBuffer
+              ? new Uint8Array(bufferExcel)
+              : new Uint8Array(bufferExcel?.buffer || bufferExcel);
+
+    if (!datos || datos.byteLength === 0) {
+        throw new Error('El archivo Excel está vacío o no contiene datos.');
+    }
+
+    const workbook = xlsx.read(datos, { type: 'array' });
+    if (!workbook || !Array.isArray(workbook.SheetNames) || workbook.SheetNames.length === 0) {
+        throw new Error('El archivo Excel no contiene hojas para importar.');
+    }
+
+    const nombreHoja = workbook.SheetNames[0];
+    const primeraHoja = workbook.Sheets?.[nombreHoja];
+    if (!primeraHoja) {
+        throw new Error('La primera hoja del archivo Excel está vacía.');
+    }
+
+    const csv = String(
+        xlsx.utils.sheet_to_csv(primeraHoja, { blankrows: false, rawNumbers: true }) || ''
+    ).trim();
+
+    if (!csv || csv.replace(/[,;\s\r\n]+/g, '').length === 0) {
+        throw new Error('La primera hoja del archivo Excel está vacía o no contiene datos.');
+    }
+
+    const lineas = csv
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+    return {
+        ok: true,
+        csv,
+        nombreHoja,
+        totalHojas: workbook.SheetNames.length,
+        lineas: lineas.length,
+    };
+};
+
+/**
+ * Extrae únicamente texto plano desde un archivo Word (.docx) usando Mammoth local.
+ */
+export const extraerTextoDeDocxBuffer = async (bufferDocx, mammothRef = null) => {
+    const mammoth =
+        mammothRef || (typeof globalThis !== 'undefined' ? globalThis.mammoth : null);
+
+    if (!mammoth || typeof mammoth.extractRawText !== 'function') {
+        throw new Error(
+            'La librería local Mammoth no está disponible para procesar archivos Word (.docx).'
+        );
+    }
+
+    if (!bufferDocx) {
+        throw new Error('El archivo Word (.docx) está vacío o no se pudo leer.');
+    }
+
+    let arrayBuffer;
+    if (bufferDocx instanceof ArrayBuffer) {
+        arrayBuffer = bufferDocx;
+    } else if (ArrayBuffer.isView(bufferDocx)) {
+        arrayBuffer = bufferDocx.buffer.slice(
+            bufferDocx.byteOffset,
+            bufferDocx.byteOffset + bufferDocx.byteLength
+        );
+    } else if (bufferDocx?.buffer instanceof ArrayBuffer) {
+        arrayBuffer = bufferDocx.buffer;
+    } else {
+        throw new Error('El formato del archivo Word (.docx) no es válido.');
+    }
+
+    if (arrayBuffer.byteLength === 0) {
+        throw new Error('El archivo Word (.docx) está vacío o no contiene datos.');
+    }
+
+    const resultado = await mammoth.extractRawText({ arrayBuffer });
+    const texto = String(resultado?.value || '').trim();
+    if (!texto) {
+        throw new Error(
+            'El documento Word (.docx) no contiene texto legible para importar.'
+        );
+    }
+
+    const lineas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+    return {
+        ok: true,
+        texto,
+        lineas: lineas.length,
+        advertencias: Array.isArray(resultado?.messages) ? resultado.messages : [],
+    };
+};
+
+const UNIDADES_POR_BASE_RECETA = {
+    g: [
+        { valor: 'g', etiqueta: 'g (Gramos)' },
+        { valor: 'kg', etiqueta: 'kg (Kilogramos)' },
+        { valor: 'mg', etiqueta: 'mg (Miligramos)' },
+    ],
+    ml: [
+        { valor: 'ml', etiqueta: 'ml (Mililitros)' },
+        { valor: 'l', etiqueta: 'l (Litros)' },
+        { valor: 'cc', etiqueta: 'cc (Centímetros cúbicos)' },
+    ],
+    un: [
+        { valor: 'un', etiqueta: 'un (Unidades)' },
+        { valor: 'docena', etiqueta: 'docena (12 un)' },
+    ],
+};
+
+const FACTORES_CONVERSION_RECETA = {
+    'g->g': 1,
+    'kg->g': 1000,
+    'kilo->g': 1000,
+    'mg->g': 0.001,
+    'ml->ml': 1,
+    'cc->ml': 1,
+    'l->ml': 1000,
+    'lt->ml': 1000,
+    'litro->ml': 1000,
+    'un->un': 1,
+    'u->un': 1,
+    'unidad->un': 1,
+    'docena->un': 12,
+};
+
+/**
+ * Verifica si el usuario autenticado posee un permiso granular activo.
+ */
+export const usuarioTienePermiso = (usuario, clavePermiso) => {
+    if (!usuario || !clavePermiso) {
+        return false;
+    }
+    const permisos = usuario.permisos;
+    if (Array.isArray(permisos)) {
+        if (permisos.includes(clavePermiso)) {
+            return true;
+        }
+        // Superusuario sin PerfilUsuario emite rol DUENIO con lista de permisos vacía en JWT
+        if (String(usuario.rol || '').toUpperCase() === 'DUENIO' && permisos.length === 0) {
+            return true;
+        }
+        return false;
+    }
+    if (permisos && typeof permisos === 'object') {
+        return Boolean(permisos[clavePermiso]);
+    }
+    return String(usuario.rol || '').toUpperCase() === 'DUENIO';
+};
+
+export const PERMISOS_POR_SECCION = {
+    pos: ['ventas.cobrar_ticket'],
+    caja: [
+        'caja.abrir_turno',
+        'caja.cerrar_turno',
+        'caja.ver_efectivo_esperado',
+        'caja.gestionar_turnos_ajenos',
+    ],
+    compras: [
+        'compras.ver',
+        'compras.registrar',
+        'ia.importar_listas',
+        'insumos.ver',
+    ],
+    recetas: ['recetas.ver'],
+    finanzas: ['reportes.ver_financieros', 'reportes.ver_operativos'],
+    personal: ['personal.ver'],
+};
+
+/**
+ * Indica qué acciones rápidas de caja puede ver el usuario según sus permisos.
+ * "Abrir turno" además se oculta mientras ya hay un turno abierto.
+ */
+export const accionesCajaVisiblesParaUsuario = (usuario, turnoActivo = null) => ({
+    movimiento: usuarioTienePermiso(usuario, 'caja.registrar_movimiento'),
+    abrirTurno: usuarioTienePermiso(usuario, 'caja.abrir_turno') && turnoActivo?.estado !== 'ABIERTO',
+});
+
+/**
+ * Devuelve la lista de secciones visibles (en el orden del menú) para el usuario.
+ */
+export const seccionesVisiblesParaUsuario = (usuario) => {
+    if (!usuario || typeof usuario !== 'object') {
+        return [];
+    }
+    return Object.entries(PERMISOS_POR_SECCION)
+        .filter(([, permisosRequeridos]) =>
+            permisosRequeridos.some((clave) => usuarioTienePermiso(usuario, clave))
+        )
+        .map(([seccion]) => seccion);
+};
+
+/**
+ * Devuelve las unidades compatibles con la unidad base de un insumo ('g', 'ml', 'un').
+ */
+export const obtenerUnidadesCompatiblesReceta = (unidadBase = '') => {
+    const base = String(unidadBase || '').trim().toLowerCase();
+    if (UNIDADES_POR_BASE_RECETA[base]) {
+        return UNIDADES_POR_BASE_RECETA[base];
+    }
+    return [
+        ...UNIDADES_POR_BASE_RECETA.g,
+        ...UNIDADES_POR_BASE_RECETA.ml,
+        ...UNIDADES_POR_BASE_RECETA.un,
+    ];
+};
+
+/**
+ * Factor multiplicador para convertir una cantidad de receta a la unidad base del insumo.
+ */
+export const calcularFactorConversionReceta = (unidadOrigen = '', unidadBase = '') => {
+    const origen = String(unidadOrigen || '').trim().toLowerCase();
+    const base = String(unidadBase || '').trim().toLowerCase();
+    if (!origen || !base || origen === base) return 1;
+    return FACTORES_CONVERSION_RECETA[`${origen}->${base}`] ?? 1;
+};
+
+/**
+ * Mano de obra y descartables de un producto, con la misma fórmula del backend
+ * (obtener_desglose_costeo_producto): mano de obra = minutos × costo por hora / 60.
+ * Devuelve null si la API ocultó los costos (usuario sin recetas.ver_costos).
+ */
+export const calcularCostosExtraReceta = (producto) => {
+    if (!producto || producto.costo_hora_mano_obra === null || producto.costo_hora_mano_obra === undefined) {
+        return null;
+    }
+    const minutos = Math.max(Number(producto.minutos_mano_obra) || 0, 0);
+    const costoHora = Number(producto.costo_hora_mano_obra) || 0;
+    const descartables = Number(producto.descartables) || 0;
+    const manoObra = minutos > 0 ? (minutos * costoHora) / 60 : 0;
+    return { minutos, costoHora, manoObra, descartables };
+};
+
+/**
+ * Crea un fetch que agrega el token vigente y, ante un 401, renueva la sesión una vez
+ * y repite el pedido. Si varios pedidos vencen a la vez comparten una sola renovación
+ * (el refresh rota y se invalida, así que dos renovaciones en paralelo fallarían).
+ * - renovarSesion(): true si renovó, false si la sesión ya no se puede renovar.
+ *   Si lanza (por ejemplo, sin red), no se cierra la sesión y se devuelve el 401 original.
+ * - alVencerSesion(): se llama cuando no se pudo renovar.
+ */
+export const crearFetchConSesion = ({ fetchFn, obtenerToken, renovarSesion, alVencerSesion }) => {
+    let renovacionEnCurso = null;
+
+    const conToken = (opciones = {}) => {
+        const headers = new Headers(opciones.headers || {});
+        const token = obtenerToken();
+        if (token) headers.set('Authorization', `Bearer ${token}`);
+        return { ...opciones, headers };
+    };
+
+    const renovar = () => {
+        if (!renovacionEnCurso) {
+            renovacionEnCurso = Promise.resolve()
+                .then(() => renovarSesion())
+                .finally(() => {
+                    renovacionEnCurso = null;
+                });
+        }
+        return renovacionEnCurso;
+    };
+
+    const fetchConSesion = async (url, opciones = {}) => {
+        const respuesta = await fetchFn(url, conToken(opciones));
+        if (respuesta.status !== 401) return respuesta;
+
+        let renovada;
+        try {
+            renovada = await renovar();
+        } catch {
+            return respuesta;
+        }
+        if (!renovada) {
+            alVencerSesion();
+            return respuesta;
+        }
+        return fetchFn(url, conToken(opciones));
+    };
+
+    fetchConSesion.renovar = renovar;
+    return fetchConSesion;
+};
+
+/**
+ * Traduce un código de estado HTTP y el mensaje de la API a un texto claro para el usuario.
+ */
+export const mensajeErrorParaUsuario = (status, mensajeApi = '') => {
+    const codigo = Number(status);
+    if (codigo === 403) {
+        return 'No tenés permiso para hacer esto.';
+    }
+    if (codigo === 401) {
+        return 'Tu sesión venció. Volvé a ingresar.';
+    }
+    if (codigo === 429) {
+        return 'Demasiados intentos seguidos. Esperá unos minutos y probá de nuevo.';
+    }
+    const mensajeLimpio = typeof mensajeApi === 'string' ? mensajeApi.trim() : '';
+    // Errores de negocio (4xx) traen su motivo en español; los del servidor (5xx/red) van genéricos.
+    if (codigo >= 400 && codigo < 500 && mensajeLimpio) {
+        return mensajeLimpio;
+    }
+    return 'No se pudo completar la operación. Probá de nuevo en unos minutos.';
+};
+
+/**
+ * Extrae el mensaje legible desde una respuesta de error estándar { mensaje, detalles }.
+ */
+export const extraerMensajeErrorApi = (
+    data,
+    fallback = 'No se pudo completar la operación.'
+) => {
+    if (!data || typeof data !== 'object') return fallback;
+    let detalleMsg = '';
+    if (Array.isArray(data.detalles) && data.detalles.length > 0) {
+        detalleMsg = String(data.detalles[0]);
+    } else if (data.detalles && typeof data.detalles === 'object') {
+        const primerValor = Object.values(data.detalles)[0];
+        if (Array.isArray(primerValor) && primerValor.length > 0) {
+            detalleMsg = String(primerValor[0]);
+        } else if (typeof primerValor === 'string') {
+            detalleMsg = primerValor;
+        }
+    } else if (typeof data.detalles === 'string' && data.detalles.trim()) {
+        detalleMsg = data.detalles;
+    }
+    return detalleMsg || data.mensaje || data.detail || fallback;
+};
+
+/**
+ * Conserva únicamente los campos públicos necesarios para operar el POS en caché local,
+ * descartando costos, márgenes y recetas para no exponer información sensible en el navegador.
+ */
+export const prepararCatalogoParaCache = (productos = []) => {
+    if (!Array.isArray(productos)) {
+        return [];
+    }
+
+    const limpios = [];
+    for (const prod of productos) {
+        if (!prod || typeof prod !== 'object') continue;
+        const idNum = Number(prod.id);
+        if (!Number.isInteger(idNum) || idNum <= 0) continue;
+
+        const precioCentavos = convertirMontoACentavos(
+            prod.precio_venta ?? prod.precioVenta ?? '0.00'
+        );
+
+        limpios.push({
+            id: idNum,
+            nombre: String(prod.nombre ?? ''),
+            codigo_barras:
+                prod.codigo_barras !== undefined && prod.codigo_barras !== null
+                    ? String(prod.codigo_barras)
+                    : null,
+            precio_venta: formatearCentavosADecimal(precioCentavos),
+            estado_activo:
+                prod.estado_activo !== undefined ? Boolean(prod.estado_activo) : true,
+        });
+    }
+    return limpios;
+};
+
+/**
+ * Valida antes de cobrar (online u offline) que exista una carta real cargada
+ * y que todos los ítems del carrito coincidan por id y precio con esa carta.
+ */
+export const validarCarritoContraCatalogo = (carrito = [], catalogo = []) => {
+    if (!Array.isArray(catalogo) || catalogo.length === 0) {
+        return {
+            valido: false,
+            mensaje:
+                'No hay carta disponible. Conectate a internet para cargar los productos antes de vender.',
+        };
+    }
+
+    if (!Array.isArray(carrito) || carrito.length === 0) {
+        return {
+            valido: false,
+            mensaje: 'El ticket de venta está vacío.',
+        };
+    }
+
+    const mapaCatalogo = new Map();
+    for (const prod of catalogo) {
+        if (!prod || typeof prod !== 'object') continue;
+        const idNum = Number(prod.id);
+        if (Number.isInteger(idNum) && idNum > 0) {
+            mapaCatalogo.set(idNum, prod);
+        }
+    }
+
+    if (mapaCatalogo.size === 0) {
+        return {
+            valido: false,
+            mensaje:
+                'No hay carta disponible. Conectate a internet para cargar los productos antes de vender.',
+        };
+    }
+
+    for (const item of carrito) {
+        const prodId = Number(item?.productoId ?? item?.producto ?? item?.producto_id);
+        if (!Number.isInteger(prodId) || prodId <= 0) {
+            return {
+                valido: false,
+                mensaje:
+                    'Uno de los productos del ticket no es válido. Vacialo y volvé a cargarlo.',
+            };
+        }
+
+        const prodCatalogo = mapaCatalogo.get(prodId);
+        if (!prodCatalogo) {
+            const nombreMostrar = item?.nombre ? `"${String(item.nombre)}"` : `#${prodId}`;
+            return {
+                valido: false,
+                mensaje: `El producto ${nombreMostrar} no existe en la carta actual. Quitalo del ticket antes de cobrar.`,
+            };
+        }
+
+        const precioCatalogoCentavos = convertirMontoACentavos(
+            prodCatalogo.precio_venta ?? prodCatalogo.precioVenta
+        );
+        const tieneCentavos =
+            item?.precioUnitarioCentavos !== undefined &&
+            item?.precioUnitarioCentavos !== null &&
+            Number.isFinite(Number(item.precioUnitarioCentavos));
+        const precioItemCentavos = tieneCentavos
+            ? Math.round(Number(item.precioUnitarioCentavos))
+            : convertirMontoACentavos(
+                  item?.precioUnitarioDecimal ?? item?.precio_unitario ?? item?.precio_venta
+              );
+
+        if (precioItemCentavos !== precioCatalogoCentavos) {
+            const nombreMostrar = prodCatalogo.nombre || item?.nombre || `#${prodId}`;
+            return {
+                valido: false,
+                mensaje: `El precio de "${nombreMostrar}" cambió en la carta actual. Quitalo y volvé a agregarlo antes de cobrar.`,
+            };
+        }
+    }
+
+    return {
+        valido: true,
+        mensaje: '',
     };
 };
 

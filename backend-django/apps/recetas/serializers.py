@@ -17,6 +17,7 @@ class RecetaItemSerializer(serializers.ModelSerializer):
         model = RecetaItem
         fields = [
             "id",
+            "producto",
             "insumo",
             "insumo_nombre",
             "insumo_unidad_base",
@@ -31,6 +32,15 @@ class RecetaItemSerializer(serializers.ModelSerializer):
                 "La cantidad del insumo en la receta debe ser mayor a cero."
             )
         return value
+
+    def validate(self, attrs):
+        if self.instance is not None and "producto" in attrs:
+            producto_nuevo = attrs["producto"]
+            if producto_nuevo is None or producto_nuevo.pk != self.instance.producto_id:
+                raise serializers.ValidationError(
+                    {"producto": "No se puede cambiar el producto de un ítem de receta existente."}
+                )
+        return attrs
 
 
 class ProductoSerializer(serializers.ModelSerializer):
@@ -103,6 +113,8 @@ class ProductoSerializer(serializers.ModelSerializer):
                 tiene_costos = "recetas.ver_costos" in token_permisos
 
             if not tiene_costos:
+                ret["costo_hora_mano_obra"] = None
+                ret["descartables"] = None
                 ret["costo_total_calculado"] = None
                 ret["ganancia_bruta"] = None
                 ret["margen_bruto"] = None
