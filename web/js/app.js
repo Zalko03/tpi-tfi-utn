@@ -299,6 +299,97 @@ const actualizarBotonSonidosUI = () => {
 };
 
 // ============================================================
+// LOADERS EN BOTONES Y SECCIONES (CSS PURO + ACCESIBILIDAD)
+// ============================================================
+const conCargando = async (boton, accionAsync) => {
+    if (!boton) {
+        return await accionAsync();
+    }
+    // Evita doble clic o reentrada mientras la operación sigue en curso.
+    if (boton.dataset.cargando === '1') {
+        return undefined;
+    }
+
+    const estabaDeshabilitado = Boolean(boton.disabled);
+    boton.dataset.cargando = '1';
+    boton.disabled = true;
+    boton.setAttribute('aria-busy', 'true');
+    boton.classList.add('btn-cargando');
+
+    let textoSr = boton.querySelector('.texto-cargando-sr');
+    if (!textoSr) {
+        textoSr = document.createElement('span');
+        textoSr.className = 'sr-only texto-cargando-sr';
+        textoSr.textContent = ' Cargando…';
+        boton.appendChild(textoSr);
+    }
+
+    try {
+        return await accionAsync();
+    } finally {
+        delete boton.dataset.cargando;
+        boton.disabled = estabaDeshabilitado;
+        boton.removeAttribute('aria-busy');
+        boton.classList.remove('btn-cargando');
+        const srActual = boton.querySelector('.texto-cargando-sr');
+        if (srActual) srActual.remove();
+    }
+};
+
+const construirEstadoCargandoBloque = (texto = 'Cargando…') => `
+    <div class="estado-cargando-bloque" role="status" aria-live="polite">
+        <span class="spinner-carga" aria-hidden="true"></span>
+        <span>${escaparHtml(texto)}</span>
+    </div>
+`;
+
+const construirCargandoPos = () => {
+    const tarjetasEsqueleto = Array.from({ length: 4 }, () => `
+        <div class="esqueleto-pos-card" aria-hidden="true">
+            <span class="esqueleto-linea esqueleto-w-40"></span>
+            <span class="esqueleto-linea esqueleto-w-85"></span>
+            <span class="esqueleto-linea esqueleto-w-50"></span>
+        </div>
+    `).join('');
+    return `${construirEstadoCargandoBloque('Cargando carta…')}${tarjetasEsqueleto}`;
+};
+
+const construirFilasCargandoTabla = (columnas, texto = 'Cargando…', filasEsqueleto = 3) => {
+    const anchos = ['esqueleto-w-75', 'esqueleto-w-50', 'esqueleto-w-60', 'esqueleto-w-40', 'esqueleto-w-85'];
+    const celdasEsqueleto = Array.from(
+        { length: columnas },
+        (_, i) => `<td><span class="esqueleto-linea ${anchos[i % anchos.length]}"></span></td>`
+    ).join('');
+    const filas = Array.from(
+        { length: filasEsqueleto },
+        () => `<tr class="fila-esqueleto" aria-hidden="true">${celdasEsqueleto}</tr>`
+    ).join('');
+
+    return `
+        <tr class="fila-cargando-estado">
+            <td colspan="${columnas}" class="col-centro py-4">
+                <div class="estado-cargando-inline" role="status" aria-live="polite">
+                    <span class="spinner-carga" aria-hidden="true"></span>
+                    <span>${escaparHtml(texto)}</span>
+                </div>
+            </td>
+        </tr>
+        ${filas}
+    `;
+};
+
+const construirCargandoEquipo = () => {
+    const tarjetas = Array.from({ length: 3 }, () => `
+        <div class="esqueleto-equipo-card" aria-hidden="true">
+            <span class="esqueleto-linea esqueleto-w-60"></span>
+            <span class="esqueleto-linea esqueleto-w-40"></span>
+            <span class="esqueleto-linea esqueleto-w-85"></span>
+        </div>
+    `).join('');
+    return `${construirEstadoCargandoBloque('Cargando equipo…')}${tarjetas}`;
+};
+
+// ============================================================
 // TOAST NOTIFICACIONES FLOTANTES (CERO EMOJIS)
 // ============================================================
 export const mostrarToast = (mensaje, tipo = 'info') => {
@@ -987,6 +1078,12 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 // ============================================================
 export const cargarCatalogo = async () => {
     if (estadoApp.modoConexion !== 'offline' && navigator.onLine !== false) {
+        if ($('grilla-productos')) {
+            $('grilla-productos').innerHTML = construirCargandoPos();
+        }
+        if ($('tabla-recetas-productos-body')) {
+            $('tabla-recetas-productos-body').innerHTML = construirFilasCargandoTabla(7, 'Cargando recetas…', 3);
+        }
         try {
             const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
                 headers: {
@@ -1016,12 +1113,15 @@ export const cargarCatalogo = async () => {
                     ? 'Sin conexión al servidor para actualizar la carta. Se muestra la última carta guardada.'
                     : 'No hay carta disponible. Conectate a internet para cargar los productos antes de vender.';
             mostrarToast(msg, 'advertencia');
+        } finally {
+            renderizarCatalogoPOS();
+            renderizarTablaRecetas();
         }
     } else {
         estadoApp.catalogo = leerCacheCatalogoLocal();
+        renderizarCatalogoPOS();
+        renderizarTablaRecetas();
     }
-    renderizarCatalogoPOS();
-    renderizarTablaRecetas();
     if (estadoApp.productoDesgloseId !== null && $('panel-desglose-receta')?.style.display !== 'none') {
         const productoActual = estadoApp.catalogo.find(
             (p) => Number(p.id) === Number(estadoApp.productoDesgloseId)
@@ -1225,7 +1325,7 @@ const registrarCobroEnColaOffline = (payload, resumen, metodoPago) => {
     mostrarToast('Sin internet: la venta quedó guardada y se enviará sola.', 'advertencia');
 };
 
-const cobrarTicketVenta = async () => {
+const cobrarTicketVenta = async () => conCargando($('btn-cobrar-ticket'), async () => {
     const validacionCatalogo = validarCarritoContraCatalogo(
         estadoApp.carrito,
         estadoApp.catalogo
@@ -1323,7 +1423,7 @@ const cobrarTicketVenta = async () => {
         // Ante caída de red o servidor inaccesible, no bloqueamos al cajero
         registrarCobroEnColaOffline(payload, resumen, metodoPago);
     }
-};
+});
 
 const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
     const modal = $('modal-ticket-termico');
@@ -2099,18 +2199,7 @@ const enviarCsvAlCircuitoAprobacion = async () => {
     }
 };
 
-let confirmacionCsvDirectaEnCurso = false;
-
-const confirmarCsvDirectoEnInventario = async () => {
-    if (confirmacionCsvDirectaEnCurso) return;
-    confirmacionCsvDirectaEnCurso = true;
-    const btnConfirmar = $('btn-csv-confirmar-directo');
-    const textoOriginalBtn = btnConfirmar ? btnConfirmar.textContent : '';
-    if (btnConfirmar) {
-        btnConfirmar.disabled = true;
-        btnConfirmar.textContent = 'Confirmando...';
-    }
-
+const confirmarCsvDirectoEnInventario = async () => conCargando($('btn-csv-confirmar-directo'), async () => {
     try {
         const csv = estadoApp.csvParseadoActual;
         if (!csv || csv.items.length === 0) {
@@ -2162,15 +2251,8 @@ const confirmarCsvDirectoEnInventario = async () => {
     } catch (err) {
         console.error('Error de red al confirmar importación:', err);
         mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
-    } finally {
-        confirmacionCsvDirectaEnCurso = false;
-        const btnActual = $('btn-csv-confirmar-directo');
-        if (btnActual) {
-            btnActual.disabled = false;
-            if (textoOriginalBtn) btnActual.textContent = textoOriginalBtn;
-        }
     }
-};
+});
 
 const consultarDetalleImportacion = async (importacionId, intento = 1) => {
     try {
@@ -2499,6 +2581,15 @@ const renderizarTablaRecetas = () => {
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    if (!Array.isArray(estadoApp.catalogo) || estadoApp.catalogo.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="col-centro text-muted py-4">No hay productos cargados en la carta.</td>
+            </tr>
+        `;
+        return;
+    }
+
     const esCajero = estadoApp.usuario?.rol === 'CAJERO';
     const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'recetas.editar');
 
@@ -2573,9 +2664,10 @@ const renderizarTablaRecetas = () => {
             mostrarDesgloseReceta(p);
         });
 
-        tr.querySelector('.btn-recalcular-producto')?.addEventListener('click', async (e) => {
+        const btnRecalcular = tr.querySelector('.btn-recalcular-producto');
+        btnRecalcular?.addEventListener('click', async (e) => {
             e.stopPropagation();
-            await recalcularProducto(p.id);
+            await conCargando(btnRecalcular, () => recalcularProducto(p.id));
         });
 
         tr.querySelector('.btn-editar-precio-producto')?.addEventListener('click', (e) => {
@@ -2717,12 +2809,13 @@ const mostrarDesgloseReceta = (producto) => {
             const btnGuardar = tr.querySelector('.btn-guardar-receta-item');
             const inputCant = tr.querySelector('.input-receta-cantidad');
             btnGuardar?.addEventListener('click', async () => {
-                await actualizarCantidadRecetaItem(item.id, inputCant?.value);
+                await conCargando(btnGuardar, () => actualizarCantidadRecetaItem(item.id, inputCant?.value));
             });
         }
         if (puedeEliminar) {
-            tr.querySelector('.btn-quitar-receta-item')?.addEventListener('click', async () => {
-                await eliminarRecetaItem(item.id);
+            const btnQuitar = tr.querySelector('.btn-quitar-receta-item');
+            btnQuitar?.addEventListener('click', async () => {
+                await conCargando(btnQuitar, () => eliminarRecetaItem(item.id));
             });
         }
 
@@ -2930,6 +3023,11 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
         estadoApp.idCargaReportes = idCarga;
     }
 
+    const tbodyTraza = $('tabla-trazabilidad-body');
+    if (tbodyTraza) {
+        tbodyTraza.innerHTML = construirFilasCargandoTabla(5, 'Cargando reportes…', 4);
+    }
+
     const queryFechas = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
     const queryMovs = construirQueryRangoFechas(fechaDesde, fechaHasta);
     const headers = { 'Authorization': `Bearer ${estadoApp.tokenJwt}` };
@@ -2987,6 +3085,25 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
                 fechaHasta
             );
         }
+
+        const ventasOffline = obtenerVentasOffline();
+        const resultado = unificarTrazabilidadRegistros({
+            ventas,
+            movimientosStock,
+            comprasFallback,
+            cierresCaja,
+            ventasOffline,
+            fechaDesde,
+            fechaHasta,
+        });
+
+        estadoApp.trazabilidad = {
+            ...estadoApp.trazabilidad,
+            registros: resultado.registros,
+            conteos: resultado.conteos,
+            fechaDesde,
+            fechaHasta,
+        };
     } catch {
         if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
         cierresCaja = filtrarRegistrosPorRangoFechas(
@@ -2995,29 +3112,28 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
             fechaDesde,
             fechaHasta
         );
+        const ventasOffline = obtenerVentasOffline();
+        const resultado = unificarTrazabilidadRegistros({
+            ventas,
+            movimientosStock,
+            comprasFallback,
+            cierresCaja,
+            ventasOffline,
+            fechaDesde,
+            fechaHasta,
+        });
+        estadoApp.trazabilidad = {
+            ...estadoApp.trazabilidad,
+            registros: resultado.registros,
+            conteos: resultado.conteos,
+            fechaDesde,
+            fechaHasta,
+        };
+    } finally {
+        if (esCargaVigente(idCarga, estadoApp.idCargaReportes)) {
+            renderizarTablaTrazabilidad();
+        }
     }
-
-    if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
-
-    const ventasOffline = obtenerVentasOffline();
-    const resultado = unificarTrazabilidadRegistros({
-        ventas,
-        movimientosStock,
-        comprasFallback,
-        cierresCaja,
-        ventasOffline,
-        fechaDesde,
-        fechaHasta,
-    });
-
-    estadoApp.trazabilidad = {
-        ...estadoApp.trazabilidad,
-        registros: resultado.registros,
-        conteos: resultado.conteos,
-        fechaDesde,
-        fechaHasta,
-    };
-    renderizarTablaTrazabilidad();
 };
 
 export const cargarFinanzas = async () => {
@@ -3070,6 +3186,12 @@ export const cargarFinanzas = async () => {
     };
 
     const cargarRanking = async () => {
+        if ($('ranking-mas-vendidos-lista')) {
+            $('ranking-mas-vendidos-lista').innerHTML = construirEstadoCargandoBloque('Cargando…');
+        }
+        if ($('ranking-sin-rotacion-lista')) {
+            $('ranking-sin-rotacion-lista').innerHTML = construirEstadoCargandoBloque('Cargando…');
+        }
         try {
             const resRanking = await fetchConSesion(
                 `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?${queryRanking}`,
@@ -3622,6 +3744,10 @@ const actualizarVisibilidadGestionEquipo = () => {
 };
 
 export const cargarPersonal = async () => {
+    const contenedor = $('equipo-tarjetas-grilla');
+    if (contenedor) {
+        contenedor.innerHTML = construirCargandoEquipo();
+    }
     try {
         const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/?limite=100`, {
             headers: {
@@ -3631,10 +3757,11 @@ export const cargarPersonal = async () => {
         if (res.ok) {
             const data = await res.json();
             estadoApp.usuariosEquipo = Array.isArray(data) ? data : (data.datos || data.results || []);
-            renderizarTarjetasPersonal();
         }
     } catch {
         // Fallback offline
+    } finally {
+        renderizarTarjetasPersonal();
     }
 };
 
@@ -3644,6 +3771,11 @@ const renderizarTarjetasPersonal = () => {
     const contenedor = $('equipo-tarjetas-grilla');
     if (!contenedor) return;
     contenedor.innerHTML = '';
+
+    if (!Array.isArray(estadoApp.usuariosEquipo) || estadoApp.usuariosEquipo.length === 0) {
+        contenedor.innerHTML = '<p class="text-muted py-4">No hay integrantes del equipo para mostrar.</p>';
+        return;
+    }
 
     for (const u of estadoApp.usuariosEquipo) {
         const card = document.createElement('div');
@@ -3693,11 +3825,12 @@ const renderizarTarjetasPersonal = () => {
             mostrarModalPermisos(u);
         });
 
-        card.querySelector('.btn-toggle-usuario')?.addEventListener('click', async () => {
+        const btnToggle = card.querySelector('.btn-toggle-usuario');
+        btnToggle?.addEventListener('click', async () => {
             if (u.is_active) {
                 abrirModalBajaEmpleado(u);
             } else {
-                await toggleEstadoUsuario(u);
+                await conCargando(btnToggle, () => toggleEstadoUsuario(u));
             }
         });
 
@@ -3933,11 +4066,11 @@ const inicializarEventosDOM = () => {
         restablecerVisibilidadCredencialesLogin();
     });
 
-    $('form-login')?.addEventListener('submit', (e) => {
+    $('form-login')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = $('input-username')?.value.trim();
         const password = $('input-password')?.value;
-        ejecutarLogin(username, password);
+        await conCargando($('btn-login-submit'), () => ejecutarLogin(username, password));
     });
 
     // 3. Logout
@@ -4039,15 +4172,17 @@ const inicializarEventosDOM = () => {
     });
 
     // 11. Cierre de Caja con Arqueo Ciego
-    $('form-arqueo-ciego')?.addEventListener('submit', (e) => {
+    $('form-arqueo-ciego')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const contado = $('input-efectivo-contado')?.value;
         if (contado !== undefined && contado !== '') {
-            cerrarTurnoCaja(contado);
+            await conCargando($('btn-cerrar-caja-ciego'), () => cerrarTurnoCaja(contado));
         }
     });
 
-    $('btn-refrescar-turnos')?.addEventListener('click', cargarTurnoActivo);
+    $('btn-refrescar-turnos')?.addEventListener('click', () => {
+        conCargando($('btn-refrescar-turnos'), cargarTurnoActivo);
+    });
 
     // 12. Movimiento de Caja Chica
     $('btn-modal-movimiento')?.addEventListener('click', () => {
@@ -4064,31 +4199,34 @@ const inicializarEventosDOM = () => {
             return;
         }
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/movimientos/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    turno_caja: turnoId,
-                    tipo,
-                    monto,
-                    motivo,
-                }),
-            });
-            if (res.ok) {
-                mostrarToast('Movimiento de caja chica registrado con éxito.', 'exito');
-                if ($('modal-movimiento-caja')) $('modal-movimiento-caja').style.display = 'none';
-                $('form-movimiento-caja').reset();
-                cargarTurnoActivo();
-            } else {
-                mostrarToast('Error al registrar movimiento.', 'peligro');
+        const btnSubmit = e.submitter || $('btn-confirmar-movimiento-caja');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/movimientos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        turno_caja: turnoId,
+                        tipo,
+                        monto,
+                        motivo,
+                    }),
+                });
+                if (res.ok) {
+                    mostrarToast('Movimiento de caja chica registrado con éxito.', 'exito');
+                    if ($('modal-movimiento-caja')) $('modal-movimiento-caja').style.display = 'none';
+                    $('form-movimiento-caja').reset();
+                    cargarTurnoActivo();
+                } else {
+                    mostrarToast('Error al registrar movimiento.', 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 13. Apertura de Turno
@@ -4098,29 +4236,32 @@ const inicializarEventosDOM = () => {
     $('form-abrir-turno')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const efectivoInicial = $('input-apertura-fondo').value;
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({ efectivo_inicial: efectivoInicial }),
-            });
-            if (res.ok) {
-                reproducirSonido(obtenerSonidoParaEvento('turno.abierto'));
-                mostrarToast('Turno de caja abierto correctamente.', 'exito');
-                if ($('modal-abrir-turno')) $('modal-abrir-turno').style.display = 'none';
-                cargarTurnoActivo();
-            } else {
-                const data = await res.json().catch(() => null);
-                mostrarToast(mensajeErrorParaUsuario(res.status, data?.mensaje), 'peligro');
-                // Si ya había un turno abierto, se refresca la caja para mostrarlo.
-                if (res.status === 400) cargarTurnoActivo();
+        const btnSubmit = e.submitter || $('btn-confirmar-abrir-turno');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({ efectivo_inicial: efectivoInicial }),
+                });
+                if (res.ok) {
+                    reproducirSonido(obtenerSonidoParaEvento('turno.abierto'));
+                    mostrarToast('Turno de caja abierto correctamente.', 'exito');
+                    if ($('modal-abrir-turno')) $('modal-abrir-turno').style.display = 'none';
+                    cargarTurnoActivo();
+                } else {
+                    const data = await res.json().catch(() => null);
+                    mostrarToast(mensajeErrorParaUsuario(res.status, data?.mensaje), 'peligro');
+                    // Si ya había un turno abierto, se refresca la caja para mostrarlo.
+                    if (res.status === 400) cargarTurnoActivo();
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 14. Pestañas de Compras
@@ -4176,7 +4317,9 @@ const inicializarEventosDOM = () => {
         if (archivo) procesarArchivoImportacionSeleccionado(archivo, 'ia');
     });
 
-    $('btn-csv-circuito-ia')?.addEventListener('click', enviarCsvAlCircuitoAprobacion);
+    $('btn-csv-circuito-ia')?.addEventListener('click', () => {
+        conCargando($('btn-csv-circuito-ia'), enviarCsvAlCircuitoAprobacion);
+    });
     $('btn-csv-confirmar-directo')?.addEventListener('click', confirmarCsvDirectoEnInventario);
     $('btn-csv-desde-texto')?.addEventListener('click', previsualizarCsvDesdeTexto);
 
@@ -4204,82 +4347,84 @@ Flete y entrega a local: $4500`;
             mostrarToast(aviso, 'advertencia');
             return;
         }
-        const evalCsv = evaluarTextoComoCsvDirecto(textoLista);
-        if (evalCsv.compatible) {
-            estadoApp.csvContingenciaFallback = evalCsv.resultado;
-        } else if (
-            !(estadoApp.csvParseadoActual?.items?.length > 0 &&
-            estadoApp.csvParseadoActual.textoParaIa === textoLista)
-        ) {
-            estadoApp.csvContingenciaFallback = null;
-        }
-        const estadoPill = $('estado-importacion-ia');
+        await conCargando($('btn-analizar-ia'), async () => {
+            const evalCsv = evaluarTextoComoCsvDirecto(textoLista);
+            if (evalCsv.compatible) {
+                estadoApp.csvContingenciaFallback = evalCsv.resultado;
+            } else if (
+                !(estadoApp.csvParseadoActual?.items?.length > 0 &&
+                estadoApp.csvParseadoActual.textoParaIa === textoLista)
+            ) {
+                estadoApp.csvContingenciaFallback = null;
+            }
+            const estadoPill = $('estado-importacion-ia');
 
-        if (estadoPill) estadoPill.textContent = 'Analizando con IA...';
-        renderizarPropuestaIAComercial({
-            _id: null,
-            estado: 'PROCESANDO',
-            entrada: { proveedorNombre, textoLista, origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto' },
-            salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
-        });
-
-        try {
-            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    proveedorNombre,
-                    textoLista,
-                    versionPrompt: 'v1',
-                    origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto',
-                }),
+            if (estadoPill) estadoPill.textContent = 'Analizando con IA...';
+            renderizarPropuestaIAComercial({
+                _id: null,
+                estado: 'PROCESANDO',
+                entrada: { proveedorNombre, textoLista, origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto' },
+                salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
             });
-            const data = await res.json().catch(() => ({}));
-            if (res.status === 202 && data.importacionId) {
-                mostrarToast('Lista recibida. Analizando con IA...', 'info');
-                const datosDetalle = await consultarDetalleImportacion(data.importacionId);
-                const evaluacion = evaluarEstadoImportacionIA(datosDetalle);
-                if (estadoPill) {
-                    estadoPill.textContent = evaluacion.esContingencia
-                        ? MENSAJE_IA_NO_DISPONIBLE
-                        : evaluacion.enProceso
-                          ? 'Analizando con IA...'
-                          : 'Propuesta procesada con IA y lista en el Paso 2.';
-                }
-                if (evaluacion.esContingencia) {
+
+            try {
+                const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        proveedorNombre,
+                        textoLista,
+                        versionPrompt: 'v1',
+                        origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto',
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.status === 202 && data.importacionId) {
+                    mostrarToast('Lista recibida. Analizando con IA...', 'info');
+                    const datosDetalle = await consultarDetalleImportacion(data.importacionId);
+                    const evaluacion = evaluarEstadoImportacionIA(datosDetalle);
+                    if (estadoPill) {
+                        estadoPill.textContent = evaluacion.esContingencia
+                            ? MENSAJE_IA_NO_DISPONIBLE
+                            : evaluacion.enProceso
+                              ? 'Analizando con IA...'
+                              : 'Propuesta procesada con IA y lista en el Paso 2.';
+                    }
+                    if (evaluacion.esContingencia) {
+                        mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+                    }
+                } else {
+                    console.warn('Error al analizar lista con IA:', res.status, data);
+                    const motivo = mensajeErrorParaUsuario(res.status, data?.mensaje);
+                    renderizarPropuestaIAComercial({
+                        _id: null,
+                        estado: 'CONTINGENCIA',
+                        contingencia: true,
+                        proveedorIa: 'contingencia',
+                        mensajeContingencia: motivo,
+                        advertencias: data?.detalles ? [String(data.detalles)] : [],
+                        salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
+                    });
+                    if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
                     mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
                 }
-            } else {
-                console.warn('Error al analizar lista con IA:', res.status, data);
-                const motivo = mensajeErrorParaUsuario(res.status, data?.mensaje);
+            } catch (err) {
                 renderizarPropuestaIAComercial({
                     _id: null,
                     estado: 'CONTINGENCIA',
                     contingencia: true,
                     proveedorIa: 'contingencia',
-                    mensajeContingencia: motivo,
-                    advertencias: data?.detalles ? [String(data.detalles)] : [],
+                    mensajeContingencia: err?.message || 'No se pudo conectar con el servicio de IA.',
+                    advertencias: [err?.message || 'Error de red'],
                     salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
                 });
                 if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
                 mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
             }
-        } catch (err) {
-            renderizarPropuestaIAComercial({
-                _id: null,
-                estado: 'CONTINGENCIA',
-                contingencia: true,
-                proveedorIa: 'contingencia',
-                mensajeContingencia: err?.message || 'No se pudo conectar con el servicio de IA.',
-                advertencias: [err?.message || 'Error de red'],
-                salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
-            });
-            if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
-            mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
-        }
+        });
     });
 
     $('btn-aprobar-ia')?.addEventListener('click', async () => {
@@ -4296,42 +4441,44 @@ Flete y entrega a local: $4500`;
         const proveedorNombre = salida.proveedorDetectado || $('input-proveedor-ia')?.value.trim() || 'Proveedor Importado IA';
         const envio = salida.envioDetectado || '0.00';
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    proveedorNombre,
-                    envio,
-                    items: itemsParaAprobar,
-                }),
-            });
-            const data = await res.json();
-            if (res.ok) {
-                reproducirSonido(obtenerSonidoParaEvento('importacion.confirmada'));
-                const cantCompras = data.comprasCreadas?.length || itemsParaAprobar.length;
-                const cantRecetas = data.productosRecalculados?.length || 0;
+        await conCargando($('btn-aprobar-ia'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        proveedorNombre,
+                        envio,
+                        items: itemsParaAprobar,
+                    }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    reproducirSonido(obtenerSonidoParaEvento('importacion.confirmada'));
+                    const cantCompras = data.comprasCreadas?.length || itemsParaAprobar.length;
+                    const cantRecetas = data.productosRecalculados?.length || 0;
+                    mostrarToast(
+                        `Propuesta aprobada: ${cantCompras} insumos/compras actualizados y ${cantRecetas} recetas recalculadas.`,
+                        'exito'
+                    );
+                    if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
+                    await cargarInsumos();
+                    await cargarCatalogo();
+                    return;
+                }
+                console.warn('Error al aprobar propuesta IA:', res.status, data);
                 mostrarToast(
-                    `Propuesta aprobada: ${cantCompras} insumos/compras actualizados y ${cantRecetas} recetas recalculadas.`,
-                    'exito'
+                    mensajeErrorParaUsuario(res.status, data?.mensaje),
+                    'peligro'
                 );
-                if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
-                await cargarInsumos();
-                await cargarCatalogo();
-                return;
+            } catch (err) {
+                console.error('Error de red al aprobar propuesta IA:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
-            console.warn('Error al aprobar propuesta IA:', res.status, data);
-            mostrarToast(
-                mensajeErrorParaUsuario(res.status, data?.mensaje),
-                'peligro'
-            );
-        } catch (err) {
-            console.error('Error de red al aprobar propuesta IA:', err);
-            mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
-        }
+        });
     });
 
     $('btn-cerrar-desglose')?.addEventListener('click', () => {
@@ -4346,22 +4493,24 @@ Flete y entrega a local: $4500`;
             estadoApp.importacionActual = null;
             return;
         }
-        try {
-            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/rechazar`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({ motivo: 'Descartado por operador en revisión' }),
-            });
-            if (res.ok) {
-                mostrarToast('Propuesta de importación descartada.', 'info');
-                if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
+        await conCargando($('btn-rechazar-ia'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/rechazar`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({ motivo: 'Descartado por operador en revisión' }),
+                });
+                if (res.ok) {
+                    mostrarToast('Propuesta de importación descartada.', 'info');
+                    if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 17. Compra Manual de Insumos
@@ -4377,39 +4526,44 @@ Flete y entrega a local: $4500`;
         const precioTotal = $('input-compra-total').value;
         const envio = $('input-compra-envio').value || '0.00';
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/compras/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    proveedor: Number(proveedor),
-                    insumo: Number(insumo),
-                    cantidad,
-                    unidad,
-                    precio_total: precioTotal,
-                    envio,
-                    iva_incluido: true,
-                }),
-            });
-            if (res.ok) {
-                mostrarToast('Compra registrada y costo base ponderado recalculado.', 'exito');
-                if ($('modal-nueva-compra')) $('modal-nueva-compra').style.display = 'none';
-                $('form-nueva-compra').reset();
-                cargarInsumos();
-                cargarCatalogo();
-            } else {
-                mostrarToast('Error al registrar compra.', 'peligro');
+        const btnSubmit = e.submitter || $('btn-confirmar-nueva-compra');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/compras/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        proveedor: Number(proveedor),
+                        insumo: Number(insumo),
+                        cantidad,
+                        unidad,
+                        precio_total: precioTotal,
+                        envio,
+                        iva_incluido: true,
+                    }),
+                });
+                if (res.ok) {
+                    mostrarToast('Compra registrada y costo base ponderado recalculado.', 'exito');
+                    if ($('modal-nueva-compra')) $('modal-nueva-compra').style.display = 'none';
+                    $('form-nueva-compra').reset();
+                    cargarInsumos();
+                    cargarCatalogo();
+                } else {
+                    mostrarToast('Error al registrar compra.', 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 18. Recalcular toda la carta y Gestión de Productos / Recetas
-    $('btn-recalcular-toda-carta')?.addEventListener('click', recalcularTodaLaCarta);
+    $('btn-recalcular-toda-carta')?.addEventListener('click', () => {
+        conCargando($('btn-recalcular-toda-carta'), recalcularTodaLaCarta);
+    });
 
     $('btn-modal-nuevo-producto')?.addEventListener('click', () => {
         if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.crear')) return;
@@ -4434,33 +4588,36 @@ Flete y entrega a local: $4500`;
             return;
         }
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    nombre,
-                    codigo_barras: codigoBarras || null,
-                    precio_venta: precioVenta,
-                    minutos_mano_obra: minutosManoObra,
-                    costo_hora_mano_obra: costoHoraManoObra,
-                }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-                if ($('modal-nuevo-producto')) $('modal-nuevo-producto').style.display = 'none';
-                $('form-nuevo-producto').reset();
-                mostrarToast(`Producto "${data.nombre || nombre}" agregado a la carta.`, 'exito');
-                await cargarCatalogo();
-            } else {
-                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo crear el producto.'), 'peligro');
+        const btnSubmit = e.submitter || $('btn-confirmar-nuevo-producto');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        nombre,
+                        codigo_barras: codigoBarras || null,
+                        precio_venta: precioVenta,
+                        minutos_mano_obra: minutosManoObra,
+                        costo_hora_mano_obra: costoHoraManoObra,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('modal-nuevo-producto')) $('modal-nuevo-producto').style.display = 'none';
+                    $('form-nuevo-producto').reset();
+                    mostrarToast(`Producto "${data.nombre || nombre}" agregado a la carta.`, 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo crear el producto.'), 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     $('form-editar-precio-producto')?.addEventListener('submit', async (e) => {
@@ -4471,26 +4628,29 @@ Flete y entrega a local: $4500`;
         const precioVenta = $('input-editar-precio-venta')?.value;
         if (!productoId) return;
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({ precio_venta: precioVenta }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-                if ($('modal-editar-precio-producto')) $('modal-editar-precio-producto').style.display = 'none';
-                mostrarToast('Precio de venta actualizado y margen recalculado.', 'exito');
-                await cargarCatalogo();
-            } else {
-                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo actualizar el precio de venta.'), 'peligro');
+        const btnSubmit = e.submitter || $('btn-confirmar-editar-precio');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({ precio_venta: precioVenta }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('modal-editar-precio-producto')) $('modal-editar-precio-producto').style.display = 'none';
+                    mostrarToast('Precio de venta actualizado y margen recalculado.', 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo actualizar el precio de venta.'), 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     $('select-receta-insumo')?.addEventListener('change', actualizarSelectUnidadReceta);
@@ -4509,37 +4669,40 @@ Flete y entrega a local: $4500`;
             return;
         }
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/recetas-items/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    producto: Number(productoId),
-                    insumo: Number(insumoId),
-                    cantidad,
-                    unidad,
-                }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-                if ($('input-receta-cantidad')) $('input-receta-cantidad').value = '';
-                mostrarToast('Insumo agregado a la receta y costo recalculado.', 'exito');
-                await cargarCatalogo();
-            } else {
-                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo agregar el insumo a la receta.'), 'peligro');
+        const btnSubmit = e.submitter || $('btn-agregar-receta-item');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/recetas-items/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        producto: Number(productoId),
+                        insumo: Number(insumoId),
+                        cantidad,
+                        unidad,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('input-receta-cantidad')) $('input-receta-cantidad').value = '';
+                    mostrarToast('Insumo agregado a la receta y costo recalculado.', 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo agregar el insumo a la receta.'), 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 19. Simulador de Punto de Equilibrio
-    $('form-punto-equilibrio')?.addEventListener('submit', (e) => {
+    $('form-punto-equilibrio')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        calcularPuntoEquilibrio();
+        await conCargando($('btn-calcular-pe'), () => calcularPuntoEquilibrio());
     });
 
     // 20. Configuración de Servidor y Modo de Conexión
@@ -4579,14 +4742,20 @@ Flete y entrega a local: $4500`;
     });
 
     // 21. Sincronización de ventas offline y reconexión automática
-    $('btn-sincronizar-offline')?.addEventListener('click', sincronizarVentasPendientes);
+    $('btn-sincronizar-offline')?.addEventListener('click', () => {
+        conCargando($('btn-sincronizar-offline'), sincronizarVentasPendientes);
+    });
 
     // 21b. Consultor IA de Stock y Cierre de Caja para el Dueño
-    $('btn-ia-diagnostico-stock')?.addEventListener('click', consultarDiagnosticoStockIA);
-    $('btn-ia-auditar-caja')?.addEventListener('click', auditarCierreCajaIA);
+    $('btn-ia-diagnostico-stock')?.addEventListener('click', () => {
+        conCargando($('btn-ia-diagnostico-stock'), consultarDiagnosticoStockIA);
+    });
+    $('btn-ia-auditar-caja')?.addEventListener('click', () => {
+        conCargando($('btn-ia-auditar-caja'), auditarCierreCajaIA);
+    });
 
     // 21c. Filtro de Fechas y Trazabilidad en Reportes y Finanzas
-    const aplicarFiltroFechasReportes = () => {
+    const aplicarFiltroFechasReportes = async (boton = $('btn-filtrar-fechas')) => {
         const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado({ paraValidar: true });
         const validacion = validarRangoFechas(fechaDesde, fechaHasta);
         if (!validacion.valido) {
@@ -4594,7 +4763,7 @@ Flete y entrega a local: $4500`;
             return;
         }
         document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
-        cargarFinanzas();
+        await conCargando(boton, () => cargarFinanzas());
     };
     const manejarEnterFiltroFechas = (evento) => {
         if (evento.key === 'Enter') {
@@ -4631,16 +4800,16 @@ Flete y entrega a local: $4500`;
             campo.focus();
         });
     });
-    $('btn-filtrar-fechas')?.addEventListener('click', aplicarFiltroFechasReportes);
-    $('btn-limpiar-fechas')?.addEventListener('click', () => {
+    $('btn-filtrar-fechas')?.addEventListener('click', () => aplicarFiltroFechasReportes($('btn-filtrar-fechas')));
+    $('btn-limpiar-fechas')?.addEventListener('click', async () => {
         if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = '';
         if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = '';
         document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
-        cargarFinanzas();
+        await conCargando($('btn-limpiar-fechas'), () => cargarFinanzas());
     });
 
     document.querySelectorAll('.btn-atajo-fecha').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const atajo = btn.dataset.atajo;
             const ahora = new Date();
             let desde = formatearFechaLocalInput(ahora);
@@ -4657,7 +4826,7 @@ Flete y entrega a local: $4500`;
 
             document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
             btn.classList.add('activo');
-            cargarFinanzas();
+            await conCargando(btn, () => cargarFinanzas());
         });
     });
 
@@ -4720,40 +4889,38 @@ Flete y entrega a local: $4500`;
             return;
         }
 
-        const btnSubmit = $('btn-submit-nuevo-empleado');
-        if (btnSubmit) btnSubmit.disabled = true;
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    username,
-                    password,
-                    first_name,
-                    last_name,
-                    email,
-                    rol,
-                    permisos: {},
-                }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-                if ($('modal-nuevo-empleado')) $('modal-nuevo-empleado').style.display = 'none';
-                $('form-nuevo-empleado')?.reset();
-                actualizarEstadoVisibilidadCampo($('btn-toggle-nuevo-empleado-password'), false);
-                mostrarToast('Empleado agregado.', 'exito');
-                await cargarPersonal();
-            } else {
-                const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
-                mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+        await conCargando($('btn-submit-nuevo-empleado'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        first_name,
+                        last_name,
+                        email,
+                        rol,
+                        permisos: {},
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('modal-nuevo-empleado')) $('modal-nuevo-empleado').style.display = 'none';
+                    $('form-nuevo-empleado')?.reset();
+                    actualizarEstadoVisibilidadCampo($('btn-toggle-nuevo-empleado-password'), false);
+                    mostrarToast('Empleado agregado.', 'exito');
+                    await cargarPersonal();
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
-        } catch {
-            mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
-        } finally {
-            if (btnSubmit) btnSubmit.disabled = false;
-        }
+        });
     });
 
     $('select-permisos-rol')?.addEventListener('change', (e) => {
@@ -4775,53 +4942,51 @@ Flete y entrega a local: $4500`;
         const nuevoRol = ($('select-permisos-rol')?.value || rolOriginal).toUpperCase();
         const cambioRol = puedeEditarRol && nuevoRol !== rolOriginal;
 
-        const btnGuardar = $('btn-guardar-permisos');
-        if (btnGuardar) btnGuardar.disabled = true;
-        let rolActualizado = false;
-        try {
-            if (cambioRol) {
-                const resRol = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/`, {
-                    method: 'PATCH',
+        await conCargando($('btn-guardar-permisos'), async () => {
+            let rolActualizado = false;
+            try {
+                if (cambioRol) {
+                    const resRol = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ rol: nuevoRol }),
+                    });
+                    const dataRol = await resRol.json().catch(() => ({}));
+                    if (!resRol.ok) {
+                        const msgApi = extraerMensajeErrorApi(dataRol, dataRol?.mensaje || '');
+                        mostrarToast(mensajeErrorParaUsuario(resRol.status, msgApi), 'peligro');
+                        return;
+                    }
+                    rolActualizado = true;
+                    u.rol = nuevoRol;
+                }
+
+                const resPerm = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/ajustar-permisos/`, {
+                    method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ rol: nuevoRol }),
+                    body: JSON.stringify({ permisos: permisosDict }),
                 });
-                const dataRol = await resRol.json().catch(() => ({}));
-                if (!resRol.ok) {
-                    const msgApi = extraerMensajeErrorApi(dataRol, dataRol?.mensaje || '');
-                    mostrarToast(mensajeErrorParaUsuario(resRol.status, msgApi), 'peligro');
-                    return;
-                }
-                rolActualizado = true;
-                u.rol = nuevoRol;
-            }
-
-            const resPerm = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/ajustar-permisos/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ permisos: permisosDict }),
-            });
-            const dataPerm = await resPerm.json().catch(() => ({}));
-            if (resPerm.ok) {
-                if ($('modal-permisos')) $('modal-permisos').style.display = 'none';
-                estadoApp.empleadoEditandoPermisos = null;
-                mostrarToast('Permisos guardados.', 'exito');
-                await cargarPersonal();
-            } else {
-                const msgApi = extraerMensajeErrorApi(dataPerm, dataPerm?.mensaje || '');
-                mostrarToast(mensajeErrorParaUsuario(resPerm.status, msgApi), 'peligro');
-                if (rolActualizado) {
+                const dataPerm = await resPerm.json().catch(() => ({}));
+                if (resPerm.ok) {
+                    if ($('modal-permisos')) $('modal-permisos').style.display = 'none';
+                    estadoApp.empleadoEditandoPermisos = null;
+                    mostrarToast('Permisos guardados.', 'exito');
                     await cargarPersonal();
+                } else {
+                    const msgApi = extraerMensajeErrorApi(dataPerm, dataPerm?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(resPerm.status, msgApi), 'peligro');
+                    if (rolActualizado) {
+                        await cargarPersonal();
+                    }
                 }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
-        } catch {
-            mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
-        } finally {
-            if (btnGuardar) btnGuardar.disabled = false;
-        }
+        });
     });
 
     $('form-baja-empleado')?.addEventListener('submit', async (e) => {
@@ -4830,13 +4995,7 @@ Flete y entrega a local: $4500`;
         if (!u) return;
 
         const motivo = ($('input-baja-empleado-motivo')?.value || '').trim();
-        const btnConfirmar = $('btn-confirmar-baja-empleado');
-        if (btnConfirmar) btnConfirmar.disabled = true;
-        try {
-            await toggleEstadoUsuario(u, motivo);
-        } finally {
-            if (btnConfirmar) btnConfirmar.disabled = false;
-        }
+        await conCargando($('btn-confirmar-baja-empleado'), () => toggleEstadoUsuario(u, motivo));
     });
 };
 
