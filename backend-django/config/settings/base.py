@@ -75,7 +75,7 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_THROTTLE_RATES": {
         "anon": os.environ.get("DJANGO_THROTTLE_ANON", "200/day"),
-        "user": os.environ.get("DJANGO_THROTTLE_USER", "2000/day"),
+        "user": os.environ.get("DJANGO_THROTTLE_USER", "10000/day"),
         "login": os.environ.get("DJANGO_THROTTLE_LOGIN", "10/minute"),
         "recalcular": os.environ.get("DJANGO_THROTTLE_RECALCULAR", "20/minute"),
     },

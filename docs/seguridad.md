@@ -165,3 +165,24 @@ Para garantizar la robustez del modelo (según `T2.6`):
 
 El informe completo de auditoría cruzada de seguridad, escaneo de secretos en el historial de Git, matriz de riesgos mitigados y resumen de cobertura se encuentra detallado en:
 - [docs/auditoria-seguridad-tp2.md](file:///home/evilkitty/Escritorio/tfi/tpi-tfi-utn/docs/auditoria-seguridad-tp2.md)
+
+---
+
+## 8. Límites de Peticiones (Rate Limiting)
+
+Ambos backends aplican límites por ventana y devuelven `HTTP 429` con el formato único `{ "mensaje": "...", "detalles": ... }` definido en `docs/api-errores.md`:
+
+### 8.1 Backend Node (`backend-node`)
+- **Archivos de la web (`/app`) y chequeo de salud (`/health`):** montados antes del limitador general, sin límite ni consumo de cupo.
+- **Limitador general (`limitadorGeneral`, ventana de 15 minutos):**
+  - Peticiones con `Authorization: Bearer <token>` cuyo JWT RS256 valida con la clave pública: clave `usuario:<id>`, límite **600 peticiones / 15 min** (separado por usuario).
+  - Peticiones sin token o con token inválido: clave por IP normalizada (`ipKeyGenerator` para IPv6), límite **100 peticiones / 15 min**.
+- **Limitador de IA (`limitadorIA`, ventana de 15 minutos):** **20 peticiones / 15 min** por usuario o IP en `POST /api/importaciones`, `POST /importaciones` y `POST /v1/resumen-semanal`.
+- **Limitador de consultas costosas (`limitadorConsultasCostosas`):** **30 peticiones / 15 min** en `GET /api/productos/:id/resumen-costo`.
+- **Proxy inverso (`NODE_TRUST_PROXY_SALTOS`):** entero no negativo (por defecto `0` en operación local para no confiar en `X-Forwarded-For`; `1` en Render). Nunca `true`.
+
+### 8.2 Backend Django (`backend-django`)
+- **`DJANGO_THROTTLE_USER`:** `10000/day` por usuario autenticado (valor por defecto ampliado desde `2000/day` para jornadas continuas de mostrador).
+- **`DJANGO_THROTTLE_ANON`:** `200/day` para peticiones anónimas.
+- **`DJANGO_THROTTLE_LOGIN`:** `10/minute` en autenticación (`/api/auth/token/`).
+- **`DJANGO_THROTTLE_RECALCULAR`:** `20/minute` en recálculo masivo de costos.
