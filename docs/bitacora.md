@@ -22,6 +22,28 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-17
+Tarea: Trato de vos en la interfaz web y mensajes de validación de Node en lenguaje simple
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Trato de vos en la interfaz (`web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`):**
+  - Se pasaron a vos rioplatense los textos visibles al usuario (login, arqueo ciego, importación de listas, filtros de reportes, simulador de punto de equilibrio, ticket, alertas de turno/planilla/PDF y carta).
+- **Mensajes de validación simples en Node (`backend-node/src/`):**
+  - `validarCampos` ahora devuelve `detalles` solo con `err.msg` sin repetir mensajes ni exponer nombres internos de campo (`err.path`), registrando los campos fallidos en el log estructurado (`logger.warn`) para depuración.
+  - Se reescribieron los `withMessage` y mensajes de error de `importacionIA`, `resumenSemanal`, `productoResumen`, `snapshotCosteo`, `historialPrecio` y `ai.client.js` en español simple, de vos y sin nombres de campos internos.
+- **Tests (`backend-node/tests/`):**
+  - Se agregó `tests/unit/validarCampos.unit.test.js` y se actualizaron `importacionIA.integration.test.js`, `resumenSemanal.integration.test.js` y `seguridadHardening.integration.test.js`.
+Archivos tocados:
+- `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`
+- `backend-node/src/middlewares/validarCampos.middleware.js`
+- `backend-node/src/routes/importacionIA.routes.js`, `resumenSemanal.routes.js`, `productoResumen.routes.js`, `snapshotCosteo.routes.js`, `historialPrecio.routes.js`
+- `backend-node/src/services/importacionIA.service.js`, `backend-node/src/clients/ai.client.js`
+- `backend-node/tests/unit/validarCampos.unit.test.js`, `tests/integration/importacionIA.integration.test.js`, `resumenSemanal.integration.test.js`, `seguridadHardening.integration.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (25 suites, 181 tests passed)
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+Fecha: 2026-11-17
 Tarea: Textos simples en pantalla, menú según permisos, aviso POS sin carta y rate limiting por usuario/IA
 Rama: feature/reportes-filtro-fechas
 Cambios realizados:
