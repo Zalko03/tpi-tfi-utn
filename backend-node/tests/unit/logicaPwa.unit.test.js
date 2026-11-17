@@ -5,11 +5,15 @@ import { fileURLToPath } from 'url';
 import vm from 'vm';
 import { jest } from '@jest/globals';
 import {
+    accionesCajaVisiblesParaUsuario,
+    accionesEmpleadoVisiblesParaUsuario,
+    accionesEquipoVisiblesParaUsuario,
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularCostosExtraReceta,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
+    construirDictPermisosDesdeSeleccion,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -42,6 +46,7 @@ import {
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    GRUPOS_PERMISOS_EQUIPO,
     limpiarColaOffline,
     MENSAJE_ARCHIVO_DEMASIADO_GRANDE,
     MENSAJE_DOC_ANTIGUO,
@@ -49,16 +54,19 @@ import {
     MENSAJE_PDF_ESCANEADO,
     mensajeErrorParaUsuario,
     obtenerContenidoPlantillaCsv,
+    obtenerPermisosInicialesEmpleado,
+    obtenerPlantillaRol,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     obtenerVentasRechazadasOffline,
     parsearCsvProveedor,
+    PERMISOS_CATALOGO_EQUIPO,
     PERMISOS_POR_SECCION,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
     reconstruirLineasDeItemsPdf,
+    ROLES_PLANTILLAS,
     seccionesVisiblesParaUsuario,
-    accionesCajaVisiblesParaUsuario,
     siguienteIdCarga,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
@@ -1545,6 +1553,170 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
 
             expect(seccionesVisiblesParaUsuario(null)).toEqual([]);
             expect(seccionesVisiblesParaUsuario({ rol: 'CAJERO', permisos: [] })).toEqual([]);
+        });
+    });
+
+    describe('Equipo & Permisos: catálogo, plantillas por rol y visibilidad de acciones', () => {
+        it('GRUPOS_PERMISOS_EQUIPO define 9 áreas y las 30 claves del catálogo con etiquetas simples', () => {
+            expect(GRUPOS_PERMISOS_EQUIPO).toHaveLength(9);
+            expect(PERMISOS_CATALOGO_EQUIPO).toHaveLength(30);
+            expect(new Set(PERMISOS_CATALOGO_EQUIPO).size).toBe(30);
+
+            for (const grupo of GRUPOS_PERMISOS_EQUIPO) {
+                expect(grupo.titulo.trim().length).toBeGreaterThan(0);
+                for (const item of grupo.permisos) {
+                    expect(item.clave).toMatch(/^[a-z]+\.[a-z_]+$/);
+                    expect(item.etiqueta.trim().length).toBeGreaterThan(0);
+                    expect(item.etiqueta).not.toContain('.');
+                }
+            }
+        });
+
+        it('obtenerPlantillaRol devuelve copias exactas de las plantillas para DUENIO, ENCARGADO y CAJERO', () => {
+            const duenio = obtenerPlantillaRol('DUENIO');
+            expect(Object.keys(duenio)).toHaveLength(30);
+            expect(Object.values(duenio).every((v) => v === true)).toBe(true);
+
+            const encargado = obtenerPlantillaRol('encargado');
+            expect(encargado['ventas.anular_ticket']).toBe(true);
+            expect(encargado['recetas.ver_costos']).toBe(true);
+            expect(encargado['insumos.eliminar']).toBe(false);
+            expect(encargado['recetas.eliminar']).toBe(false);
+            expect(encargado['reportes.ver_financieros']).toBe(false);
+            expect(encargado['personal.ver']).toBe(false);
+
+            const cajero = obtenerPlantillaRol('CAJERO');
+            expect(cajero['ventas.cobrar_ticket']).toBe(true);
+            expect(cajero['ventas.ver_historial_propio']).toBe(true);
+            expect(cajero['caja.abrir_turno']).toBe(true);
+            expect(cajero['caja.cerrar_turno']).toBe(true);
+            expect(cajero['caja.ver_efectivo_esperado']).toBe(false);
+            expect(cajero['ventas.anular_ticket']).toBe(false);
+
+            // Mutar la copia devuelta no altera la constante ROLES_PLANTILLAS
+            cajero['ventas.anular_ticket'] = true;
+            expect(ROLES_PLANTILLAS.CAJERO['ventas.anular_ticket']).toBe(false);
+            expect(obtenerPlantillaRol('DESCONOCIDO')).toEqual(ROLES_PLANTILLAS.CAJERO);
+        });
+
+        it('construirDictPermisosDesdeSeleccion arma el dict completo true/false para las 30 claves', () => {
+            const desdeLista = construirDictPermisosDesdeSeleccion([
+                'ventas.cobrar_ticket',
+                'caja.abrir_turno',
+                'clave.inexistente',
+            ]);
+            expect(Object.keys(desdeLista)).toHaveLength(30);
+            expect(desdeLista['ventas.cobrar_ticket']).toBe(true);
+            expect(desdeLista['caja.abrir_turno']).toBe(true);
+            expect(desdeLista['ventas.anular_ticket']).toBe(false);
+            expect(desdeLista['personal.crear']).toBe(false);
+            expect('clave.inexistente' in desdeLista).toBe(false);
+
+            const desdeObjeto = construirDictPermisosDesdeSeleccion({
+                'recetas.ver': true,
+                'recetas.ver_costos': false,
+            });
+            expect(Object.keys(desdeObjeto)).toHaveLength(30);
+            expect(desdeObjeto['recetas.ver']).toBe(true);
+            expect(desdeObjeto['recetas.ver_costos']).toBe(false);
+        });
+
+        it('obtenerPermisosInicialesEmpleado usa permisos_activos o cae en plantilla + overrides', () => {
+            const desdeActivos = obtenerPermisosInicialesEmpleado({
+                rol: 'CAJERO',
+                permisos_activos: ['ventas.cobrar_ticket', 'recetas.ver'],
+            });
+            expect(desdeActivos['ventas.cobrar_ticket']).toBe(true);
+            expect(desdeActivos['recetas.ver']).toBe(true);
+            expect(desdeActivos['caja.abrir_turno']).toBe(false);
+
+            const desdeSinActivos = obtenerPermisosInicialesEmpleado({
+                rol: 'CAJERO',
+                permisos: { 'caja.registrar_movimiento': true },
+            });
+            expect(desdeSinActivos['ventas.cobrar_ticket']).toBe(true);
+            expect(desdeSinActivos['caja.registrar_movimiento']).toBe(true);
+            expect(desdeSinActivos['personal.crear']).toBe(false);
+        });
+
+        it('accionesEquipoVisiblesParaUsuario y accionesEmpleadoVisiblesParaUsuario ocultan acciones sin permiso y bloquean la autobaja', () => {
+            const duenio = {
+                id: 1,
+                username: 'duenio_demo',
+                rol: 'DUENIO',
+                permisos: Object.keys(ROLES_PLANTILLAS.DUENIO),
+            };
+            const cajeroActivo = { id: 2, username: 'cajero_1', rol: 'CAJERO', is_active: true };
+            const cajeroInactivo = { id: 3, username: 'cajero_2', rol: 'CAJERO', is_active: false };
+
+            expect(accionesEquipoVisiblesParaUsuario(duenio)).toEqual({ agregarEmpleado: true });
+            expect(accionesEmpleadoVisiblesParaUsuario(duenio, cajeroActivo)).toEqual({
+                permisos: true,
+                cambiarRol: true,
+                darDeBaja: true,
+                reactivar: false,
+            });
+            expect(accionesEmpleadoVisiblesParaUsuario(duenio, cajeroInactivo)).toEqual({
+                permisos: true,
+                cambiarRol: true,
+                darDeBaja: false,
+                reactivar: true,
+            });
+
+            // No puede darse de baja ni reactivarse a sí mismo
+            expect(
+                accionesEmpleadoVisiblesParaUsuario(duenio, {
+                    id: 1,
+                    username: 'duenio_demo',
+                    rol: 'DUENIO',
+                    is_active: true,
+                })
+            ).toEqual({
+                permisos: true,
+                cambiarRol: true,
+                darDeBaja: false,
+                reactivar: false,
+            });
+
+            const soloLectura = { id: 4, username: 'supervisor', rol: 'ENCARGADO', permisos: ['personal.ver'] };
+            expect(accionesEquipoVisiblesParaUsuario(soloLectura)).toEqual({ agregarEmpleado: false });
+            expect(accionesEmpleadoVisiblesParaUsuario(soloLectura, cajeroActivo)).toEqual({
+                permisos: false,
+                cambiarRol: false,
+                darDeBaja: false,
+                reactivar: false,
+            });
+
+            const soloPermisos = {
+                id: 5,
+                username: 'rrhh',
+                rol: 'ENCARGADO',
+                permisos: ['personal.ver', 'personal.ajustar_permisos'],
+            };
+            expect(accionesEmpleadoVisiblesParaUsuario(soloPermisos, cajeroActivo)).toEqual({
+                permisos: true,
+                cambiarRol: false,
+                darDeBaja: false,
+                reactivar: false,
+            });
+
+            expect(accionesEmpleadoVisiblesParaUsuario(null, cajeroActivo)).toEqual({
+                permisos: false,
+                cambiarRol: false,
+                darDeBaja: false,
+                reactivar: false,
+            });
+        });
+
+        it('extraerMensajeErrorApi rescata mensaje anidado de ErrorSupervivenciaDuenio en detalles', () => {
+            const msg = extraerMensajeErrorApi({
+                mensaje: 'Datos de entrada inválidos',
+                detalles: {
+                    detalles: null,
+                    mensaje: 'No se puede cambiar el rol del único Dueño activo en el sistema.',
+                },
+            });
+            expect(msg).toBe('No se puede cambiar el rol del único Dueño activo en el sistema.');
         });
     });
 });

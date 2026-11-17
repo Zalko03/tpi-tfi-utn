@@ -24,6 +24,11 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('modal-nuevo-producto');
         expect(res.text).toContain('modal-editar-precio-producto');
         expect(res.text).toContain('form-agregar-receta-item');
+        expect(res.text).toContain('btn-modal-nuevo-empleado');
+        expect(res.text).toContain('modal-nuevo-empleado');
+        expect(res.text).toContain('modal-baja-empleado');
+        expect(res.text).toContain('select-permisos-rol');
+        expect(res.text).toContain('Siempre queda un dueño activo');
         expect(res.text).toContain('archivo-lista-ia');
         expect(res.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(res.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');
