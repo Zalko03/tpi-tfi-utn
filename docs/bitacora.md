@@ -22,6 +22,46 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-17
+Tarea: Extracción de precios con IA desde foto de lista de proveedor (Web, Node y ai-service)
+Rama: feature/mejoras-profesor
+Cambios realizados:
+- **ai-service (`app/`):**
+  - Se agregó `GROQ_VISION_MODEL` en `config.py`, `.env.example` y `ai-service/.env.example` (valor por defecto `meta-llama/llama-4-scout-17b-16e-instruct`, documentando que puede cambiar según disponibilidad).
+  - Se actualizó `SolicitudExtraccionPrecios` (`schemas/extraccion.py`) para aceptar `imagen_base64` + `imagen_mime` (`image/jpeg`, `image/png`, `image/webp`, hasta 7 MB de base64 / 5 MB binarios) haciendo `texto_lista` opcional si viene imagen y exigiendo al menos uno.
+  - En `proveedor_ia.py` y `extraccion.py` se implementó `generar_json_con_imagen`: Gemini envía `inline_data` y Groq envía `image_url` en data URL con `GROQ_VISION_MODEL`, reutilizando el mismo prompt (con una nota de foto adjunta) y validación Pydantic. Si falta clave o el proveedor (ej. Ollama) no soporta visión, se devuelve contingencia honesta sin inventar ítems.
+- **backend-node (`app.js`, `src/`):**
+  - Se elevó el límite de `express.json` a `8mb` únicamente en `/api/importaciones` y `/importaciones`, conservando el límite estándar para el resto de la API.
+  - En `importacionIA.routes.js`: `textoLista` pasa a ser obligatorio solo si no viene foto; cuando llega `origenArchivo: 'imagen'` (o campos de imagen) se exige `imagenBase64` válido (≤ 7 MB) e `imagenMime` en `image/jpeg|image/png|image/webp` con mensajes simples de vos.
+  - En `ImportacionIA.js`, `importacionIA.controller.js` e `importacionIA.service.js`: se admite `origenArchivo: 'imagen'` sin guardar la imagen en MongoDB (solo `imagenHash` SHA-256, `imagenTamanoBytes` e `imagenMime` para trazabilidad).
+  - En `ai.client.js`: `extraerPreciosIA` reenvía `imagen_base64` e `imagen_mime` con timeout ampliado a 25000 ms para imágenes.
+- **Web (`web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`):**
+  - Se aceptan `.jpg`, `.jpeg`, `.png`, `.webp` en `#input-archivo-csv`, `#zona-drop-csv` y `#archivo-lista-ia`, actualizando textos visibles para mencionar "foto".
+  - Se agregaron en `logicaPwa.js` validadores puros de tipo/tamaño (`esArchivoImagenImportacion`, `validarArchivoImagenImportacion`, `validarArchivoImportacionGeneral`), cálculo proporcional de reescalado (`calcularDimensionesReescaladoImagen`, lado mayor 1600 px) y `extraerBase64DeDataUrl`.
+  - En `app.js`, antes de enviar, la foto se reescala en `<canvas>` (lado mayor 1600 px, JPEG calidad 0.85, fondo blanco para PNG/WEBP), se muestra miniatura + `"Foto lista para analizar con IA"` y se envía `{ proveedorNombre, origenArchivo: 'imagen', imagenBase64, imagenMime: 'image/jpeg' }` sin `textoLista` usando `fetchConSesion`.
+- **Tests:**
+  - `ai-service`: 85 tests en `pytest` (esquemas de imagen/tamaño/MIME, payloads HTTP simulados de Gemini/Groq y contingencia honesta sin clave o sin visión).
+  - `backend-node` + `web`: 25 suites / 211 tests en Jest (`aiClient.unit.test.js`, `importacionIA.integration.test.js`, `logicaPwa.unit.test.js`) y `eslint .` limpio.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/` (`<canvas>`) → `backend-node` (`POST /api/importaciones` con límite JSON `8mb` y `origenArchivo: 'imagen'`) → `ai-service` (`POST /v1/extraer-precios` con `imagen_base64`/`imagen_mime`) → Gemini (`inline_data`) / Groq (`GROQ_VISION_MODEL`, `image_url`).
+Problemas y decisiones técnicas:
+- Se agregó `generar_json_con_imagen` en `ProveedorIA` en lugar de alterar la firma de `generar_json` para no romper adaptadores/tests existentes ni el módulo `resumen.py`; proveedores sin soporte heredan un rechazo controlado que dispara la contingencia honesta.
+- En el navegador se rellena fondo blanco en `<canvas>` antes de exportar a JPEG para que las capturas PNG con transparencia no se vuelvan negras y pierdan legibilidad.
+Archivos tocados:
+- `.env.example`, `ai-service/.env.example`, `ai-service/app/config.py`, `ai-service/app/routers/ia.py`, `ai-service/app/schemas/extraccion.py`, `ai-service/app/services/extraccion.py`, `ai-service/app/services/proveedor_ia.py`
+- `ai-service/app/tests/unit/test_unit_schemas.py`, `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`, `ai-service/app/tests/api/test_api_endpoints.py`
+- `backend-node/app.js`, `backend-node/src/routes/importacionIA.routes.js`, `backend-node/src/controllers/importacionIA.controller.js`, `backend-node/src/services/importacionIA.service.js`, `backend-node/src/models/ImportacionIA.js`, `backend-node/src/clients/ai.client.js`
+- `backend-node/tests/unit/aiClient.unit.test.js`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/importacionIA.integration.test.js`
+- `web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`
+- `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md`, `docs/integracion.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test`
+- `cd backend-node && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+---
+Fecha: 2026-11-17
 Tarea: Alta de empleados, baja/reactivación, cambio de rol y edición de permisos desde Equipo & Permisos
 Rama: feature/mejoras-profesor
 Cambios realizados:

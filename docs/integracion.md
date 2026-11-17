@@ -39,8 +39,8 @@ sequenceDiagram
 
 Cumple el flujo definido en `docs/PLAN_IMPLEMENTACION.md` (§2) y `docs/arquitectura.md` (§3):
 
-1. **Recepción no bloqueante (`T3.2`):** El dueño pega la lista de precios del proveedor y envía `POST /api/importaciones` a `backend-node`. Node persiste el documento en estado `PENDIENTE` en `importaciones_ia` y responde de inmediato `HTTP 202 Accepted`.
-2. **Extracción y validación tipada (`T3.1` y `T3.2`):** En segundo plano, `src/clients/ai.client.js` invoca `POST /v1/extraer-precios` en `ai-service` (FastAPI + Pydantic v2 + Adapter `ProveedorIA`), valida la salida y actualiza el documento en MongoDB a `LISTA` (o `CONTINGENCIA` ante timeout/error).
+1. **Recepción no bloqueante (`T3.2`):** El dueño pega la lista de precios del proveedor (o sube una foto JPG/PNG/WEBP reescalada en el navegador, con `origenArchivo: 'imagen'`, `imagenBase64` e `imagenMime`) y envía `POST /api/importaciones` a `backend-node` (límite de body JSON `8mb` solo en `/api/importaciones` y `/importaciones`). Node persiste el documento en estado `PENDIENTE` en `importaciones_ia` (sin guardar los bytes de la foto, solo hash SHA-256, tamaño y MIME) y responde de inmediato `HTTP 202 Accepted`.
+2. **Extracción y validación tipada (`T3.1` y `T3.2`):** En segundo plano, `src/clients/ai.client.js` invoca `POST /v1/extraer-precios` en `ai-service` (FastAPI + Pydantic v2 + Adapter `ProveedorIA`, timeout de 12s para texto o 25s para imagen, enviando `imagen_base64` e `imagen_mime` a Gemini `inline_data` o Groq `GROQ_VISION_MODEL` vía `image_url`), valida la salida y actualiza el documento en MongoDB a `LISTA` (o `CONTINGENCIA` ante timeout/error/sin clave/sin soporte de visión).
 3. **Revisión humana en el circuito (`T3.3`, CA7.3):**
    - Si el dueño **rechaza** (`POST /api/importaciones/:id/rechazar`), Node marca el documento como `RECHAZADA` en MongoDB sin invocar a Django ni alterar compras ni costos.
    - Si el dueño **aprueba** (`POST /api/importaciones/:id/aprobar`), Node invoca `POST /api/compras/confirmar-importacion/` en Django reenviando el token JWT RS256 del usuario.
