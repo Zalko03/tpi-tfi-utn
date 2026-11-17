@@ -3861,7 +3861,10 @@ const inicializarEventosDOM = () => {
                 if ($('modal-abrir-turno')) $('modal-abrir-turno').style.display = 'none';
                 cargarTurnoActivo();
             } else {
-                mostrarToast('Error al abrir turno de caja.', 'peligro');
+                const data = await res.json().catch(() => null);
+                mostrarToast(mensajeErrorParaUsuario(res.status, data?.mensaje), 'peligro');
+                // Si ya había un turno abierto, se refresca la caja para mostrarlo.
+                if (res.status === 400) cargarTurnoActivo();
             }
         } catch (err) {
             mostrarToast(`Error: ${err.message}`, 'peligro');

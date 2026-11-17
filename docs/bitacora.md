@@ -1632,3 +1632,25 @@ Cómo probarlo:
 - `cd backend-django && .venv/bin/python -m pytest -q` (407 passed; el backend no cambió).
 - En la web: Recetas → Café Latte muestra $812 de insumos + $83,33 de mano de obra + $80 de descartables = $975,33, igual a la columna de costo de la carta. En Caja, con un turno abierto no aparece "Abrir Nuevo Turno".
 ---
+
+
+
+Fecha: 2026-11-17
+Tarea: El backend no deja abrir un segundo turno de caja si ya hay uno abierto
+Rama: feature/reportes-filtro-fechas
+Qué se hizo y por qué:
+- `TurnoCajaViewSet.perform_create` no validaba nada: con la API se podían abrir varios turnos a la vez para el mismo usuario (la web solo ocultaba el botón). Se agregó `apps/caja/services.py` con `abrir_turno(serializer, usuario)`, que responde 400 con el formato único ("Ya hay un turno de caja abierto para este usuario. Cerralo antes de abrir uno nuevo.") si el responsable ya tiene un turno `ABIERTO`.
+- La regla es por responsable, no por local: según PLAN_IMPLEMENTACION §3 el cajero opera "solo su turno", así que un encargado puede abrir el suyo aunque un cajero tenga uno abierto. Si se abre a nombre de otro usuario (`usuario` en el body), se valida a ese usuario.
+- Para que dos pedidos simultáneos no abran dos turnos, se bloquea la fila del usuario con `select_for_update` dentro de la transacción (en PostgreSQL; SQLite ya serializa las escrituras).
+- En la web, si falla la apertura se muestra el motivo de la API (`mensajeErrorParaUsuario`) en vez de "Error al abrir turno de caja.", y ante un 400 se recarga la caja para mostrar el turno abierto.
+Archivos tocados:
+- `backend-django/apps/caja/services.py` (nuevo)
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/caja/tests/api/test_api_turnos_apertura.py` (nuevo, 5 tests)
+- `web/js/app.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q` (412 passed).
+- `cd backend-node && npm test && npm run lint` (190 tests en verde).
+- Con un turno abierto, `POST /api/caja/turnos/` con el token del mismo usuario responde 400 y no crea otro turno.
+---

@@ -12,6 +12,7 @@ from rest_framework.response import Response
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
 from apps.caja.serializers import MovimientoCajaSerializer, TurnoCajaSerializer
+from apps.caja.services import abrir_turno
 from apps.comun.filtros import extraer_rango_fechas, filtrar_queryset_por_rango_fechas
 from apps.usuarios.permissions import PermisoObjetoTurnoCaja, TienePermiso, usuario_tiene_permiso
 
@@ -40,10 +41,10 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        if "usuario" not in serializer.validated_data and self.request.user.is_authenticated:
-            serializer.save(usuario=self.request.user)
-        else:
-            serializer.save()
+        usuario = serializer.validated_data.get("usuario")
+        if usuario is None and self.request.user.is_authenticated:
+            usuario = self.request.user
+        abrir_turno(serializer, usuario)
 
     def get_queryset(self):
         qs = super().get_queryset()
