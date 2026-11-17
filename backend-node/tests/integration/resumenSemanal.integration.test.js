@@ -61,7 +61,8 @@ describe('Endpoint POST /v1/resumen-semanal (Consultor IA)', () => {
 
         expect(res.status).toBe(400);
         expect(res.body.mensaje).toBe('Datos de entrada inválidos');
-        expect(Array.isArray(res.body.detalles)).toBe(true);
+        expect(res.body.detalles).toEqual(['El resumen tiene que incluir al menos un producto.']);
+        expect(res.body.detalles.join(' ')).not.toMatch(/productos|:/);
     });
 
     it('responde 200 invocando generarResumenSemanalIA en ai-service para Dueño/Encargado', async () => {

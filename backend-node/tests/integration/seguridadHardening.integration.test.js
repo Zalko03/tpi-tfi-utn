@@ -68,7 +68,8 @@ describe('Integration Tests - Endurecimiento de Seguridad (T2.5) en Express', ()
 
         expect(res.status).toBe(400);
         expect(res.body.mensaje).toBe('Datos de entrada inválidos');
-        expect(res.body.detalles).toEqual(expect.arrayContaining([expect.stringContaining('id')]));
+        expect(res.body.detalles).toEqual(['El producto indicado no es válido.']);
+        expect(res.body.detalles.join(' ')).not.toContain(':');
     });
 
     it('/app/index.html y /health no emiten cabeceras RateLimit y trust proxy por defecto es 0', async () => {

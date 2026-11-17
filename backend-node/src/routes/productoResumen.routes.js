@@ -15,7 +15,11 @@ router.get(
     verificarToken,
     verificarPermiso('recetas.ver_costos'),
     [
-        param('id').notEmpty().withMessage('El id es obligatorio').isNumeric().withMessage('El id debe ser numérico'),
+        param('id')
+            .notEmpty()
+            .withMessage('Tenés que indicar un producto.')
+            .isNumeric()
+            .withMessage('El producto indicado no es válido.'),
         validarCampos,
     ],
     obtenerResumenCostoProducto

@@ -34,7 +34,7 @@ export const procesarImportacionEnSegundoPlano = async (
         const mensajeContingencia = esContingencia
             ? resultadoIA.mensajeContingencia ||
               resultadoIA.error ||
-              'No se pudo usar la IA, revisá la configuración. Puede cargar los precios de forma manual o por CSV.'
+              'No se pudo usar la IA, revisá la configuración. Podés cargar los precios de forma manual o por CSV.'
             : null;
         const proveedorIaFinal =
             resultadoIA.proveedorIa || (esContingencia ? 'contingencia' : 'desconocido');
@@ -111,7 +111,7 @@ export const iniciarImportacionPrecios = async ({
 }) => {
     const textoLimpio = typeof textoLista === 'string' ? textoLista.trim() : '';
     if (!usuarioId || !textoLimpio) {
-        const error = new Error('usuarioId y textoLista son obligatorios');
+        const error = new Error('Faltan los datos de tu usuario o la lista de precios.');
         error.statusCode = 400;
         throw error;
     }
@@ -184,7 +184,7 @@ export const aprobarImportacionPrecios = async (
 
     if (importacion.estado === 'APROBADA' || importacion.estado === 'RECHAZADA') {
         const error = new Error(
-            `La importación ya se encuentra en estado ${importacion.estado} y no puede volver a procesarse`
+            'Esta importación ya fue procesada y no se puede volver a aprobar.'
         );
         error.statusCode = 400;
         throw error;
@@ -204,9 +204,7 @@ export const aprobarImportacionPrecios = async (
     }
 
     if (importacion.estado !== 'LISTA') {
-        const error = new Error(
-            `La importación en estado ${importacion.estado} aún no puede ser aprobada`
-        );
+        const error = new Error('Esta importación todavía no está lista para aprobar.');
         error.statusCode = 400;
         throw error;
     }
@@ -298,9 +296,7 @@ export const rechazarImportacionPrecios = async (id, { usuarioId, motivo = null 
     const importacion = await obtenerImportacion(id);
 
     if (importacion.estado === 'APROBADA' || importacion.estado === 'RECHAZADA') {
-        const error = new Error(
-            `La importación ya se encuentra en estado ${importacion.estado} y no puede rechazarse`
-        );
+        const error = new Error('Esta importación ya fue cerrada y no se puede descartar.');
         error.statusCode = 400;
         throw error;
     }

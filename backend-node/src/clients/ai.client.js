@@ -71,7 +71,7 @@ export const validarYNormalizarSalidaIA = (datos) => {
         mensajeContingencia:
             datos.mensaje_contingencia ||
             (esContingencia
-                ? 'No se pudo usar la IA, revisá la configuración. Puede cargar los precios de forma manual o por CSV.'
+                ? 'No se pudo usar la IA, revisá la configuración. Podés cargar los precios de forma manual o por CSV.'
                 : null),
     };
 };
@@ -129,7 +129,7 @@ export const extraerPreciosIA = async (
             latenciaMs,
             contingencia: true,
             mensajeContingencia:
-                'No se pudo usar la IA, revisá la configuración. Puede cargar los precios de forma manual o por CSV.',
+                'No se pudo usar la IA, revisá la configuración. Podés cargar los precios de forma manual o por CSV.',
             error: error.message,
         };
     }

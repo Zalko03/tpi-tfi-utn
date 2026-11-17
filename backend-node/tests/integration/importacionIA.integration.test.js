@@ -98,7 +98,11 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
 
         expect(res.status).toBe(400);
         expect(res.body).toHaveProperty('mensaje', 'Datos de entrada inválidos');
-        expect(Array.isArray(res.body.detalles)).toBe(true);
+        expect(res.body.detalles).toEqual([
+            'La lista de precios tiene que tener entre 3 y 15.000 caracteres.',
+            'La versión de las instrucciones de la IA no es válida.',
+        ]);
+        expect(res.body.detalles.join(' ')).not.toMatch(/textoLista|versionPrompt|:/);
     });
 
     it('responde 202 Accepted sin bloquear y guarda entrada, salida, latencia y versión de prompt en Mongo', async () => {
@@ -583,6 +587,9 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
             .set('Authorization', `Bearer ${tokenDuenio}`)
             .send({ textoLista: '%PDF-1.4 binary raw stream' });
         expect(resBinario.status).toBe(400);
+        expect(resBinario.body.detalles).toEqual([
+            'No se pudo leer el texto del PDF. Probá subiéndolo de nuevo.',
+        ]);
 
         global.fetch = jest.fn(async (_url, opciones) => {
             const body = JSON.parse(opciones.body);

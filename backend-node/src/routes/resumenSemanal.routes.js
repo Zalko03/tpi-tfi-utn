@@ -12,57 +12,57 @@ router.use(verificarToken, verificarPermiso('reportes.ver_operativos'));
 const checksResumenSemanal = [
     check('fecha_desde')
         .isString()
-        .withMessage('fecha_desde es obligatoria')
+        .withMessage('Elegí la fecha de inicio.')
         .trim()
         .isLength({ min: 8, max: 20 })
-        .withMessage('fecha_desde debe tener entre 8 y 20 caracteres'),
+        .withMessage('La fecha de inicio no es válida.'),
     check('fecha_hasta')
         .isString()
-        .withMessage('fecha_hasta es obligatoria')
+        .withMessage('Elegí la fecha de fin.')
         .trim()
         .isLength({ min: 8, max: 20 })
-        .withMessage('fecha_hasta debe tener entre 8 y 20 caracteres'),
+        .withMessage('La fecha de fin no es válida.'),
     check('total_ventas')
         .notEmpty()
-        .withMessage('total_ventas es obligatorio')
+        .withMessage('Faltan los totales del período.')
         .isFloat({ min: 0 })
-        .withMessage('total_ventas debe ser un número mayor o igual a 0'),
+        .withMessage('Los totales del período no son válidos.'),
     check('ganancia_bruta_total')
         .notEmpty()
-        .withMessage('ganancia_bruta_total es obligatoria')
+        .withMessage('Faltan los totales del período.')
         .isNumeric()
-        .withMessage('ganancia_bruta_total debe ser numérica'),
+        .withMessage('Los totales del período no son válidos.'),
     check('cantidad_tickets')
         .isInt({ min: 0 })
-        .withMessage('cantidad_tickets debe ser un entero mayor o igual a 0'),
+        .withMessage('La cantidad de tickets del período no es válida.'),
     check('productos')
         .isArray({ min: 1 })
-        .withMessage('productos debe incluir al menos un elemento'),
+        .withMessage('El resumen tiene que incluir al menos un producto.'),
     check('productos.*.nombre')
         .isString()
         .trim()
         .notEmpty()
-        .withMessage('Cada producto debe tener nombre'),
+        .withMessage('Cada producto del resumen tiene que tener nombre.'),
     check('productos.*.unidades_vendidas')
         .isFloat({ min: 0 })
-        .withMessage('unidades_vendidas debe ser mayor o igual a 0'),
+        .withMessage('Las cantidades vendidas de los productos no son válidas.'),
     check('productos.*.ingresos_totales')
         .isFloat({ min: 0 })
-        .withMessage('ingresos_totales debe ser mayor o igual a 0'),
+        .withMessage('Los montos de los productos del resumen no son válidos.'),
     check('productos.*.ganancia_bruta')
         .isNumeric()
-        .withMessage('ganancia_bruta debe ser numérica'),
+        .withMessage('Los montos de los productos del resumen no son válidos.'),
     check('productos.*.margen_bruto_pct')
         .isNumeric()
-        .withMessage('margen_bruto_pct debe ser numérico'),
+        .withMessage('Los márgenes de los productos del resumen no son válidos.'),
     check('alertas_insumos')
         .optional()
         .isArray()
-        .withMessage('alertas_insumos debe ser un listado de strings'),
+        .withMessage('Las alertas de insumos no son válidas.'),
     check('version_prompt')
         .optional()
         .matches(/^v\d+$/)
-        .withMessage('version_prompt debe tener formato v1, v2, etc.'),
+        .withMessage('La versión de las instrucciones de la IA no es válida.'),
     validarCampos,
 ];
 
