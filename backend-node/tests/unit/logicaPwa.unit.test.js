@@ -627,7 +627,7 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                 'venta-10',
             ]);
             expect(resultado.registros[0].tipoEtiqueta).toBe('Cierre de Caja');
-            expect(resultado.registros[2].tipoEtiqueta).toBe('Stock · Ingreso');
+            expect(resultado.registros[2].tipoEtiqueta).toBe('Insumos · Ingreso');
         });
     });
 

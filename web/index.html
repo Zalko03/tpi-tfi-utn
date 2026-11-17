@@ -833,7 +833,7 @@ Envío: $2000</textarea>
                             <div class="filtro-fechas-cabecera">
                                 <div>
                                     <h3>Reportes y Trazabilidad por Período</h3>
-                                    <p class="text-muted">Filtrá ventas, movimientos de stock, cierres de caja y métricas financieras por rango de fechas.</p>
+                                    <p class="text-muted">Filtrá ventas, consumo de insumos, cierres de caja y métricas financieras por rango de fechas.</p>
                                 </div>
                                 <div id="indicador-rango-reportes" class="indicador-rango-activo">
                                     Mostrando todo el historial · 0 registros
@@ -899,12 +899,12 @@ Envío: $2000</textarea>
                         <div class="tarjeta-panel-blanca" id="panel-trazabilidad-reportes">
                             <div class="panel-cabecera-linea">
                                 <div>
-                                    <h3>Trazabilidad de Ventas, Movimientos de Stock y Cierres de Caja</h3>
+                                    <h3>Historial de ventas, consumo de insumos y cierres de caja</h3>
                                     <p class="text-muted">Historial auditable unificado ordenado cronológicamente para el período seleccionado.</p>
                                 </div>
                                 <div class="trazabilidad-resumen-pills">
                                     <span class="trazabilidad-pill" id="pill-conteo-ventas">Ventas: 0</span>
-                                    <span class="trazabilidad-pill" id="pill-conteo-stock">Stock: 0</span>
+                                    <span class="trazabilidad-pill" id="pill-conteo-stock">Insumos: 0</span>
                                     <span class="trazabilidad-pill" id="pill-conteo-cierres">Cierres de Caja: 0</span>
                                 </div>
                             </div>
@@ -912,7 +912,7 @@ Envío: $2000</textarea>
                             <div class="trazabilidad-tabs" role="tablist" aria-label="Filtrar categoría de trazabilidad">
                                 <button type="button" class="btn-trazabilidad-tab activa" data-categoria="todos">Todos (<span id="tab-count-todos">0</span>)</button>
                                 <button type="button" class="btn-trazabilidad-tab" data-categoria="venta">Ventas (<span id="tab-count-ventas">0</span>)</button>
-                                <button type="button" class="btn-trazabilidad-tab" data-categoria="stock">Movimientos de Stock (<span id="tab-count-stock">0</span>)</button>
+                                <button type="button" class="btn-trazabilidad-tab" data-categoria="stock">Consumo de insumos (<span id="tab-count-stock">0</span>)</button>
                                 <button type="button" class="btn-trazabilidad-tab" data-categoria="caja">Cierres de Caja (<span id="tab-count-caja">0</span>)</button>
                             </div>
 
@@ -940,13 +940,13 @@ Envío: $2000</textarea>
                         <div class="tarjeta-panel-blanca" id="panel-consultor-ia">
                             <div class="panel-cabecera-linea">
                                 <div>
-                                    <h3>Consultor IA de Stock y Cierre de Caja</h3>
+                                    <h3>Consultor IA de insumos y cierre de caja</h3>
                                     <p class="text-muted">Dictámenes analíticos y auditoría en tiempo real para gerencia, basados en el inventario real y arqueo contable.</p>
                                 </div>
                                 <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                                     <button type="button" id="btn-ia-diagnostico-stock" class="btn-primario-comercial">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                                        <span>Consultar Diagnóstico de Stock e Insumos a Reponer con IA</span>
+                                        <span>Consultar a la IA: insumos a reponer (estimado por ventas)</span>
                                     </button>
                                     <button type="button" id="btn-ia-auditar-caja" class="btn-secundario-comercial">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
@@ -966,7 +966,7 @@ Envío: $2000</textarea>
                         <div class="tarjeta-panel-blanca">
                             <div class="panel-cabecera-linea">
                                 <div>
-                                    <h3>Simulador Comercial de Punto de Equilibrio (Break-Even)</h3>
+                                    <h3>Punto de equilibrio: cuánto tenés que vender</h3>
                                     <p class="text-muted">Determiná el volumen de ventas necesario para cubrir tus costos fijos (alquiler, luz, salarios) sin generar pérdidas.</p>
                                 </div>
                             </div>
@@ -1115,7 +1115,7 @@ Envío: $2000</textarea>
                 </div>
                 <div class="metrica-item-drawer">
                     <span id="metrica-alertas-stock" class="metrica-numero text-peligro">0</span>
-                    <span class="metrica-sub">Stock Bajo</span>
+                    <span class="metrica-sub">Alertas de insumos</span>
                 </div>
             </div>
 
@@ -1129,7 +1129,7 @@ Envío: $2000</textarea>
                             <small>Ahora</small>
                         </div>
                         <div class="evento-detalle">
-                            Conectado al bus de eventos de salón (ventas, alertas de margen y stock).
+                            Avisos del local en vivo: ventas y alertas de margen.
                         </div>
                     </li>
                 </ul>

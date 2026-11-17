@@ -1221,7 +1221,7 @@ export const unificarTrazabilidadRegistros = ({
             id: `stock-${m.id}`,
             categoria: 'stock',
             fechaIso: m.fecha || '',
-            tipoEtiqueta: esIngreso ? 'Stock · Ingreso' : 'Stock · Consumo',
+            tipoEtiqueta: esIngreso ? 'Insumos · Ingreso' : 'Insumos · Consumo',
             nivelBadge: esIngreso ? 'info' : 'advertencia',
             detalle: `${m.insumo_nombre || 'Insumo'} · ${m.detalle || m.subtipo || 'Movimiento'}`,
             montoCantidad: `${cantStr}${montoTexto}`,

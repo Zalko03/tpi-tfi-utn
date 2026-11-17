@@ -2620,7 +2620,7 @@ const renderizarTablaTrazabilidad = () => {
     const { registros, conteos, categoriaActiva, fechaDesde = '', fechaHasta = '' } = estadoApp.trazabilidad;
 
     if ($('pill-conteo-ventas')) $('pill-conteo-ventas').textContent = `Ventas: ${conteos.ventas}`;
-    if ($('pill-conteo-stock')) $('pill-conteo-stock').textContent = `Stock: ${conteos.stock}`;
+    if ($('pill-conteo-stock')) $('pill-conteo-stock').textContent = `Insumos: ${conteos.stock}`;
     if ($('pill-conteo-cierres')) $('pill-conteo-cierres').textContent = `Cierres de Caja: ${conteos.caja}`;
 
     if ($('tab-count-todos')) $('tab-count-todos').textContent = String(conteos.total);
