@@ -2139,11 +2139,15 @@ export const extraerMensajeErrorApi = (
     if (Array.isArray(data.detalles) && data.detalles.length > 0) {
         detalleMsg = String(data.detalles[0]);
     } else if (data.detalles && typeof data.detalles === 'object') {
-        const primerValor = Object.values(data.detalles)[0];
-        if (Array.isArray(primerValor) && primerValor.length > 0) {
-            detalleMsg = String(primerValor[0]);
-        } else if (typeof primerValor === 'string') {
-            detalleMsg = primerValor;
+        if (typeof data.detalles.mensaje === 'string' && data.detalles.mensaje.trim()) {
+            detalleMsg = data.detalles.mensaje;
+        } else {
+            const primerValor = Object.values(data.detalles)[0];
+            if (Array.isArray(primerValor) && primerValor.length > 0) {
+                detalleMsg = String(primerValor[0]);
+            } else if (typeof primerValor === 'string') {
+                detalleMsg = primerValor;
+            }
         }
     } else if (typeof data.detalles === 'string' && data.detalles.trim()) {
         detalleMsg = data.detalles;
@@ -2266,6 +2270,267 @@ export const validarCarritoContraCatalogo = (carrito = [], catalogo = []) => {
     return {
         valido: true,
         mensaje: '',
+    };
+};
+
+// Debe coincidir con PERMISOS_CATALOGO y ROLES_PLANTILLAS en backend-django/apps/usuarios/constantes.py
+export const GRUPOS_PERMISOS_EQUIPO = [
+    {
+        id: 'ventas',
+        titulo: 'Ventas',
+        permisos: [
+            { clave: 'ventas.cobrar_ticket', etiqueta: 'Cobrar tickets' },
+            { clave: 'ventas.anular_ticket', etiqueta: 'Anular tickets' },
+            { clave: 'ventas.aplicar_descuento', etiqueta: 'Aplicar descuentos' },
+            { clave: 'ventas.ver_historial_propio', etiqueta: 'Ver sus propias ventas' },
+            { clave: 'ventas.ver_historial_todos', etiqueta: 'Ver las ventas de todo el equipo' },
+        ],
+    },
+    {
+        id: 'caja',
+        titulo: 'Caja',
+        permisos: [
+            { clave: 'caja.abrir_turno', etiqueta: 'Abrir turno de caja' },
+            { clave: 'caja.cerrar_turno', etiqueta: 'Cerrar turno de caja' },
+            { clave: 'caja.ver_efectivo_esperado', etiqueta: 'Ver el efectivo esperado en caja' },
+            { clave: 'caja.registrar_movimiento', etiqueta: 'Registrar entradas y salidas de caja' },
+            { clave: 'caja.gestionar_turnos_ajenos', etiqueta: 'Administrar turnos de otros empleados' },
+        ],
+    },
+    {
+        id: 'insumos',
+        titulo: 'Insumos',
+        permisos: [
+            { clave: 'insumos.ver', etiqueta: 'Ver insumos y stock' },
+            { clave: 'insumos.crear', etiqueta: 'Agregar insumos' },
+            { clave: 'insumos.editar', etiqueta: 'Editar insumos' },
+            { clave: 'insumos.eliminar', etiqueta: 'Borrar insumos' },
+        ],
+    },
+    {
+        id: 'compras',
+        titulo: 'Compras',
+        permisos: [
+            { clave: 'compras.ver', etiqueta: 'Ver compras realizadas' },
+            { clave: 'compras.registrar', etiqueta: 'Registrar compras' },
+        ],
+    },
+    {
+        id: 'recetas',
+        titulo: 'Recetas y carta',
+        permisos: [
+            { clave: 'recetas.ver', etiqueta: 'Ver la carta y las recetas' },
+            { clave: 'recetas.crear', etiqueta: 'Crear productos y recetas' },
+            { clave: 'recetas.editar', etiqueta: 'Editar precios y recetas' },
+            { clave: 'recetas.eliminar', etiqueta: 'Quitar ingredientes o recetas' },
+            { clave: 'recetas.ver_costos', etiqueta: 'Ver costos de las recetas' },
+        ],
+    },
+    {
+        id: 'reportes',
+        titulo: 'Reportes',
+        permisos: [
+            { clave: 'reportes.ver_financieros', etiqueta: 'Ver reportes de ganancias y dinero' },
+            { clave: 'reportes.ver_operativos', etiqueta: 'Ver reportes de actividad del local' },
+        ],
+    },
+    {
+        id: 'ia',
+        titulo: 'Asistente IA',
+        permisos: [
+            { clave: 'ia.importar_listas', etiqueta: 'Cargar listas de proveedores con IA' },
+        ],
+    },
+    {
+        id: 'personal',
+        titulo: 'Equipo',
+        permisos: [
+            { clave: 'personal.ver', etiqueta: 'Ver la lista del equipo' },
+            { clave: 'personal.crear', etiqueta: 'Agregar empleados' },
+            { clave: 'personal.editar', etiqueta: 'Cambiar datos y rol de empleados' },
+            { clave: 'personal.ajustar_permisos', etiqueta: 'Dar o quitar permisos' },
+            { clave: 'personal.desactivar', etiqueta: 'Dar de baja y reactivar empleados' },
+        ],
+    },
+    {
+        id: 'auditoria',
+        titulo: 'Registro de cambios',
+        permisos: [
+            { clave: 'auditoria.ver_logs', etiqueta: 'Ver el registro de cambios del equipo' },
+        ],
+    },
+];
+
+export const PERMISOS_CATALOGO_EQUIPO = GRUPOS_PERMISOS_EQUIPO.flatMap((grupo) =>
+    grupo.permisos.map((item) => item.clave)
+);
+
+// Debe coincidir con ROLES_PLANTILLAS en backend-django/apps/usuarios/constantes.py
+export const ROLES_PLANTILLAS = {
+    DUENIO: Object.fromEntries(PERMISOS_CATALOGO_EQUIPO.map((clave) => [clave, true])),
+    ENCARGADO: {
+        'ventas.cobrar_ticket': true,
+        'ventas.anular_ticket': true,
+        'ventas.aplicar_descuento': true,
+        'ventas.ver_historial_propio': true,
+        'ventas.ver_historial_todos': true,
+        'caja.abrir_turno': true,
+        'caja.cerrar_turno': true,
+        'caja.ver_efectivo_esperado': true,
+        'caja.registrar_movimiento': true,
+        'caja.gestionar_turnos_ajenos': true,
+        'insumos.ver': true,
+        'insumos.crear': true,
+        'insumos.editar': true,
+        'insumos.eliminar': false,
+        'compras.ver': true,
+        'compras.registrar': true,
+        'recetas.ver': true,
+        'recetas.crear': true,
+        'recetas.editar': true,
+        'recetas.eliminar': false,
+        'recetas.ver_costos': true,
+        'reportes.ver_financieros': false,
+        'reportes.ver_operativos': true,
+        'ia.importar_listas': false,
+        'personal.ver': false,
+        'personal.crear': false,
+        'personal.editar': false,
+        'personal.ajustar_permisos': false,
+        'personal.desactivar': false,
+        'auditoria.ver_logs': false,
+    },
+    CAJERO: {
+        'ventas.cobrar_ticket': true,
+        'ventas.anular_ticket': false,
+        'ventas.aplicar_descuento': false,
+        'ventas.ver_historial_propio': true,
+        'ventas.ver_historial_todos': false,
+        'caja.abrir_turno': true,
+        'caja.cerrar_turno': true,
+        'caja.ver_efectivo_esperado': false,
+        'caja.registrar_movimiento': false,
+        'caja.gestionar_turnos_ajenos': false,
+        'insumos.ver': false,
+        'insumos.crear': false,
+        'insumos.editar': false,
+        'insumos.eliminar': false,
+        'compras.ver': false,
+        'compras.registrar': false,
+        'recetas.ver': false,
+        'recetas.crear': false,
+        'recetas.editar': false,
+        'recetas.eliminar': false,
+        'recetas.ver_costos': false,
+        'reportes.ver_financieros': false,
+        'reportes.ver_operativos': false,
+        'ia.importar_listas': false,
+        'personal.ver': false,
+        'personal.crear': false,
+        'personal.editar': false,
+        'personal.ajustar_permisos': false,
+        'personal.desactivar': false,
+        'auditoria.ver_logs': false,
+    },
+};
+
+/**
+ * Devuelve una copia de la plantilla de permisos predeterminados para un rol dado.
+ */
+export const obtenerPlantillaRol = (rol = 'CAJERO') => {
+    const claveRol = String(rol || 'CAJERO').trim().toUpperCase();
+    const plantilla = ROLES_PLANTILLAS[claveRol] || ROLES_PLANTILLAS.CAJERO;
+    return { ...plantilla };
+};
+
+/**
+ * Construye el diccionario completo { clave: boolean } para todas las claves del catálogo
+ * a partir de una lista/Set de claves marcadas o un objeto parcial de casillas.
+ */
+export const construirDictPermisosDesdeSeleccion = (seleccion = []) => {
+    const activas = new Set();
+    if (Array.isArray(seleccion) || seleccion instanceof Set) {
+        for (const clave of seleccion) {
+            if (typeof clave === 'string') activas.add(clave);
+        }
+    } else if (seleccion && typeof seleccion === 'object') {
+        for (const [clave, valor] of Object.entries(seleccion)) {
+            if (valor) activas.add(clave);
+        }
+    }
+    const completo = {};
+    for (const clave of PERMISOS_CATALOGO_EQUIPO) {
+        completo[clave] = activas.has(clave);
+    }
+    return completo;
+};
+
+/**
+ * Obtiene el diccionario completo de permisos iniciales de un empleado para premarcar casillas.
+ */
+export const obtenerPermisosInicialesEmpleado = (empleado) => {
+    if (Array.isArray(empleado?.permisos_activos)) {
+        return construirDictPermisosDesdeSeleccion(empleado.permisos_activos);
+    }
+    const base = obtenerPlantillaRol(empleado?.rol || 'CAJERO');
+    if (
+        empleado?.permisos &&
+        typeof empleado.permisos === 'object' &&
+        !Array.isArray(empleado.permisos)
+    ) {
+        for (const clave of PERMISOS_CATALOGO_EQUIPO) {
+            if (clave in empleado.permisos) {
+                base[clave] = Boolean(empleado.permisos[clave]);
+            }
+        }
+    }
+    return base;
+};
+
+/**
+ * Indica qué botones globales de la pantalla Equipo & Permisos ve el usuario actual.
+ */
+export const accionesEquipoVisiblesParaUsuario = (usuarioActual) => ({
+    agregarEmpleado: usuarioTienePermiso(usuarioActual, 'personal.crear'),
+});
+
+/**
+ * Indica qué acciones ve el usuario actual sobre la tarjeta de un empleado.
+ * Un usuario nunca puede darse de baja ni reactivarse a sí mismo.
+ */
+export const accionesEmpleadoVisiblesParaUsuario = (usuarioActual, empleado) => {
+    if (!usuarioActual || !empleado) {
+        return {
+            permisos: false,
+            cambiarRol: false,
+            darDeBaja: false,
+            reactivar: false,
+        };
+    }
+
+    const idActual = usuarioActual.id ?? usuarioActual.user_id ?? null;
+    const idEmpleado = empleado.id ?? null;
+    const tieneAmbosIds =
+        idActual !== null &&
+        idActual !== undefined &&
+        idEmpleado !== null &&
+        idEmpleado !== undefined;
+    const esMismoUsuario = tieneAmbosIds
+        ? Number(idActual) === Number(idEmpleado)
+        : Boolean(
+              usuarioActual.username &&
+                  empleado.username &&
+                  usuarioActual.username === empleado.username
+          );
+
+    const puedeDesactivar = usuarioTienePermiso(usuarioActual, 'personal.desactivar');
+    const estaActivo = empleado.is_active !== false;
+
+    return {
+        permisos: usuarioTienePermiso(usuarioActual, 'personal.ajustar_permisos'),
+        cambiarRol: usuarioTienePermiso(usuarioActual, 'personal.editar'),
+        darDeBaja: puedeDesactivar && estaActivo && !esMismoUsuario,
+        reactivar: puedeDesactivar && !estaActivo && !esMismoUsuario,
     };
 };
 

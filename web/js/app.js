@@ -5,11 +5,15 @@
  */
 
 import {
+    accionesCajaVisiblesParaUsuario,
+    accionesEmpleadoVisiblesParaUsuario,
+    accionesEquipoVisiblesParaUsuario,
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularCostosExtraReceta,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
+    construirDictPermisosDesdeSeleccion,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -36,17 +40,19 @@ import {
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    GRUPOS_PERMISOS_EQUIPO,
     MENSAJE_DOC_ANTIGUO,
     MENSAJE_IA_NO_DISPONIBLE,
     mensajeErrorParaUsuario,
     obtenerContenidoPlantillaCsv,
+    obtenerPermisosInicialesEmpleado,
+    obtenerPlantillaRol,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     parsearCsvProveedor,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
     seccionesVisiblesParaUsuario,
-    accionesCajaVisiblesParaUsuario,
     siguienteIdCarga,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
@@ -144,6 +150,8 @@ export const estadoApp = {
     proveedores: [],
     turnosHistorial: [],
     usuariosEquipo: [],
+    empleadoEditandoPermisos: null,
+    empleadoParaBaja: null,
     productoDesgloseId: null,
     filtroCategoriaActual: 'todos',
     idCargaReportes: 0,
@@ -573,6 +581,7 @@ const configurarVisibilidadPorRol = (rol) => {
     }
 
     actualizarVisibilidadGestionRecetas();
+    actualizarVisibilidadGestionEquipo();
 };
 
 const intentarReanudarSesionOffline = (usernameSolicitado = '') => {
@@ -3489,13 +3498,26 @@ const auditarCierreCajaIA = async () => {
 };
 
 // ============================================================
-// MÓDULO 6: PERSONAL Y GOBERNANZA DEL DUEÑO
+// MÓDULO 6: EQUIPO Y PERMISOS
 // ============================================================
+const ETIQUETAS_ROL = {
+    DUENIO: 'Dueño',
+    ENCARGADO: 'Encargado',
+    CAJERO: 'Cajero',
+};
+
+const actualizarVisibilidadGestionEquipo = () => {
+    const btnNuevo = $('btn-modal-nuevo-empleado');
+    if (btnNuevo) {
+        const { agregarEmpleado } = accionesEquipoVisiblesParaUsuario(estadoApp.usuario);
+        btnNuevo.style.display = agregarEmpleado ? '' : 'none';
+    }
+};
+
 export const cargarPersonal = async () => {
     try {
         const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/?limite=100`, {
             headers: {
-                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
             },
         });
@@ -3505,11 +3527,13 @@ export const cargarPersonal = async () => {
             renderizarTarjetasPersonal();
         }
     } catch {
-        // Fallback
+        // Fallback offline
     }
 };
 
 const renderizarTarjetasPersonal = () => {
+    actualizarVisibilidadGestionEquipo();
+
     const contenedor = $('equipo-tarjetas-grilla');
     if (!contenedor) return;
     contenedor.innerHTML = '';
@@ -3519,17 +3543,27 @@ const renderizarTarjetasPersonal = () => {
         card.className = 'usuario-tarjeta-comercial';
 
         const rol = (u.rol || 'CAJERO').toUpperCase();
-        let rolEtiqueta = 'Cajero';
-        let rolClase = 'cajero';
-        if (rol === 'DUENIO') {
-            rolEtiqueta = 'Dueño';
-            rolClase = 'duenio';
-        } else if (rol === 'ENCARGADO') {
-            rolEtiqueta = 'Encargado';
-            rolClase = 'encargado';
-        }
+        const rolEtiqueta = ETIQUETAS_ROL[rol] || 'Cajero';
+        const rolClase = rol === 'DUENIO' ? 'duenio' : rol === 'ENCARGADO' ? 'encargado' : 'cajero';
 
         const nombre = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.username || 'Usuario');
+        const acciones = accionesEmpleadoVisiblesParaUsuario(estadoApp.usuario, u);
+
+        const botonesHtml = [];
+        if (acciones.permisos) {
+            botonesHtml.push(
+                `<button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">Permisos</button>`
+            );
+        }
+        if (acciones.darDeBaja) {
+            botonesHtml.push(
+                `<button type="button" class="btn-descartar-comercial btn-toggle-usuario" data-id="${u.id}">Dar de baja</button>`
+            );
+        } else if (acciones.reactivar) {
+            botonesHtml.push(
+                `<button type="button" class="btn-secundario-comercial btn-toggle-usuario" data-id="${u.id}">Reactivar</button>`
+            );
+        }
 
         card.innerHTML = `
             <div class="usuario-tarjeta-cabecera">
@@ -3540,19 +3574,12 @@ const renderizarTarjetasPersonal = () => {
                 </div>
             </div>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <span class="badge-rol ${rolClase}">${rolEtiqueta}</span>
+                <span class="badge-rol ${rolClase}">${escaparHtml(rolEtiqueta)}</span>
                 <span class="${u.is_active ? 'badge-estado-verde' : 'badge-estado-rojo text-peligro'}" style="font-size: 0.82rem;">
                     ${u.is_active ? 'Activo' : 'Inactivo'}
                 </span>
             </div>
-            <div class="usuario-acciones-fila">
-                <button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">
-                    Permisos (30)
-                </button>
-                <button type="button" class="btn-descartar-comercial btn-toggle-usuario" data-id="${u.id}" data-activo="${u.is_active}" data-rol="${rol}">
-                    ${u.is_active ? 'Desactivar' : 'Activar'}
-                </button>
-            </div>
+            ${botonesHtml.length > 0 ? `<div class="usuario-acciones-fila">${botonesHtml.join('')}</div>` : ''}
         `;
 
         card.querySelector('.btn-ver-permisos')?.addEventListener('click', () => {
@@ -3560,97 +3587,131 @@ const renderizarTarjetasPersonal = () => {
         });
 
         card.querySelector('.btn-toggle-usuario')?.addEventListener('click', async () => {
-            await toggleEstadoUsuario(u);
+            if (u.is_active) {
+                abrirModalBajaEmpleado(u);
+            } else {
+                await toggleEstadoUsuario(u);
+            }
         });
 
         contenedor.appendChild(card);
     }
 };
 
-const toggleEstadoUsuario = async (u) => {
+const abrirModalBajaEmpleado = (u) => {
+    const modal = $('modal-baja-empleado');
+    if (!modal || !u) return;
+
+    estadoApp.empleadoParaBaja = u;
+    const nombre = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.username || 'empleado');
+    if ($('baja-empleado-titulo')) {
+        $('baja-empleado-titulo').textContent = `Dar de baja a ${nombre}`;
+    }
+    if ($('baja-empleado-descripcion')) {
+        $('baja-empleado-descripcion').textContent = `¿Querés dar de baja a @${u.username}? No va a poder entrar al sistema hasta que lo reactives.`;
+    }
+    if ($('input-baja-empleado-motivo')) {
+        $('input-baja-empleado-motivo').value = '';
+    }
+    modal.style.display = 'flex';
+};
+
+const toggleEstadoUsuario = async (u, motivo = '') => {
+    if (!u) return false;
     const accion = u.is_active ? 'desactivar' : 'activar';
     try {
         const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/${accion}/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ motivo: 'Acción administrativa desde el panel' }),
+            body: JSON.stringify(u.is_active ? { motivo } : {}),
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (res.ok) {
-            mostrarToast(`Usuario ${u.username} ${u.is_active ? 'desactivado' : 'activado'}.`, 'exito');
+            if ($('modal-baja-empleado')) $('modal-baja-empleado').style.display = 'none';
+            estadoApp.empleadoParaBaja = null;
+            mostrarToast(u.is_active ? 'Empleado dado de baja.' : 'Empleado reactivado.', 'exito');
             await cargarPersonal();
-        } else {
-            let detalleMsg = '';
-            if (Array.isArray(data.detalles) && data.detalles.length > 0) {
-                detalleMsg = data.detalles[0];
-            } else if (data.detalles && typeof data.detalles === 'object') {
-                const primeraLista = Object.values(data.detalles)[0];
-                if (Array.isArray(primeraLista) && primeraLista.length > 0) {
-                    detalleMsg = primeraLista[0];
-                }
-            }
-            const errorMsg = detalleMsg || data.mensaje || data.detail || 'Operación bloqueada';
-            mostrarToast(`Regla de Supervivencia del Dueño: ${errorMsg}`, 'peligro');
+            return true;
         }
-    } catch (err) {
-        mostrarToast(`Error de seguridad: ${err.message}`, 'peligro');
+
+        const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+        mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+        return false;
+    } catch {
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+        return false;
     }
+};
+
+const aplicarPlantillaEnCasillasPermisos = (plantilla = {}) => {
+    const contenedor = $('permisos-categorias-grilla');
+    if (!contenedor) return;
+    contenedor.querySelectorAll('input[type="checkbox"][data-permiso]').forEach((cb) => {
+        cb.checked = Boolean(plantilla[cb.dataset.permiso]);
+    });
 };
 
 const mostrarModalPermisos = (u) => {
     const modal = $('modal-permisos');
-    if (!modal) return;
+    if (!modal || !u) return;
 
-    if ($('permisos-usuario-titulo')) $('permisos-usuario-titulo').textContent = `Permisos de @${u.username}`;
-    if ($('permisos-usuario-rol')) $('permisos-usuario-rol').textContent = `Rol asignado: ${u.rol || 'CAJERO'} · 30 permisos auditados`;
+    estadoApp.empleadoEditandoPermisos = u;
+    const rolActual = (u.rol || 'CAJERO').toUpperCase();
+    const rolEtiqueta = ETIQUETAS_ROL[rolActual] || 'Cajero';
+
+    if ($('permisos-usuario-titulo')) {
+        $('permisos-usuario-titulo').textContent = `Permisos de @${u.username}`;
+    }
+    if ($('permisos-usuario-rol')) {
+        $('permisos-usuario-rol').textContent = `Rol actual: ${rolEtiqueta}`;
+    }
+
+    const puedeEditarRol = usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
+    const grupoRol = $('grupo-selector-rol-permisos');
+    const selectRol = $('select-permisos-rol');
+    if (grupoRol) {
+        grupoRol.style.display = puedeEditarRol ? '' : 'none';
+    }
+    if (selectRol) {
+        selectRol.value = ETIQUETAS_ROL[rolActual] ? rolActual : 'CAJERO';
+    }
 
     const contenedor = $('permisos-categorias-grilla');
     if (contenedor) {
-        const permisosUsuario = Array.isArray(u.permisos) ? u.permisos : [];
-        const esDuenio = u.rol === 'DUENIO';
-
-        const categorias = {
-            'Ventas y Facturación': ['ventas.cobrar_ticket', 'ventas.anular_ticket', 'ventas.aplicar_descuento', 'ventas.ver_historial_propio', 'ventas.ver_historial_todos'],
-            'Caja y Arqueo Ciego': ['caja.abrir_turno', 'caja.cerrar_turno', 'caja.ver_efectivo_esperado', 'caja.registrar_movimiento', 'caja.gestionar_turnos_ajenos'],
-            'Inventario de Insumos': ['insumos.ver', 'insumos.crear', 'insumos.editar', 'insumos.eliminar'],
-            'Compras y Proveedores': ['compras.ver', 'compras.registrar'],
-            'Ingeniería de Recetas': ['recetas.ver', 'recetas.crear', 'recetas.editar', 'recetas.eliminar', 'recetas.ver_costos'],
-            'Reportes Ejecutivos': ['reportes.ver_financieros', 'reportes.ver_operativos'],
-            'Inteligencia Artificial': ['ia.importar_listas'],
-            'Personal y Roles': ['personal.ver', 'personal.crear', 'personal.editar', 'personal.ajustar_permisos', 'personal.desactivar'],
-            'Auditoría de Seguridad': ['auditoria.ver_logs'],
-        };
-
+        const permisosIniciales = obtenerPermisosInicialesEmpleado(u);
         contenedor.innerHTML = '';
-        for (const [catNombre, lista] of Object.entries(categorias)) {
-            const divCat = document.createElement('div');
-            divCat.style.background = '#FAF7F2';
-            divCat.style.border = '1px solid var(--color-borde-suave)';
-            divCat.style.borderRadius = 'var(--radio-md)';
-            divCat.style.padding = '1rem';
-            divCat.style.marginBottom = '1rem';
 
-            divCat.innerHTML = `<h4 style="font-size: 0.95rem; font-weight: 800; margin-bottom: 0.65rem;">${catNombre}</h4>`;
+        for (const grupo of GRUPOS_PERMISOS_EQUIPO) {
+            const divCat = document.createElement('div');
+            divCat.className = 'permisos-grupo-card';
+
+            const tituloGrupo = document.createElement('h4');
+            tituloGrupo.textContent = grupo.titulo;
+            divCat.appendChild(tituloGrupo);
 
             const listaUl = document.createElement('ul');
-            listaUl.style.listStyle = 'none';
-            listaUl.style.display = 'flex';
-            listaUl.style.flexDirection = 'column';
-            listaUl.style.gap = '0.35rem';
+            listaUl.className = 'permisos-lista-casillas';
 
-            for (const perm of lista) {
-                const tiene = esDuenio || permisosUsuario.includes(perm);
+            for (const item of grupo.permisos) {
                 const li = document.createElement('li');
-                li.style.fontSize = '0.85rem';
-                li.style.display = 'flex';
-                li.style.alignItems = 'center';
-                li.style.gap = '0.5rem';
-                li.innerHTML = `<span style="display: inline-flex; color: ${tiene ? 'var(--color-exito)' : 'var(--color-peligro)'};">${tiene ? SVG_ICONOS.check : SVG_ICONOS.cruz}</span><code style="font-family: var(--fuente-mono);">${perm}</code>`;
+                const label = document.createElement('label');
+                label.className = 'permiso-casilla-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.dataset.permiso = item.clave;
+                checkbox.checked = Boolean(permisosIniciales[item.clave]);
+
+                const textoSpan = document.createElement('span');
+                textoSpan.textContent = item.etiqueta;
+
+                label.appendChild(checkbox);
+                label.appendChild(textoSpan);
+                li.appendChild(label);
                 listaUl.appendChild(li);
             }
 
@@ -3721,7 +3782,7 @@ const cambiarSeccion = (nombreSeccion) => {
         compras: { titulo: 'Compras & Listas IA', sub: 'Listas de precios de proveedores, en planilla o con ayuda de la IA' },
         recetas: { titulo: 'Ingeniería de Recetas & Rentabilidad', sub: 'Costeo dinámico por insumos, descartables y mano de obra' },
         finanzas: { titulo: 'Reportes, Trazabilidad & Finanzas', sub: 'Trazabilidad por fechas, facturación real, margen bruto y punto de equilibrio' },
-        personal: { titulo: 'Equipo & Permisos', sub: 'Gobernanza de personal y control granular de accesos' },
+        personal: { titulo: 'Equipo & Permisos', sub: 'Sumá personas al equipo y elegí qué puede hacer cada una' },
     };
 
     if (titulos[destino]) {
@@ -4511,6 +4572,154 @@ Flete y entrega a local: $4500`;
             const modal = $(idModal);
             if (modal) modal.style.display = 'none';
         });
+    });
+
+    // 23. Equipo & Permisos: alta de empleados, cambio de rol, permisos y baja
+    $('btn-modal-nuevo-empleado')?.addEventListener('click', () => {
+        if (!usuarioTienePermiso(estadoApp.usuario, 'personal.crear')) return;
+        $('form-nuevo-empleado')?.reset();
+        if ($('select-nuevo-empleado-rol')) $('select-nuevo-empleado-rol').value = 'CAJERO';
+        actualizarEstadoVisibilidadCampo($('btn-toggle-nuevo-empleado-password'), false);
+        if ($('modal-nuevo-empleado')) $('modal-nuevo-empleado').style.display = 'flex';
+    });
+
+    $('form-nuevo-empleado')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'personal.crear')) return;
+
+        const first_name = ($('input-nuevo-empleado-nombre')?.value || '').trim();
+        const last_name = ($('input-nuevo-empleado-apellido')?.value || '').trim();
+        const username = ($('input-nuevo-empleado-usuario')?.value || '').trim();
+        const password = $('input-nuevo-empleado-password')?.value || '';
+        const email = ($('input-nuevo-empleado-email')?.value || '').trim();
+        const rol = $('select-nuevo-empleado-rol')?.value || 'CAJERO';
+
+        if (!username) {
+            mostrarToast('Ingresá un nombre de usuario.', 'advertencia');
+            return;
+        }
+        if (password.length < 4) {
+            mostrarToast('La contraseña tiene que tener al menos 4 caracteres.', 'advertencia');
+            return;
+        }
+
+        const btnSubmit = $('btn-submit-nuevo-empleado');
+        if (btnSubmit) btnSubmit.disabled = true;
+        try {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username,
+                    password,
+                    first_name,
+                    last_name,
+                    email,
+                    rol,
+                    permisos: {},
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                if ($('modal-nuevo-empleado')) $('modal-nuevo-empleado').style.display = 'none';
+                $('form-nuevo-empleado')?.reset();
+                actualizarEstadoVisibilidadCampo($('btn-toggle-nuevo-empleado-password'), false);
+                mostrarToast('Empleado agregado.', 'exito');
+                await cargarPersonal();
+            } else {
+                const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+            }
+        } catch {
+            mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+        } finally {
+            if (btnSubmit) btnSubmit.disabled = false;
+        }
+    });
+
+    $('select-permisos-rol')?.addEventListener('change', (e) => {
+        aplicarPlantillaEnCasillasPermisos(obtenerPlantillaRol(e.target.value));
+    });
+
+    $('form-permisos-empleado')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const u = estadoApp.empleadoEditandoPermisos;
+        if (!u || !usuarioTienePermiso(estadoApp.usuario, 'personal.ajustar_permisos')) return;
+
+        const clavesMarcadas = Array.from(
+            document.querySelectorAll('#permisos-categorias-grilla input[type="checkbox"][data-permiso]:checked')
+        ).map((cb) => cb.dataset.permiso);
+        const permisosDict = construirDictPermisosDesdeSeleccion(clavesMarcadas);
+
+        const puedeEditarRol = usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
+        const rolOriginal = (u.rol || 'CAJERO').toUpperCase();
+        const nuevoRol = ($('select-permisos-rol')?.value || rolOriginal).toUpperCase();
+        const cambioRol = puedeEditarRol && nuevoRol !== rolOriginal;
+
+        const btnGuardar = $('btn-guardar-permisos');
+        if (btnGuardar) btnGuardar.disabled = true;
+        let rolActualizado = false;
+        try {
+            if (cambioRol) {
+                const resRol = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ rol: nuevoRol }),
+                });
+                const dataRol = await resRol.json().catch(() => ({}));
+                if (!resRol.ok) {
+                    const msgApi = extraerMensajeErrorApi(dataRol, dataRol?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(resRol.status, msgApi), 'peligro');
+                    return;
+                }
+                rolActualizado = true;
+                u.rol = nuevoRol;
+            }
+
+            const resPerm = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/ajustar-permisos/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ permisos: permisosDict }),
+            });
+            const dataPerm = await resPerm.json().catch(() => ({}));
+            if (resPerm.ok) {
+                if ($('modal-permisos')) $('modal-permisos').style.display = 'none';
+                estadoApp.empleadoEditandoPermisos = null;
+                mostrarToast('Permisos guardados.', 'exito');
+                await cargarPersonal();
+            } else {
+                const msgApi = extraerMensajeErrorApi(dataPerm, dataPerm?.mensaje || '');
+                mostrarToast(mensajeErrorParaUsuario(resPerm.status, msgApi), 'peligro');
+                if (rolActualizado) {
+                    await cargarPersonal();
+                }
+            }
+        } catch {
+            mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+        } finally {
+            if (btnGuardar) btnGuardar.disabled = false;
+        }
+    });
+
+    $('form-baja-empleado')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const u = estadoApp.empleadoParaBaja;
+        if (!u) return;
+
+        const motivo = ($('input-baja-empleado-motivo')?.value || '').trim();
+        const btnConfirmar = $('btn-confirmar-baja-empleado');
+        if (btnConfirmar) btnConfirmar.disabled = true;
+        try {
+            await toggleEstadoUsuario(u, motivo);
+        } finally {
+            if (btnConfirmar) btnConfirmar.disabled = false;
+        }
     });
 };
 
