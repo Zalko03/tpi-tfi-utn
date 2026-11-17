@@ -10,6 +10,9 @@ import {
     calcularCostosExtraReceta,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
+    fechaIsoATexto,
+    fechaTextoAIso,
+    formatearEntradaFecha,
     crearFetchConSesion,
     construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
@@ -1225,7 +1228,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
     if (leyendaEl) {
         leyendaEl.textContent = datosVenta.offline
             ? 'Comprobante emitido sin internet - se enviará al volver la conexión'
-            : 'Comprobante comercial no fiscal emitido por Sapori Stock';
+            : 'No válido como factura';
     }
 
     const itemsBody = $('ticket-termico-items-body');
@@ -1860,10 +1863,14 @@ const construirHtmlAlertaContingenciaIA = ({
     sugerenciaAlternativa = '',
     mostrarBotonCsvDirecto = false,
 } = {}) => {
-    const listaAdvertencias = Array.isArray(advertencias)
-        ? advertencias.filter((a) => a && a !== detalleTecnico)
-        : [];
-    const detalleHtml = detalleTecnico
+    // Las advertencias de contingencia son errores técnicos (ej. "fetch failed"): quedan en
+    // los logs de Node y no se muestran. El motivo solo se muestra si agrega algo al título.
+    void advertencias;
+    const listaAdvertencias = [];
+    const motivoRepetido = String(detalleTecnico || '')
+        .replace(/\.$/, '')
+        .startsWith(String(mensajePrincipal || '').replace(/\.$/, ''));
+    const detalleHtml = detalleTecnico && !motivoRepetido
         ? `<p class="alerta-contingencia-ia-detalle"><strong>Motivo:</strong> ${escaparHtml(detalleTecnico)}</p>`
         : '';
     const advertenciasHtml =
@@ -2699,10 +2706,16 @@ const recalcularTodaLaCarta = async () => {
 // ============================================================
 // MÓDULO 5: REPORTES, TRAZABILIDAD, FINANZAS Y PUNTO DE EQUILIBRIO
 // ============================================================
-const obtenerRangoFechasSeleccionado = () => {
-    const fechaDesde = ($('filtro-fecha-desde')?.value || '').trim();
-    const fechaHasta = ($('filtro-fecha-hasta')?.value || '').trim();
-    return { fechaDesde, fechaHasta };
+// Los campos se escriben como dd/mm/aaaa; el resto del módulo trabaja con aaaa-mm-dd.
+// Con paraValidar, una fecha incompleta se devuelve tal cual para que validarRangoFechas avise.
+const obtenerRangoFechasSeleccionado = ({ paraValidar = false } = {}) => {
+    const leer = (id) => {
+        const texto = ($(id)?.value || '').trim();
+        const iso = fechaTextoAIso(texto);
+        if (iso === null) return paraValidar ? texto : '';
+        return iso;
+    };
+    return { fechaDesde: leer('filtro-fecha-desde'), fechaHasta: leer('filtro-fecha-hasta') };
 };
 
 const formatearFechaCortaEtiqueta = (fechaYmd) => {
@@ -4396,7 +4409,7 @@ Flete y entrega a local: $4500`;
 
     // 21c. Filtro de Fechas y Trazabilidad en Reportes y Finanzas
     const aplicarFiltroFechasReportes = () => {
-        const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado();
+        const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado({ paraValidar: true });
         const validacion = validarRangoFechas(fechaDesde, fechaHasta);
         if (!validacion.valido) {
             mostrarToast(validacion.mensaje, 'advertencia');
@@ -4411,8 +4424,35 @@ Flete y entrega a local: $4500`;
             aplicarFiltroFechasReportes();
         }
     };
-    $('filtro-fecha-desde')?.addEventListener('keydown', manejarEnterFiltroFechas);
-    $('filtro-fecha-hasta')?.addEventListener('keydown', manejarEnterFiltroFechas);
+    ['filtro-fecha-desde', 'filtro-fecha-hasta'].forEach((id) => {
+        const campo = $(id);
+        if (!campo) return;
+        campo.addEventListener('keydown', manejarEnterFiltroFechas);
+        // Barras automáticas mientras se escribe (no dispara la búsqueda).
+        campo.addEventListener('input', () => {
+            const formateado = formatearEntradaFecha(campo.value);
+            if (formateado !== campo.value) campo.value = formateado;
+        });
+    });
+    // Botón de calendario: abre el selector nativo y copia la fecha elegida al campo.
+    document.querySelectorAll('.btn-calendario-fecha').forEach((btn) => {
+        const campo = $(btn.dataset.para);
+        const calendario = $(`${btn.dataset.para}-calendario`);
+        if (!campo || !calendario) return;
+        btn.addEventListener('click', () => {
+            calendario.value = fechaTextoAIso(campo.value) || '';
+            try {
+                calendario.showPicker();
+            } catch {
+                calendario.focus();
+                calendario.click();
+            }
+        });
+        calendario.addEventListener('change', () => {
+            campo.value = fechaIsoATexto(calendario.value);
+            campo.focus();
+        });
+    });
     $('btn-filtrar-fechas')?.addEventListener('click', aplicarFiltroFechasReportes);
     $('btn-limpiar-fechas')?.addEventListener('click', () => {
         if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = '';
@@ -4434,8 +4474,8 @@ Flete y entrega a local: $4500`;
                 desde = formatearFechaLocalInput(new Date(ahora.getFullYear(), ahora.getMonth(), 1));
             }
 
-            if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = desde;
-            if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = hasta;
+            if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = fechaIsoATexto(desde);
+            if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = fechaIsoATexto(hasta);
 
             document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
             btn.classList.add('activo');

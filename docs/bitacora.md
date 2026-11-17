@@ -1675,3 +1675,23 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint` (195 tests en verde).
 - En el navegador (Playwright, con tokens generados por `manage.py shell`): con un access vencido y un refresh válido hubo 1 solo 401 y 1 sola renovación, los reportes cargaron y la barra dijo "Conectado"; con un refresh inválido volvió al login con un único aviso; "Salir" revocó el refresh (la renovación posterior con ese refresh da 401).
 ---
+
+
+
+Fecha: 2026-11-17
+Tarea: Ajustes para la presentación: ticket, marca, avisos de la IA y filtro de fechas
+Rama: feature/ajustes-presentacion
+Qué se hizo y por qué:
+- Ticket: muestra solo el local ("SAPORI CAFÉ", "Cafetería de especialidad"); se sacó "& POS", el código de barras dibujado (no era escaneable y confundía con un QR de pago) y la leyenda "emitido por Sapori Stock" (ahora "No válido como factura").
+- Barra lateral: se sacó el subtítulo "Specialty Coffee POS".
+- Avisos de la IA: el panel de contingencia ya no lista errores técnicos ("fetch failed", "Aviso técnico: …"); quedan en los logs de Node. El "Motivo" se oculta si repite el título.
+- Filtro de fechas de Reportes: los campos son de texto con el molde "dd/mm/aaaa"; se escribe desde cero y las barras se agregan solas (`formatearEntradaFecha`); `fechaTextoAIso` / `fechaIsoATexto` convierten al formato interno aaaa-mm-dd, así que el resto del módulo no cambió. Un botón abre el calendario nativo. Una fecha incompleta o inexistente avisa al filtrar (antes, una fecha a medio tipear traía todo el historial).
+- Diagnóstico de la IA (sin cambio de código): el ai-service no estaba corriendo en la PC ("fetch failed") y no hay `GROQ_API_KEY` ni `GEMINI_API_KEY` configuradas, así que la IA queda en contingencia hasta cargar una clave en `.env`.
+Archivos tocados:
+- `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`, `web/css/estilos.css`
+- `backend-node/tests/unit/logicaPwa.unit.test.js` (3 tests)
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (198 tests en verde).
+- Reportes: tipear 10102026 → "10/10/2026"; Filtrar aplica el rango; "17/10" avisa que no es válida.
+---

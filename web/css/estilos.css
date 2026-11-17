@@ -2841,7 +2841,9 @@ textarea:focus {
     min-width: 170px;
 }
 
-.filtro-fecha-campo input[type="date"] {
+.filtro-fecha-campo input[type="text"] {
+    width: 100%;
+    padding-right: 2.4rem;
     padding: 0.55rem 0.75rem;
     border: 1px solid var(--color-borde-suave);
     border-radius: var(--radio-md);
@@ -2851,7 +2853,7 @@ textarea:focus {
     font-family: inherit;
 }
 
-.filtro-fecha-campo input[type="date"]:focus {
+.filtro-fecha-campo input[type="text"]:focus {
     outline: none;
     border-color: var(--color-ambar);
     box-shadow: 0 0 0 3px rgba(200, 109, 31, 0.14);
@@ -3144,4 +3146,38 @@ textarea:focus {
 /* Desglose de receta: renglones de mano de obra, descartables y total */
 .tabla-comercial tr.fila-receta-total td {
     border-top: 2px solid var(--color-borde-fuerte);
+}
+
+/* Filtro de fechas: texto dd/mm/aaaa con botón de calendario */
+.filtro-fecha-entrada {
+    position: relative;
+}
+
+.btn-calendario-fecha {
+    position: absolute;
+    top: 50%;
+    right: 0.45rem;
+    transform: translateY(-50%);
+    display: flex;
+    padding: 0.3rem;
+    border: none;
+    background: transparent;
+    color: var(--color-texto-suave, #6b5d52);
+    cursor: pointer;
+    border-radius: var(--radio-sm, 6px);
+}
+
+.btn-calendario-fecha:hover {
+    color: var(--color-ambar);
+}
+
+/* Input de fecha nativo invisible: solo se usa para abrir el calendario del navegador. */
+.selector-fecha-oculto {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
 }

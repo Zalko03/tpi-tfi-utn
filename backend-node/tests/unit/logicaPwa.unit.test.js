@@ -10,6 +10,9 @@ import {
     calcularCostosExtraReceta,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
+    fechaIsoATexto,
+    fechaTextoAIso,
+    formatearEntradaFecha,
     crearFetchConSesion,
     CLAVE_COLA_VENTAS_RECHAZADAS,
     construirQueryRangoFechas,
@@ -1350,6 +1353,31 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(a.status).toBe(200);
             expect(b.status).toBe(200);
             expect(renovar).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('Fechas del filtro escritas como dd/mm/aaaa', () => {
+        it('agrega las barras mientras se escribe', () => {
+            expect(formatearEntradaFecha('1')).toBe('1');
+            expect(formatearEntradaFecha('171')).toBe('17/1');
+            expect(formatearEntradaFecha('1710')).toBe('17/10');
+            expect(formatearEntradaFecha('17102026')).toBe('17/10/2026');
+            expect(formatearEntradaFecha('17/10/2026999')).toBe('17/10/2026');
+            expect(formatearEntradaFecha('ab17-10')).toBe('17/10');
+        });
+
+        it('convierte a aaaa-mm-dd y rechaza fechas incompletas o inexistentes', () => {
+            expect(fechaTextoAIso('17/10/2026')).toBe('2026-10-17');
+            expect(fechaTextoAIso('  ')).toBe('');
+            expect(fechaTextoAIso('17/10')).toBeNull();
+            expect(fechaTextoAIso('31/02/2026')).toBeNull();
+            expect(fechaTextoAIso('29/02/2028')).toBe('2028-02-29');
+        });
+
+        it('convierte aaaa-mm-dd a dd/mm/aaaa para los atajos y el calendario', () => {
+            expect(fechaIsoATexto('2026-11-17')).toBe('17/11/2026');
+            expect(fechaIsoATexto('')).toBe('');
+            expect(fechaIsoATexto('17/11/2026')).toBe('');
         });
     });
 

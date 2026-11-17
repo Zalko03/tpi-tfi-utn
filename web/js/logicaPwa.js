@@ -944,6 +944,44 @@ export const procesarColaVentasOffline = async ({
 /**
  * Formatea una fecha Date a 'YYYY-MM-DD' usando la zona horaria local.
  */
+/**
+ * Mientras se escribe una fecha en el filtro: deja solo dígitos y agrega las barras
+ * (ej. "17102026" -> "17/10/2026").
+ */
+export const formatearEntradaFecha = (texto = '') => {
+    const digitos = String(texto ?? '').replace(/\D/g, '').slice(0, 8);
+    if (digitos.length <= 2) return digitos;
+    if (digitos.length <= 4) return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+    return `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4)}`;
+};
+
+/**
+ * Convierte "dd/mm/aaaa" a "aaaa-mm-dd". Devuelve '' si está vacío y null si la fecha
+ * está incompleta o no existe (ej. 31/02/2026).
+ */
+export const fechaTextoAIso = (texto = '') => {
+    const limpio = String(texto ?? '').trim();
+    if (!limpio) return '';
+    const m = limpio.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const [, dia, mes, anio] = m;
+    const fecha = new Date(Number(anio), Number(mes) - 1, Number(dia));
+    if (
+        fecha.getFullYear() !== Number(anio)
+        || fecha.getMonth() !== Number(mes) - 1
+        || fecha.getDate() !== Number(dia)
+    ) {
+        return null;
+    }
+    return `${anio}-${mes}-${dia}`;
+};
+
+/** Convierte "aaaa-mm-dd" a "dd/mm/aaaa" (o '' si no es una fecha válida). */
+export const fechaIsoATexto = (iso = '') => {
+    const m = String(iso ?? '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+};
+
 export const formatearFechaLocalInput = (fecha = new Date()) => {
     const d = fecha instanceof Date ? fecha : new Date(fecha);
     if (Number.isNaN(d.getTime())) return '';
