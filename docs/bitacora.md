@@ -1482,5 +1482,29 @@ Archivos tocados:
 Cómo probarlo:
 - `cd backend-node && npm test` (24 suites, 158 tests en verde).
 ---
+Fecha: 2026-11-16
+Tarea: Corrección del filtro de fechas y control de concurrencia en Reportes, Trazabilidad & Finanzas
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Disparo y validación del filtro de fechas (`web/js/app.js`, `web/js/logicaPwa.js`):**
+  - Se eliminaron los listeners `change` de `#filtro-fecha-desde` y `#filtro-fecha-hasta` para evitar recargas intermedias al tipear fechas en Chrome (`0002`, `0020`, etc.).
+  - El filtro ahora se aplica únicamente con el botón `#btn-filtrar-fechas`, presionando `Enter` dentro de `#filtro-fecha-desde` o `#filtro-fecha-hasta`, o mediante los atajos rápidos (`Hoy`, `Últimos 7 días`, `Este mes`, además de `Limpiar`).
+  - Se amplió `validarRangoFechas` en `web/js/logicaPwa.js` para exigir fechas de calendario válidas con año entre `2000` y `2100` (`ANIO_MINIMO_FILTRO_REPORTES` / `ANIO_MAXIMO_FILTRO_REPORTES`) y `desde <= hasta`, aceptando rangos vacíos/abiertos. Ante rango inválido, se muestra aviso con `mostrarToast` sin lanzar peticiones.
+- **Control de respuestas fuera de orden y manejo de fallos (`web/js/app.js`, `web/js/logicaPwa.js`):**
+  - Se incorporaron las funciones puras `siguienteIdCarga` y `esCargaVigente` en `web/js/logicaPwa.js` y el contador `estadoApp.idCargaReportes` en `web/js/app.js`.
+  - Tanto `cargarFinanzas` como `cargarTrazabilidadReportes` y `calcularPuntoEquilibrio` descartan cualquier respuesta obsoleta sin modificar el estado ni el DOM, y `estadoApp.trazabilidad` guarda el rango efectivo cargado para mantener consistente el indicador al cambiar de pestaña.
+  - Cuando falla un `fetch` de tarjetas financieras, ranking o punto de equilibrio (`!res.ok` o error de red), se limpian las tarjetas afectadas mostrando `"-"` (en lugar de conservar valores previos) y se muestra un aviso de advertencia.
+- **Tests unitarios (`backend-node/tests/unit/logicaPwa.unit.test.js`):**
+  - Se agregaron pruebas unitarias para `validarRangoFechas` (fechas vacías, límites `2000`–`2100`, años inválidos como `0002`/`1999`/`2101`, `desde > hasta`, fecha inexistente) y para `siguienteIdCarga` / `esCargaVigente`.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (24 suites, 169 tests en verde).
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
 
 
