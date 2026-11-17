@@ -21,6 +21,52 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-17
+Tarea: Textos simples en pantalla, menú según permisos, aviso POS sin carta y rate limiting por usuario/IA
+Rama: feature/reportes-filtro-fechas
+Cambios realizados:
+- **Parte 1 — Textos simples en pantalla y eliminación de acceso por token en login (`web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`):**
+  - Se reemplazaron textos técnicos en barra superior, presencia, lector POS, cola offline, login, compras/importación y modal de conexión por textos claros en español para el dueño del café.
+  - Se eliminó del login el bloque "Token de Acceso Directo" (`#input-token-jwt` / `#btn-toggle-token-jwt`) y la lógica de token manual en `ejecutarLogin`, manteniendo intacta la restauración de sesión vía `sessionStorage` (`cafe_jwt` / `cafe_user`).
+  - Se convirtió `#btn-config-servidor-login` en un enlace discreto ("¿No podés conectarte?") y se ocultó `#btn-config-servidor-header` para cualquier rol distinto de `DUENIO` y al cerrar sesión.
+  - Se creó e integró `mensajeErrorParaUsuario(status, mensajeApi)` en `web/js/logicaPwa.js` para mapear 401/403/429/400/422 y fallos de red/5xx sin exponer códigos HTTP ni tecnicismos en pantalla (dejando detalles en `console.warn`/`console.error`).
+- **Parte 2 — Menú lateral según permisos (`web/js/logicaPwa.js`, `web/js/app.js`):**
+  - Se exportaron `PERMISOS_POR_SECCION` y `seccionesVisiblesParaUsuario(usuario)` en `web/js/logicaPwa.js`.
+  - Tras iniciar o restaurar sesión se ocultan los ítems del menú no habilitados, se redirige la sección activa si quedó oculta, `cambiarSeccion` impide abrir secciones ocultas, los atajos `F2`/`F4` respetan el permiso de `pos` y `cargarDatosIniciales` evita consultar secciones ocultas.
+- **Parte 3 — Aviso de cobro bloqueado sin carta (`web/js/app.js`):**
+  - `renderizarCatalogoPOS` actualiza `#estado-caja` con `"Cobro bloqueado: no hay carta cargada."` cuando la carta está vacía y vuelve a `"Listo para escanear productos o cobrar."` cuando hay productos cargados.
+- **Parte 4 — Límites de peticiones y documentación (`backend-node/`, `backend-django/`, `.env.example`, `render.yaml`, `docs/seguridad.md`):**
+  - En `backend-node/app.js`: se configuró `app.set('trust proxy', nodeTrustProxySaltos)` desde `NODE_TRUST_PROXY_SALTOS` (default `0`, `1` en `render.yaml`, nunca `true`) y se montaron `/app` y `/health` antes de `limitadorGeneral` para que no consuman cupo ni emitan cabeceras `RateLimit`.
+  - En `backend-node/src/middlewares/auth.middleware.js` y `rateLimit.middleware.js`: se extrajo `obtenerUsuarioIdDeToken(cabecera)` reutilizando la verificación RS256; `limitadorGeneral` aplica 600 req/15 min por `usuario:<id>` autenticado y 100 req/15 min por IP (`ipKeyGenerator`) si falta token o es inválido; se creó `limitadorIA` (20 req/15 min por usuario/IP) en `POST /api/importaciones`, `POST /importaciones` y `POST /v1/resumen-semanal` (conservando `limitadorConsultasCostosas` en `productoResumen.routes.js`).
+  - En `backend-django/config/settings/base.py` y `.env.example`: se actualizó `DJANGO_THROTTLE_USER` por defecto de `2000/day` a `10000/day`.
+  - Se documentaron los límites en `docs/seguridad.md` (§8).
+- **Tests (`backend-node/tests/`):**
+  - Se actualizaron `clientePwa.integration.test.js` y `logicaPwa.unit.test.js` (errores legibles y menú por permisos) y se ampliaron `rateLimit.unit.test.js` y `seguridadHardening.integration.test.js`.
+Archivos tocados:
+- `web/index.html`
+- `web/js/app.js`
+- `web/js/logicaPwa.js`
+- `backend-node/app.js`
+- `backend-node/src/config/env.js`
+- `backend-node/src/middlewares/auth.middleware.js`
+- `backend-node/src/middlewares/rateLimit.middleware.js`
+- `backend-node/src/routes/importacionIA.routes.js`
+- `backend-node/src/routes/resumenSemanal.routes.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `backend-node/tests/unit/rateLimit.unit.test.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`
+- `backend-node/tests/integration/seguridadHardening.integration.test.js`
+- `backend-django/config/settings/base.py`
+- `.env.example`
+- `render.yaml`
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q` (407 passed)
+- `cd backend-node && npm test && npm run lint` (24 suites, 179 tests passed)
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+- `.venv/bin/ruff check backend-django/config/settings/base.py && .venv/bin/ruff format --check backend-django/config/settings/base.py`
+---
 Fecha: 2026-11-16
 Tarea: Corrección de `RecetaItemSerializer` (`producto`) y gestión de carta/recetas por permisos en "Recetas & Rentabilidad"
 Rama: feature/reportes-filtro-fechas
