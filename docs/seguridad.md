@@ -109,6 +109,10 @@ flowchart TD
    - Los access tokens ya emitidos caducan naturalmente al expirar su breve ventana de vida (máximo 15 minutos).
 3. **Auditoría de cambios de estado:**
    - Todo cambio de `is_active` genera un registro con: `timestamp`, `usuario_modificado_id`, `modificado_por_id`, `motivo` y `estado_resultante`.
+4. **Renovación de sesión en la web:**
+   - La web guarda el access y el refresh en `sessionStorage` (se borran al cerrar la pestaña). Todos los pedidos autenticados pasan por `fetchConSesion` (`crearFetchConSesion` en `web/js/logicaPwa.js`): ante un 401 renuevan el access con `POST /api/auth/token/refresh/` una sola vez (compartida si varios pedidos vencen a la vez, porque el refresh rota y el anterior queda en la lista negra) y repiten el pedido.
+   - Si la renovación es rechazada (usuario desactivado, refresh vencido o revocado), la web cierra la sesión y vuelve al login con "Tu sesión venció. Volvé a ingresar.". Si falla por falta de red, no se cierra la sesión.
+   - "Salir" revoca el refresh en `POST /api/auth/token/blacklist/` y lo borra del navegador.
 
 ---
 

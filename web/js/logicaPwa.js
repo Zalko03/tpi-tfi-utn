@@ -2018,6 +2018,56 @@ export const calcularCostosExtraReceta = (producto) => {
 };
 
 /**
+ * Crea un fetch que agrega el token vigente y, ante un 401, renueva la sesión una vez
+ * y repite el pedido. Si varios pedidos vencen a la vez comparten una sola renovación
+ * (el refresh rota y se invalida, así que dos renovaciones en paralelo fallarían).
+ * - renovarSesion(): true si renovó, false si la sesión ya no se puede renovar.
+ *   Si lanza (por ejemplo, sin red), no se cierra la sesión y se devuelve el 401 original.
+ * - alVencerSesion(): se llama cuando no se pudo renovar.
+ */
+export const crearFetchConSesion = ({ fetchFn, obtenerToken, renovarSesion, alVencerSesion }) => {
+    let renovacionEnCurso = null;
+
+    const conToken = (opciones = {}) => {
+        const headers = new Headers(opciones.headers || {});
+        const token = obtenerToken();
+        if (token) headers.set('Authorization', `Bearer ${token}`);
+        return { ...opciones, headers };
+    };
+
+    const renovar = () => {
+        if (!renovacionEnCurso) {
+            renovacionEnCurso = Promise.resolve()
+                .then(() => renovarSesion())
+                .finally(() => {
+                    renovacionEnCurso = null;
+                });
+        }
+        return renovacionEnCurso;
+    };
+
+    const fetchConSesion = async (url, opciones = {}) => {
+        const respuesta = await fetchFn(url, conToken(opciones));
+        if (respuesta.status !== 401) return respuesta;
+
+        let renovada;
+        try {
+            renovada = await renovar();
+        } catch {
+            return respuesta;
+        }
+        if (!renovada) {
+            alVencerSesion();
+            return respuesta;
+        }
+        return fetchFn(url, conToken(opciones));
+    };
+
+    fetchConSesion.renovar = renovar;
+    return fetchConSesion;
+};
+
+/**
  * Traduce un código de estado HTTP y el mensaje de la API a un texto claro para el usuario.
  */
 export const mensajeErrorParaUsuario = (status, mensajeApi = '') => {

@@ -10,6 +10,7 @@ import {
     calcularCostosExtraReceta,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
+    crearFetchConSesion,
     CLAVE_COLA_VENTAS_RECHAZADAS,
     construirQueryRangoFechas,
     convertirMontoACentavos,
@@ -1255,6 +1256,100 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(mensajeErrorParaUsuario(0)).toBe(
                 'No se pudo completar la operación. Probá de nuevo en unos minutos.'
             );
+        });
+    });
+
+    describe('Pedidos con renovación de sesión', () => {
+        const respuesta = (status) => ({ status, ok: status < 400 });
+
+        const armar = ({ respuestas, renovarSesion }) => {
+            let token = 'vencido';
+            const tokensUsados = [];
+            const fetchFn = jest.fn(async (_url, opciones) => {
+                tokensUsados.push(opciones.headers.get('Authorization'));
+                return respuestas.shift();
+            });
+            const alVencerSesion = jest.fn();
+            const renovar = jest.fn(async () => {
+                const ok = await renovarSesion();
+                if (ok) token = 'nuevo';
+                return ok;
+            });
+            const fetchConSesion = crearFetchConSesion({
+                fetchFn,
+                obtenerToken: () => token,
+                renovarSesion: renovar,
+                alVencerSesion,
+            });
+            return { fetchConSesion, fetchFn, tokensUsados, alVencerSesion, renovar };
+        };
+
+        it('si no hay 401 no renueva y manda el token vigente', async () => {
+            const { fetchConSesion, tokensUsados, renovar } = armar({
+                respuestas: [respuesta(200)],
+                renovarSesion: async () => true,
+            });
+            const res = await fetchConSesion('/api/x', {
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(res.status).toBe(200);
+            expect(tokensUsados).toEqual(['Bearer vencido']);
+            expect(renovar).not.toHaveBeenCalled();
+        });
+
+        it('ante un 401 renueva y repite el pedido con el token nuevo', async () => {
+            const { fetchConSesion, tokensUsados, alVencerSesion } = armar({
+                respuestas: [respuesta(401), respuesta(200)],
+                renovarSesion: async () => true,
+            });
+            const res = await fetchConSesion('/api/x', { method: 'POST', body: '{}' });
+            expect(res.status).toBe(200);
+            expect(tokensUsados).toEqual(['Bearer vencido', 'Bearer nuevo']);
+            expect(alVencerSesion).not.toHaveBeenCalled();
+        });
+
+        it('si no se puede renovar avisa que venció y devuelve el 401', async () => {
+            const { fetchConSesion, fetchFn, alVencerSesion } = armar({
+                respuestas: [respuesta(401)],
+                renovarSesion: async () => false,
+            });
+            const res = await fetchConSesion('/api/x');
+            expect(res.status).toBe(401);
+            expect(fetchFn).toHaveBeenCalledTimes(1);
+            expect(alVencerSesion).toHaveBeenCalledTimes(1);
+        });
+
+        it('si la renovación falla por red no cierra la sesión', async () => {
+            const { fetchConSesion, alVencerSesion } = armar({
+                respuestas: [respuesta(401)],
+                renovarSesion: async () => {
+                    throw new TypeError('Failed to fetch');
+                },
+            });
+            const res = await fetchConSesion('/api/x');
+            expect(res.status).toBe(401);
+            expect(alVencerSesion).not.toHaveBeenCalled();
+        });
+
+        it('varios 401 a la vez comparten una sola renovación', async () => {
+            let liberar;
+            const espera = new Promise((r) => {
+                liberar = r;
+            });
+            const { fetchConSesion, renovar } = armar({
+                respuestas: [respuesta(401), respuesta(401), respuesta(200), respuesta(200)],
+                renovarSesion: async () => {
+                    await espera;
+                    return true;
+                },
+            });
+            const pedidos = Promise.all([fetchConSesion('/api/a'), fetchConSesion('/api/b')]);
+            await new Promise((r) => setTimeout(r, 0));
+            liberar();
+            const [a, b] = await pedidos;
+            expect(a.status).toBe(200);
+            expect(b.status).toBe(200);
+            expect(renovar).toHaveBeenCalledTimes(1);
         });
     });
 

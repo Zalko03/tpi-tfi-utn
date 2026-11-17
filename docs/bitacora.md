@@ -1654,3 +1654,24 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint` (190 tests en verde).
 - Con un turno abierto, `POST /api/caja/turnos/` con el token del mismo usuario responde 400 y no crea otro turno.
 ---
+
+
+
+Fecha: 2026-11-17
+Tarea: La web renueva la sesión sola y vuelve al login si no puede
+Rama: feature/reportes-filtro-fechas
+Qué se hizo y por qué:
+- El access token dura 15 minutos y la web no lo renovaba: pasado ese tiempo todos los pedidos daban 401 y cada pantalla mostraba un aviso engañoso ("Sin conexión", "No se pudieron cargar algunas métricas", "No se pudo actualizar la carta", "No se pudo usar la IA, revisá la configuración"), sin volver al login.
+- `crearFetchConSesion` (`web/js/logicaPwa.js`): agrega el token vigente; ante un 401 renueva una sola vez con el refresh (compartida entre pedidos simultáneos, porque el refresh rota y se invalida) y repite el pedido. Si no se puede renovar, cierra la sesión; si la renovación falla por red, no.
+- `web/js/app.js`: el login guarda el refresh en `sessionStorage`; los 41 `fetch` autenticados pasan por `fetchConSesion` (el del login no); al renovar se reconecta Socket.IO con el token nuevo, y si Node rechaza la conexión por token vencido se renueva la sesión; "Salir" revoca el refresh en el servidor. Al cerrar por vencimiento se muestra solo "Tu sesión venció. Volvé a ingresar." (los avisos en cadena de los pedidos que estaban en camino se silencian 5 segundos).
+- `docs/seguridad.md`: sección de renovación de sesión en la web.
+Archivos tocados:
+- `web/js/logicaPwa.js`
+- `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js` (5 tests)
+- `docs/seguridad.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (195 tests en verde).
+- En el navegador (Playwright, con tokens generados por `manage.py shell`): con un access vencido y un refresh válido hubo 1 solo 401 y 1 sola renovación, los reportes cargaron y la barra dijo "Conectado"; con un refresh inválido volvió al login con un único aviso; "Salir" revocó el refresh (la renovación posterior con ese refresh da 401).
+---

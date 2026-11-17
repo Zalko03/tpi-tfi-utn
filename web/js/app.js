@@ -10,6 +10,7 @@ import {
     calcularCostosExtraReceta,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
+    crearFetchConSesion,
     construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
     encolarVentaOffline,
@@ -196,6 +197,9 @@ const obtenerIconoProducto = (nombre = '') => {
 export const mostrarToast = (mensaje, tipo = 'info') => {
     const contenedor = $('contenedor-toasts');
     if (!contenedor) return;
+    // Recién vencida la sesión, los pedidos que ya estaban en camino fallan en cadena:
+    // solo se deja el aviso de "Tu sesión venció".
+    if (tipo !== 'exito' && Date.now() < (estadoApp.avisosSilenciadosHasta || 0)) return;
 
     const toast = document.createElement('div');
     toast.className = `toast-notif ${tipo}`;
@@ -266,7 +270,7 @@ const asegurarSesionYTurnosParaSincronizacion = async () => {
 
     let listaTurnos = [];
     try {
-        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
+        const resTurnos = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -646,6 +650,8 @@ const ejecutarLogin = async (username, password) => {
 
         estadoApp.tokenJwt = data.access;
         sessionStorage.setItem('cafe_jwt', data.access);
+        if (data.refresh) sessionStorage.setItem('cafe_refresh', data.refresh);
+        estadoApp.avisosSilenciadosHasta = 0;
 
         if (data.usuario) {
             estadoApp.usuario = data.usuario;
@@ -673,7 +679,17 @@ const ejecutarLogin = async (username, password) => {
     }
 };
 
-const cerrarSesion = () => {
+const cerrarSesion = ({ motivo = 'Sesión cerrada correctamente.', tipo = 'info' } = {}) => {
+    // Revoca el refresh en el servidor (si no hay red, igual se borra del navegador).
+    const refresh = sessionStorage.getItem('cafe_refresh');
+    if (refresh) {
+        fetch(`${estadoApp.djangoUrl}/api/auth/token/blacklist/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh }),
+        }).catch(() => {});
+    }
+    sessionStorage.removeItem('cafe_refresh');
     estadoApp.tokenJwt = '';
     estadoApp.usuario = null;
     estadoApp.productoDesgloseId = null;
@@ -686,8 +702,41 @@ const cerrarSesion = () => {
     }
     limpiarCredencialesFormularioLogin({ resetearFormulario: true });
     actualizarUIUsuario();
-    mostrarToast('Sesión cerrada correctamente.', 'info');
+    mostrarToast(motivo, tipo);
 };
+
+// Renueva el token de acceso con el refresh guardado. Devuelve false si la sesión ya no
+// se puede renovar; lanza si no hay red (en ese caso no se cierra la sesión).
+const renovarSesion = async () => {
+    const refresh = sessionStorage.getItem('cafe_refresh');
+    if (!refresh) return false;
+    const res = await fetch(`${estadoApp.djangoUrl}/api/auth/token/refresh/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => null);
+    if (!data?.access) return false;
+    estadoApp.tokenJwt = data.access;
+    sessionStorage.setItem('cafe_jwt', data.access);
+    if (data.refresh) sessionStorage.setItem('cafe_refresh', data.refresh);
+    if (estadoApp.socket) conectarSocketTiempoReal();
+    return true;
+};
+
+const cerrarSesionPorVencimiento = () => {
+    if (!estadoApp.tokenJwt) return; // ya se cerró (varios pedidos vencidos a la vez)
+    cerrarSesion({ motivo: mensajeErrorParaUsuario(401), tipo: 'advertencia' });
+    estadoApp.avisosSilenciadosHasta = Date.now() + 5000;
+};
+
+const fetchConSesion = crearFetchConSesion({
+    fetchFn: (url, opciones) => fetch(url, opciones),
+    obtenerToken: () => estadoApp.tokenJwt,
+    renovarSesion,
+    alVencerSesion: cerrarSesionPorVencimiento,
+});
 
 // ============================================================
 // CONEXIÓN SOCKET.IO EN TIEMPO REAL
@@ -729,7 +778,20 @@ export const conectarSocketTiempoReal = () => {
         actualizarEstadoSocketUI(false, 'Reconectando…');
     });
 
-    socket.on('connect_error', () => {
+    socket.on('connect_error', async () => {
+        // Si Node rechazó la conexión porque el token venció, se renueva la sesión
+        // (renovarSesion vuelve a conectar el socket con el token nuevo).
+        const claims = decodificarClaimsJwt(estadoApp.tokenJwt);
+        const tokenVencido = Boolean(claims?.exp && claims.exp * 1000 <= Date.now());
+        if (tokenVencido && socket === estadoApp.socket) {
+            try {
+                const renovada = await fetchConSesion.renovar();
+                if (!renovada) cerrarSesionPorVencimiento();
+                return;
+            } catch {
+                // Sin red: queda el aviso de abajo.
+            }
+        }
         actualizarEstadoSocketUI(false, 'Sin conexión');
     });
 
@@ -812,7 +874,7 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 export const cargarCatalogo = async () => {
     if (estadoApp.modoConexion !== 'offline' && navigator.onLine !== false) {
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -1118,7 +1180,7 @@ const cobrarTicketVenta = async () => {
     }
 
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/ventas/`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/ventas/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1203,7 +1265,7 @@ export const cargarTurnoActivo = async () => {
     }
 
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -1369,7 +1431,7 @@ const cerrarTurnoCaja = async (efectivoContado) => {
     }
 
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/${turnoId}/cerrar/`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/${turnoId}/cerrar/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1397,7 +1459,7 @@ const cerrarTurnoCaja = async (efectivoContado) => {
 // ============================================================
 export const cargarInsumos = async () => {
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/insumos/?limite=100`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/insumos/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -1416,7 +1478,7 @@ export const cargarInsumos = async () => {
 
 export const cargarProveedores = async () => {
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/proveedores/?limite=100`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/proveedores/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -1854,7 +1916,7 @@ const enviarCsvAlCircuitoAprobacion = async () => {
     });
 
     try {
-        const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones`, {
+        const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1936,7 +1998,7 @@ const confirmarCsvDirectoEnInventario = async () => {
 
         const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Proveedor Planilla CSV';
 
-        const res = await fetch(`${estadoApp.djangoUrl}/api/compras/confirmar-importacion/`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/compras/confirmar-importacion/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1989,7 +2051,7 @@ const confirmarCsvDirectoEnInventario = async () => {
 
 const consultarDetalleImportacion = async (importacionId, intento = 1) => {
     try {
-        const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${importacionId}`, {
+        const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${importacionId}`, {
             headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` },
         });
         const datos = await res.json().catch(() => ({}));
@@ -2409,7 +2471,7 @@ const actualizarCantidadRecetaItem = async (itemId, nuevaCantidad) => {
         return;
     }
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/recetas-items/${itemId}/`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/recetas-items/${itemId}/`, {
             method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
@@ -2431,7 +2493,7 @@ const actualizarCantidadRecetaItem = async (itemId, nuevaCantidad) => {
 
 const eliminarRecetaItem = async (itemId) => {
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/recetas-items/${itemId}/`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/recetas-items/${itemId}/`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
@@ -2575,7 +2637,7 @@ const mostrarDesgloseReceta = (producto) => {
 
 const recalcularProducto = async (productoId) => {
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/productos/${productoId}/recalcular/`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${productoId}/recalcular/`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
@@ -2597,7 +2659,7 @@ const recalcularProducto = async (productoId) => {
 const recalcularTodaLaCarta = async () => {
     mostrarToast('Recalculando costos de toda la carta comercial...', 'info');
     try {
-        const resBulk = await fetch(`${estadoApp.djangoUrl}/api/productos/recalcular/`, {
+        const resBulk = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/recalcular/`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
@@ -2618,7 +2680,7 @@ const recalcularTodaLaCarta = async () => {
     let recalculados = 0;
     for (const prod of estadoApp.catalogo) {
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/productos/${prod.id}/recalcular/`, {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${prod.id}/recalcular/`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
@@ -2756,12 +2818,12 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
 
     try {
         const [resVentas, resMovStock, resTurnos] = await Promise.all([
-            fetch(`${estadoApp.djangoUrl}/api/ventas/?${queryFechas}`, { headers }).catch(() => null),
-            fetch(
+            fetchConSesion(`${estadoApp.djangoUrl}/api/ventas/?${queryFechas}`, { headers }).catch(() => null),
+            fetchConSesion(
                 `${estadoApp.djangoUrl}/api/insumos/movimientos/${queryMovs ? `?${queryMovs}` : ''}`,
                 { headers }
             ).catch(() => null),
-            fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?${queryFechas}`, { headers }).catch(() => null),
+            fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/?${queryFechas}`, { headers }).catch(() => null),
         ]);
         if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
 
@@ -2774,7 +2836,7 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
         if (movStockData !== null) {
             movimientosStock = movStockData;
         } else {
-            const resCompras = await fetch(
+            const resCompras = await fetchConSesion(
                 `${estadoApp.djangoUrl}/api/compras/?${queryFechas}`,
                 { headers }
             ).catch(() => null);
@@ -2848,7 +2910,7 @@ export const cargarFinanzas = async () => {
 
     const cargarTarjetasGanancia = async () => {
         try {
-            const resGanancia = await fetch(
+            const resGanancia = await fetchConSesion(
                 `${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/${queryFechas ? `?${queryFechas}` : ''}`,
                 { headers }
             );
@@ -2880,7 +2942,7 @@ export const cargarFinanzas = async () => {
 
     const cargarRanking = async () => {
         try {
-            const resRanking = await fetch(
+            const resRanking = await fetchConSesion(
                 `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?${queryRanking}`,
                 { headers }
             );
@@ -3010,7 +3072,7 @@ const calcularPuntoEquilibrio = async (fechaDesdeParam = null, fechaHastaParam =
             : idCargaEsperado === estadoApp.idCargaReportes;
 
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/ventas/punto-equilibrio/`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/ventas/punto-equilibrio/`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
@@ -3066,7 +3128,7 @@ const consultarDiagnosticoStockIA = async () => {
     try {
         let insumos = estadoApp.insumos || [];
         if (insumos.length === 0) {
-            const resInsumos = await fetch(`${estadoApp.djangoUrl}/api/insumos/?limite=100`, {
+            const resInsumos = await fetchConSesion(`${estadoApp.djangoUrl}/api/insumos/?limite=100`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -3081,7 +3143,7 @@ const consultarDiagnosticoStockIA = async () => {
 
         let catalogo = estadoApp.catalogo || [];
         if (catalogo.length === 0) {
-            const resCat = await fetch(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
+            const resCat = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -3116,11 +3178,11 @@ const consultarDiagnosticoStockIA = async () => {
             const queryIaRanking = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
 
             const [resGanancia, resRanking] = await Promise.all([
-                fetch(
+                fetchConSesion(
                     `${estadoApp.djangoUrl}/api/ventas/ganancia-diaria/?${queryIa}`,
                     { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
                 ).catch(() => null),
-                fetch(
+                fetchConSesion(
                     `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?${queryIaRanking}`,
                     { headers: { 'Authorization': `Bearer ${estadoApp.tokenJwt}` } }
                 ).catch(() => null),
@@ -3171,7 +3233,7 @@ const consultarDiagnosticoStockIA = async () => {
                     ),
                     version_prompt: 'v1',
                 };
-                const resAi = await fetch(`${estadoApp.nodeUrl}/v1/resumen-semanal`, {
+                const resAi = await fetchConSesion(`${estadoApp.nodeUrl}/v1/resumen-semanal`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3292,7 +3354,7 @@ const auditarCierreCajaIA = async () => {
             fechaDesde,
             fechaHasta
         );
-        const resTurnos = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/?${queryTurnos}`, {
+        const resTurnos = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/?${queryTurnos}`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -3322,7 +3384,7 @@ const auditarCierreCajaIA = async () => {
                 turno_caja: turnoAuditado.id,
                 limite: 100,
             });
-            const resMovs = await fetch(`${estadoApp.djangoUrl}/api/caja/movimientos/?${queryMovs}`, {
+            const resMovs = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/movimientos/?${queryMovs}`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -3342,7 +3404,7 @@ const auditarCierreCajaIA = async () => {
                 turno_caja: turnoAuditado.id,
                 limite: 100,
             });
-            const resVentas = await fetch(`${estadoApp.djangoUrl}/api/ventas/?${queryVentas}`, {
+            const resVentas = await fetchConSesion(`${estadoApp.djangoUrl}/api/ventas/?${queryVentas}`, {
                 headers: {
                     'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                     'Content-Type': 'application/json',
@@ -3418,7 +3480,7 @@ const auditarCierreCajaIA = async () => {
 // ============================================================
 export const cargarPersonal = async () => {
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/usuarios/?limite=100`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/?limite=100`, {
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
@@ -3495,7 +3557,7 @@ const renderizarTarjetasPersonal = () => {
 const toggleEstadoUsuario = async (u) => {
     const accion = u.is_active ? 'desactivar' : 'activar';
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/${accion}/`, {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/${accion}/`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${estadoApp.tokenJwt}`,
@@ -3698,7 +3760,7 @@ const inicializarEventosDOM = () => {
     });
 
     // 3. Logout
-    $('btn-cerrar-sesion')?.addEventListener('click', cerrarSesion);
+    $('btn-cerrar-sesion')?.addEventListener('click', () => cerrarSesion());
 
     // 4. Navegación del Sidebar
     document.querySelectorAll('.sidebar-nav .nav-item').forEach((btn) => {
@@ -3814,7 +3876,7 @@ const inicializarEventosDOM = () => {
         }
 
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/caja/movimientos/`, {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/movimientos/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3848,7 +3910,7 @@ const inicializarEventosDOM = () => {
         e.preventDefault();
         const efectivoInicial = $('input-apertura-fondo').value;
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3972,7 +4034,7 @@ Flete y entrega a local: $4500`;
         });
 
         try {
-            const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones`, {
+            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4045,7 +4107,7 @@ Flete y entrega a local: $4500`;
         const envio = salida.envioDetectado || '0.00';
 
         try {
-            const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
+            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4094,7 +4156,7 @@ Flete y entrega a local: $4500`;
             return;
         }
         try {
-            const res = await fetch(`${estadoApp.nodeUrl}/api/importaciones/${id}/rechazar`, {
+            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/rechazar`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4125,7 +4187,7 @@ Flete y entrega a local: $4500`;
         const envio = $('input-compra-envio').value || '0.00';
 
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/compras/`, {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/compras/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4182,7 +4244,7 @@ Flete y entrega a local: $4500`;
         }
 
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/productos/`, {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4219,7 +4281,7 @@ Flete y entrega a local: $4500`;
         if (!productoId) return;
 
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4257,7 +4319,7 @@ Flete y entrega a local: $4500`;
         }
 
         try {
-            const res = await fetch(`${estadoApp.djangoUrl}/api/recetas-items/`, {
+            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/recetas-items/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
