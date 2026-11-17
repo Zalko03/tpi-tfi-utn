@@ -2301,7 +2301,7 @@ export const GRUPOS_PERMISOS_EQUIPO = [
         id: 'insumos',
         titulo: 'Insumos',
         permisos: [
-            { clave: 'insumos.ver', etiqueta: 'Ver insumos y stock' },
+            { clave: 'insumos.ver', etiqueta: 'Ver insumos' },
             { clave: 'insumos.crear', etiqueta: 'Agregar insumos' },
             { clave: 'insumos.editar', etiqueta: 'Editar insumos' },
             { clave: 'insumos.eliminar', etiqueta: 'Borrar insumos' },
