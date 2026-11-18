@@ -5,6 +5,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
+from apps.caja.services import validar_movimiento_en_turno
 from apps.usuarios.permissions import usuario_tiene_permiso
 
 
@@ -26,6 +27,24 @@ class MovimientoCajaSerializer(serializers.ModelSerializer):
         if Decimal(str(value)) <= Decimal("0"):
             raise serializers.ValidationError("El monto del movimiento debe ser mayor a cero.")
         return value
+
+    def validate(self, attrs):
+        if self.instance is None:
+            turno = attrs.get("turno_caja")
+            if turno is not None:
+                request = self.context.get("request")
+                usuario = getattr(request, "user", None) if request else None
+                puede_ajenos = (
+                    usuario_tiene_permiso(request, "caja.gestionar_turnos_ajenos")
+                    if request
+                    else False
+                )
+                validar_movimiento_en_turno(
+                    turno=turno,
+                    usuario=usuario,
+                    puede_gestionar_ajenos=puede_ajenos,
+                )
+        return attrs
 
 
 class TurnoCajaSerializer(serializers.ModelSerializer):

@@ -12,9 +12,14 @@ from rest_framework.response import Response
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
 from apps.caja.serializers import MovimientoCajaSerializer, TurnoCajaSerializer
-from apps.caja.services import abrir_turno
+from apps.caja.services import abrir_turno, registrar_movimiento_caja
 from apps.comun.filtros import extraer_rango_fechas, filtrar_queryset_por_rango_fechas
-from apps.usuarios.permissions import PermisoObjetoTurnoCaja, TienePermiso, usuario_tiene_permiso
+from apps.usuarios.permissions import (
+    PermisoObjetoTurnoCaja,
+    TieneAlgunPermiso,
+    TienePermiso,
+    usuario_tiene_permiso,
+)
 
 
 class TurnoCajaViewSet(viewsets.ModelViewSet):
@@ -159,8 +164,20 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
             )
         return qs
 
+    def perform_create(self, serializer):
+        puede_ajenos = usuario_tiene_permiso(self.request, "caja.gestionar_turnos_ajenos")
+        registrar_movimiento_caja(
+            serializer=serializer,
+            usuario=self.request.user,
+            puede_gestionar_ajenos=puede_ajenos,
+        )
+
     def get_permissions(self):
-        if self.action in ("list", "retrieve", "create"):
+        if self.action in ("list", "retrieve"):
+            return [
+                TieneAlgunPermiso("caja.registrar_movimiento", "caja.gestionar_turnos_ajenos")()
+            ]
+        elif self.action == "create":
             return [TienePermiso("caja.registrar_movimiento")()]
         elif self.action in ("update", "partial_update", "destroy"):
             return [TienePermiso("caja.gestionar_turnos_ajenos")()]
