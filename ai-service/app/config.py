@@ -72,11 +72,11 @@ class ConfiguracionIA:
 
     @property
     def timeout_segundos(self) -> float:
-        valor = os.getenv("AI_TIMEOUT_SECONDS", "10.0")
+        valor = os.getenv("AI_TIMEOUT_SECONDS", "25.0")
         try:
             return max(0.1, float(valor))
         except ValueError:
-            return 10.0
+            return 25.0
 
     @property
     def max_reintentos(self) -> int:
