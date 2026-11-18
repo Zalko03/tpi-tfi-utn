@@ -32,13 +32,13 @@ def manejador_excepciones_api(exc, context):
             elif isinstance(response.data, list) and response.data:
                 mensaje = str(response.data[0])
         elif isinstance(exc, exceptions.PermissionDenied):
-            mensaje = "No tiene permisos para realizar esta acción"
+            mensaje = "No tenés permisos para realizar esta acción"
             detalles = None
         elif isinstance(exc, (exceptions.NotAuthenticated, exceptions.AuthenticationFailed)):
-            mensaje = "Credenciales de autenticación no provistas o inválidas"
+            mensaje = "Tu sesión venció o los datos de ingreso no son válidos"
             detalles = None
         elif isinstance(exc, exceptions.Throttled):
-            mensaje = "Demasiadas peticiones. Intente nuevamente en unos minutos"
+            mensaje = "Demasiados intentos seguidos. Probá de nuevo en unos minutos"
             detalles = {"espera_segundos": exc.wait} if exc.wait is not None else None
         elif isinstance(response.data, dict) and "detail" in response.data:
             mensaje = str(response.data["detail"])

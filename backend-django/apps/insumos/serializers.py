@@ -124,9 +124,7 @@ class ItemConfirmacionImportacionSerializer(serializers.Serializer):
         insumo_id = attrs.get("insumo_id")
         nombre = (attrs.get("nombre_insumo") or "").strip()
         if not insumo_id and not nombre:
-            raise serializers.ValidationError(
-                "Cada ítem debe especificar 'insumo_id' o 'nombre_insumo'."
-            )
+            raise serializers.ValidationError("Cada ítem debe indicar un insumo.")
         return attrs
 
 
@@ -152,7 +150,5 @@ class ConfirmarImportacionComprasSerializer(serializers.Serializer):
         proveedor_id = attrs.get("proveedor_id")
         proveedor_nombre = (attrs.get("proveedor_nombre") or "").strip()
         if not proveedor_id and not proveedor_nombre:
-            raise serializers.ValidationError(
-                "Se debe especificar 'proveedor_id' o 'proveedor_nombre'."
-            )
+            raise serializers.ValidationError("Elegí o escribí un proveedor.")
         return attrs

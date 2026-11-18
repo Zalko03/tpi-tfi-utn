@@ -61,3 +61,29 @@ class TestApiContratos:
         assert "mensaje" in data
         assert "detalles" in data
         assert data["detalles"] is not None
+
+    def test_contrato_error_401_voseo(self):
+        """Una petición sin autenticar responde 401 con mensaje de vos y formato único."""
+        anon = APIClient()
+        res = anon.get("/api/insumos/")
+        assert res.status_code == 401
+        assert res.json() == {
+            "mensaje": "Tu sesión venció o los datos de ingreso no son válidos",
+            "detalles": None,
+        }
+
+    def test_contrato_error_403_voseo(self):
+        """Un usuario sin permiso responde 403 con mensaje de vos y formato único."""
+        from apps.usuarios.constantes import ROL_CAJERO
+
+        cajero = User.objects.create_user(username="contrato_cajero", password="password123")
+        PerfilUsuario.objects.create(usuario=cajero, rol=ROL_CAJERO)
+        client = APIClient()
+        client.force_authenticate(user=cajero)
+
+        res = client.get("/api/insumos/")
+        assert res.status_code == 403
+        assert res.json() == {
+            "mensaje": "No tenés permisos para realizar esta acción",
+            "detalles": None,
+        }

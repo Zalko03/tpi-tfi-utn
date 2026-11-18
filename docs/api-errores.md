@@ -26,10 +26,10 @@ Toda respuesta HTTP con código de estado de error ($4xx$ o $5xx$) **debe** resp
 | Código | Significado | Cuándo se usa | Ejemplo de `mensaje` |
 |---|---|---|---|
 | **400** | Bad Request / Datos inválidos | Error de validación de campos, reglas de negocio violadas (ej. división por cero, cantidad $\le 0$). | `"Datos de entrada inválidos"` |
-| **401** | Unauthorized | Token ausente, expirado o con firma inválida. | `"Token de autenticación no provisto o vencido"` |
-| **403** | Forbidden | Usuario autenticado pero sin permisos para la acción o sobre el objeto. | `"No tiene permisos para realizar esta acción"` |
+| **401** | Unauthorized | Sesión ausente, vencida o datos de ingreso inválidos. | `"Tu sesión venció o los datos de ingreso no son válidos"` |
+| **403** | Forbidden | Usuario autenticado pero sin permisos para la acción o sobre el objeto. | `"No tenés permisos para realizar esta acción"` |
 | **404** | Not Found | El recurso solicitado no existe en la base de datos. | `"Recurso no encontrado"` |
-| **429** | Too Many Requests | Se superó el límite de peticiones (rate limiting). | `"Demasiadas peticiones. Intente nuevamente en unos minutos"` |
+| **429** | Too Many Requests | Se superó el límite de peticiones (rate limiting). | `"Demasiados intentos seguidos. Probá de nuevo en unos minutos"` |
 | **500** | Internal Server Error | Excepción no controlada en el servidor (sin exponer trazas internas ni datos sensibles). | `"Ocurrió un error interno en el servidor"` |
 | **502** | Bad Gateway | Falla al comunicarse con un servicio dependiente (ej. Node llamando a Django o FastAPI). | `"El servicio externo no se encuentra disponible"` |
 

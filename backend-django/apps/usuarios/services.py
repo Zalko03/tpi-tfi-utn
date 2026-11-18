@@ -83,7 +83,7 @@ def crear_personal(
     last_name = datos_usuario.get("last_name", "")
 
     if not username:
-        raise ErrorReglaNegocio("El nombre de usuario (username) es obligatorio.")
+        raise ErrorReglaNegocio("El nombre de usuario es obligatorio.")
     if not password:
         raise ErrorReglaNegocio("La contraseña inicial es obligatoria.")
     if User.objects.filter(username=username).exists():
@@ -108,7 +108,7 @@ def crear_personal(
             for perm in permisos_a_otorgar:
                 if not permisos_creador.get(perm, False):
                     raise PermissionDenied(
-                        f"No puede otorgar el permiso '{perm}' porque no lo posee en su cuenta."
+                        f"No podés otorgar el permiso '{perm}' porque no lo tenés en tu cuenta."
                     )
 
     usuario = User.objects.create_user(
@@ -210,7 +210,7 @@ def actualizar_personal(
                 for clave, valor in permisos.items():
                     if valor and not permisos_operador.get(clave, False):
                         raise PermissionDenied(
-                            f"No puede otorgar el permiso '{clave}' porque no lo posee en su cuenta."
+                            f"No podés otorgar el permiso '{clave}' porque no lo tenés en tu cuenta."
                         )
 
         # Merge de personalizaciones existentes con las nuevas

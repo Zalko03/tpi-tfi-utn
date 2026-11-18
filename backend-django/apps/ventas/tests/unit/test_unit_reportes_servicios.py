@@ -203,14 +203,14 @@ class TestUnitReportesServicios:
 
     def test_punto_equilibrio_costos_fijos_cero_o_negativos_lanza_error(self):
         """Caso borde: costos fijos <= 0 debe ser rechazado."""
-        with pytest.raises(ValueError, match="Los costos_fijos deben ser mayores a cero"):
+        with pytest.raises(ValueError, match="Los costos fijos deben ser mayores a cero"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("0.00"),
                 costos_variables=Decimal("100.00"),
                 ventas=Decimal("500.00"),
             )
 
-        with pytest.raises(ValueError, match="Los costos_fijos deben ser mayores a cero"):
+        with pytest.raises(ValueError, match="Los costos fijos deben ser mayores a cero"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("-500.00"),
                 costos_variables=Decimal("100.00"),
@@ -236,7 +236,7 @@ class TestUnitReportesServicios:
     ):
         """Caso borde: cuando costos variables >= ventas, el negocio pierde dinero por unidad vendida."""
         # Costos variables superan a ventas
-        with pytest.raises(ValueError, match="Los costos_variables igualan o superan a las ventas"):
+        with pytest.raises(ValueError, match="Los costos variables igualan o superan a las ventas"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("500000.00"),
                 costos_variables=Decimal("120000.00"),
@@ -244,7 +244,7 @@ class TestUnitReportesServicios:
             )
 
         # Costos variables igualan a ventas
-        with pytest.raises(ValueError, match="Los costos_variables igualan o superan a las ventas"):
+        with pytest.raises(ValueError, match="Los costos variables igualan o superan a las ventas"):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("500000.00"),
                 costos_variables=Decimal("100000.00"),
@@ -254,7 +254,7 @@ class TestUnitReportesServicios:
     def test_punto_equilibrio_dias_operativos_invalidos_lanza_error(self):
         """Caso borde: días operativos o de semana menores o iguales a cero."""
         with pytest.raises(
-            ValueError, match="dias_operativos y dias_semana deben ser mayores a cero"
+            ValueError, match="Los días operativos y los días por semana deben ser mayores a cero"
         ):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("100000.00"),
@@ -264,7 +264,7 @@ class TestUnitReportesServicios:
             )
 
         with pytest.raises(
-            ValueError, match="dias_operativos y dias_semana deben ser mayores a cero"
+            ValueError, match="Los días operativos y los días por semana deben ser mayores a cero"
         ):
             calcular_punto_equilibrio_y_metas(
                 costos_fijos=Decimal("100000.00"),

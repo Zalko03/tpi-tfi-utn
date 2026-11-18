@@ -53,7 +53,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         user = self.user
         if not user.is_active:
-            raise AuthenticationFailed("La cuenta del usuario ha sido desactivada.")
+            raise AuthenticationFailed("Tu cuenta fue desactivada.")
 
         perfil = getattr(user, "perfil", None)
         rol = perfil.rol if perfil else ("DUENIO" if user.is_superuser else "CAJERO")
@@ -85,17 +85,17 @@ class CustomTokenRefreshSerializer(TokenRefreshSerializer):
 
         user_id = refresh.payload.get(api_settings.USER_ID_CLAIM, None)
         if not user_id:
-            raise InvalidToken("El token no contiene un identificador de usuario válido.")
+            raise InvalidToken("Tu sesión no es válida. Volvé a iniciar sesión.")
 
         try:
             user = User.objects.select_related("perfil").get(
                 **{api_settings.USER_ID_FIELD: user_id}
             )
         except User.DoesNotExist:
-            raise AuthenticationFailed("No existe un usuario activo asociado a este token.")
+            raise AuthenticationFailed("No existe un usuario activo para esta sesión.")
 
         if not user.is_active:
-            raise AuthenticationFailed("La cuenta del usuario ha sido desactivada.")
+            raise AuthenticationFailed("Tu cuenta fue desactivada.")
 
         # Generar access token con claims vigentes de la base de datos
         access = refresh.access_token

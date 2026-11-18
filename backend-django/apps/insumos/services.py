@@ -38,7 +38,7 @@ def inferir_unidad_base(unidad_origen: str) -> str:
     origen = normalizar_unidad(unidad_origen)
     if origen not in MAPA_UNIDAD_A_BASE:
         raise ValueError(
-            f"La unidad '{unidad_origen}' no es válida. Use g, kg, mg, ml, cc, l, un o docena."
+            f"La unidad '{unidad_origen}' no es válida. Usá g, kg, mg, ml, cc, l, un o docena."
         )
     return MAPA_UNIDAD_A_BASE[origen]
 
@@ -226,9 +226,7 @@ def _resolver_proveedor_importacion(
 
     nombre_limpio = str(proveedor_nombre or "").strip()
     if not nombre_limpio:
-        raise ValueError(
-            "Se debe especificar 'proveedor_id' o 'proveedor_nombre' para registrar las compras."
-        )
+        raise ValueError("Elegí o escribí un proveedor para registrar las compras.")
 
     proveedor = Proveedor.objects.filter(nombre__iexact=nombre_limpio).first()
     if proveedor:
@@ -252,7 +250,7 @@ def _resolver_insumo_importacion(item: dict):
 
     nombre_limpio = str(item.get("nombre_insumo") or "").strip()
     if not nombre_limpio:
-        raise ValueError("Cada ítem debe especificar 'insumo_id' o 'nombre_insumo'.")
+        raise ValueError("Cada ítem debe indicar un insumo.")
 
     insumo = Insumo.objects.filter(nombre__iexact=nombre_limpio).first()
     if insumo:

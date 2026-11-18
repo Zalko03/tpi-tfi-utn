@@ -163,7 +163,7 @@ class VentaViewSet(viewsets.ModelViewSet):
             limite = int(limite_param)
         except (TypeError, ValueError) as exc:
             raise serializers.ValidationError(
-                "El parámetro 'limite' debe ser un número entero positivo."
+                "El límite debe ser un número entero mayor a cero."
             ) from exc
 
         resultado = obtener_ranking_productos(
@@ -186,7 +186,7 @@ class VentaViewSet(viewsets.ModelViewSet):
         costos_fijos = fuente.get("costos_fijos")
         if costos_fijos is None or str(costos_fijos).strip() == "":
             raise serializers.ValidationError(
-                "El parámetro 'costos_fijos' es obligatorio para calcular el punto de equilibrio."
+                "Ingresá los costos fijos para calcular el punto de equilibrio."
             )
 
         costos_variables = fuente.get("costos_variables")

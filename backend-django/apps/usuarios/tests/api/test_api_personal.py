@@ -50,7 +50,7 @@ class TestApiPersonalEndpoints:
         res_cajero = client.get("/api/usuarios/")
         assert res_cajero.status_code == 403
         data_error = res_cajero.json()
-        assert data_error["mensaje"] == "No tiene permisos para realizar esta acción"
+        assert data_error["mensaje"] == "No tenés permisos para realizar esta acción"
         assert data_error["detalles"] is None
 
         # Dueño tiene personal.ver

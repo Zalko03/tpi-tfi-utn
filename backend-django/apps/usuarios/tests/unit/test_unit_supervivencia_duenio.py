@@ -218,4 +218,4 @@ class TestUnitSupervivenciaDuenio:
                 creado_por=encargado,
             )
 
-        assert "No puede otorgar el permiso" in str(exc_info.value)
+        assert "No podés otorgar el permiso" in str(exc_info.value)

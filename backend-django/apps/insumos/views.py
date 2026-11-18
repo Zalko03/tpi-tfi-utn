@@ -84,13 +84,11 @@ class InsumoViewSet(viewsets.ModelViewSet):
             try:
                 insumo_id = int(insumo_raw)
             except (TypeError, ValueError) as exc:
-                raise serializers.ValidationError(
-                    "El parámetro 'insumo' debe ser un ID numérico entero."
-                ) from exc
+                raise serializers.ValidationError("El insumo seleccionado no es válido.") from exc
 
         tipo_param = request.query_params.get("tipo")
         if tipo_param and str(tipo_param).strip().upper() not in ("INGRESO", "EGRESO"):
-            raise serializers.ValidationError("El parámetro 'tipo' debe ser 'INGRESO' o 'EGRESO'.")
+            raise serializers.ValidationError("El tipo de movimiento debe ser ingreso o egreso.")
 
         incluir_costos = usuario_tiene_permiso(
             request, "recetas.ver_costos"

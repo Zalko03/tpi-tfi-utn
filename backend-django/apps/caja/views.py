@@ -101,14 +101,14 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         turno = self.get_object()
         if turno.estado == "CERRADO":
             return Response(
-                {"mensaje": "El turno de caja ya se encuentra cerrado."},
+                {"mensaje": "El turno de caja ya está cerrado.", "detalles": None},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         efectivo_contado = request.data.get("efectivo_contado")
         if efectivo_contado is None:
             return Response(
-                {"mensaje": "Debe informar el efectivo_contado para cerrar la caja."},
+                {"mensaje": "Ingresá el efectivo contado para cerrar la caja.", "detalles": None},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

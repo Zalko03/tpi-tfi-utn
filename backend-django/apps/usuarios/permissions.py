@@ -40,7 +40,7 @@ def TienePermiso(clave_permiso: str) -> Type[permissions.BasePermission]:
     """
 
     class _TienePermiso(permissions.BasePermission):
-        message = "No tiene permisos para realizar esta acción"
+        message = "No tenés permisos para realizar esta acción"
 
         def has_permission(self, request, view):
             return usuario_tiene_permiso(request, clave_permiso)
@@ -55,7 +55,7 @@ def TieneAlgunPermiso(*claves_permiso: str) -> Type[permissions.BasePermission]:
     """
 
     class _TieneAlgunPermiso(permissions.BasePermission):
-        message = "No tiene permisos para realizar esta acción"
+        message = "No tenés permisos para realizar esta acción"
 
         def has_permission(self, request, view):
             return any(usuario_tiene_permiso(request, clave) for clave in claves_permiso)
@@ -66,7 +66,7 @@ def TieneAlgunPermiso(*claves_permiso: str) -> Type[permissions.BasePermission]:
 class EsDuenio(permissions.BasePermission):
     """Permite el acceso exclusivamente a usuarios con rol Dueño."""
 
-    message = "No tiene permisos para realizar esta acción"
+    message = "No tenés permisos para realizar esta acción"
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated or not request.user.is_active:
@@ -80,7 +80,7 @@ class EsDuenio(permissions.BasePermission):
 class EsEncargadoODuenio(permissions.BasePermission):
     """Permite el acceso a Encargados o Dueños."""
 
-    message = "No tiene permisos para realizar esta acción"
+    message = "No tenés permisos para realizar esta acción"
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated or not request.user.is_active:
@@ -98,7 +98,7 @@ class PermisoObjetoTurnoCaja(permissions.BasePermission):
     - Usuarios con 'caja.gestionar_turnos_ajenos' (Dueño/Encargado) acceden a todos.
     """
 
-    message = "No tiene permisos para acceder al turno de otro usuario"
+    message = "No tenés permisos para acceder al turno de otro usuario"
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated or not request.user.is_active:
@@ -133,7 +133,7 @@ class PermisoObjetoVenta(permissions.BasePermission):
     - Con 'ventas.ver_historial_propio' (Cajero): solo accede a ventas de sus propios turnos.
     """
 
-    message = "No tiene permisos para consultar ventas de otros operadores"
+    message = "No tenés permisos para consultar ventas de otros operadores"
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated or not request.user.is_active:

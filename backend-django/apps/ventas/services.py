@@ -41,7 +41,7 @@ def registrar_venta(
             )
         except (ValueError, TypeError, AttributeError) as exc:
             raise ValidationError(
-                {"id_operacion": "El identificador de operación debe ser un UUID válido."}
+                {"id_operacion": "El identificador de la operación no es válido."}
             ) from exc
 
         venta_existente = (
@@ -124,7 +124,7 @@ def registrar_venta(
                 precio_cliente = Decimal(str(precio_raw))
             except (InvalidOperation, TypeError, ValueError) as exc:
                 raise ValueError(
-                    f"El precio_unitario informado para el producto {producto.id} no es válido."
+                    f"El precio unitario ingresado para el producto {producto.id} no es válido."
                 ) from exc
 
             if precio_cliente != precio_bd:
@@ -189,11 +189,11 @@ def anular_venta(
             or not getattr(usuario, "is_authenticated", False)
             or not getattr(usuario, "is_active", False)
         ):
-            raise PermissionDenied("No tiene permisos para realizar esta acción")
+            raise PermissionDenied("No tenés permisos para realizar esta acción")
         if not getattr(usuario, "is_superuser", False):
             perfil = getattr(usuario, "perfil", None)
             if not perfil or not perfil.tiene_permiso("ventas.anular_ticket"):
-                raise PermissionDenied("No tiene permisos para realizar esta acción")
+                raise PermissionDenied("No tenés permisos para realizar esta acción")
 
     venta_bloqueada = Venta.objects.select_for_update().get(pk=venta.pk)
     if venta_bloqueada.estado == "ANULADA":
@@ -445,21 +445,21 @@ def calcular_punto_equilibrio_y_metas(
     try:
         cf = Decimal(str(costos_fijos))
     except (InvalidOperation, TypeError, ValueError) as exc:
-        raise ValueError("El monto de costos_fijos debe ser un número decimal válido.") from exc
+        raise ValueError("El monto de los costos fijos debe ser un número válido.") from exc
 
     if cf <= Decimal("0"):
-        raise ValueError("Los costos_fijos deben ser mayores a cero.")
+        raise ValueError("Los costos fijos deben ser mayores a cero.")
 
     try:
         dias_op = int(dias_operativos)
         dias_sem = int(dias_semana)
     except (TypeError, ValueError) as exc:
         raise ValueError(
-            "dias_operativos y dias_semana deben ser números enteros positivos."
+            "Los días operativos y los días por semana deben ser números enteros mayores a cero."
         ) from exc
 
     if dias_op <= 0 or dias_sem <= 0:
-        raise ValueError("dias_operativos y dias_semana deben ser mayores a cero.")
+        raise ValueError("Los días operativos y los días por semana deben ser mayores a cero.")
 
     if costos_variables is None or ventas is None:
         resumen_periodo = obtener_ganancia_diaria(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
@@ -478,19 +478,17 @@ def calcular_punto_equilibrio_y_metas(
             ventas_dec = Decimal(str(ventas))
             costos_var_dec = Decimal(str(costos_variables))
         except (InvalidOperation, TypeError, ValueError) as exc:
-            raise ValueError(
-                "costos_variables y ventas deben ser montos decimales válidos."
-            ) from exc
+            raise ValueError("Los costos variables y las ventas deben ser montos válidos.") from exc
 
     if ventas_dec <= Decimal("0"):
         raise ValueError(
             "El monto de ventas debe ser mayor a cero para calcular el punto de equilibrio."
         )
     if costos_var_dec < Decimal("0"):
-        raise ValueError("Los costos_variables no pueden ser negativos.")
+        raise ValueError("Los costos variables no pueden ser negativos.")
     if costos_var_dec >= ventas_dec:
         raise ValueError(
-            "Los costos_variables igualan o superan a las ventas (margen de contribución <= 0); no existe punto de equilibrio positivo."
+            "Los costos variables igualan o superan a las ventas; no existe punto de equilibrio positivo."
         )
 
     razon_costo_variable = costos_var_dec / ventas_dec

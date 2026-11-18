@@ -51,7 +51,7 @@ class TestApiHardeningEndpoints(APITestCase):
             self.assertEqual(r3.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
             self.assertEqual(
                 r3.data.get("mensaje"),
-                "Demasiadas peticiones. Intente nuevamente en unos minutos",
+                "Demasiados intentos seguidos. Probá de nuevo en unos minutos",
             )
             self.assertIn("espera_segundos", r3.data.get("detalles", {}))
         finally:

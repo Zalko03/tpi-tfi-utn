@@ -119,7 +119,7 @@ class TestTienePermisoUnitario:
 
     def test_mensaje_estandar_tiene_permiso(self):
         permiso_cls = TienePermiso("insumos.ver")()
-        assert permiso_cls.message == "No tiene permisos para realizar esta acción"
+        assert permiso_cls.message == "No tenés permisos para realizar esta acción"
 
 
 class TestTieneAlgunPermisoUnitario:
@@ -141,7 +141,7 @@ class TestTieneAlgunPermisoUnitario:
 
     def test_fallback_jwt_y_mensaje_estandar(self):
         perm = TieneAlgunPermiso("recetas.ver", "ventas.cobrar_ticket")()
-        assert perm.message == "No tiene permisos para realizar esta acción"
+        assert perm.message == "No tenés permisos para realizar esta acción"
         user_sin_perfil = MockUser()
         req_ok = MockRequest(
             user=user_sin_perfil, auth_payload={"permisos": ["ventas.cobrar_ticket"]}
