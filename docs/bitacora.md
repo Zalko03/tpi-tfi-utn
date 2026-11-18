@@ -22,25 +22,28 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-18
-Tarea: T1 — Modelos de IA vigentes por defecto, prompt de extracción y pruebas reales desde la web
+Tarea: T1 — Modelos de IA vigentes por defecto, timeout de 25s, prompt de extracción y pruebas reales desde la web
 Rama: fix/ia-pruebas-reales
 Cambios realizados:
-- **Modelos por defecto vigentes (`ai-service/app/config.py`, `.env.example`, `ai-service/.env.example`, `docker-compose.yml`):** Actualización de `GROQ_MODEL` a `openai/gpt-oss-120b`, `GROQ_VISION_MODEL` a `qwen/qwen3.8-27b` (verificados activos en `GET https://api.groq.com/openai/v1/models`) y `GEMINI_MODEL` a `gemini-3.8-flash` (referencia: `https://ai.google.dev/gemini-api/docs/models`, familia Gemini Flash vigente con soporte multimodal/visión), junto con sus tests unitarios (`ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`).
-- **Prompt de extracción en fotos (`ai-service/app/prompts/v1/extraer_precios.txt`, `ai-service/app/services/extraccion.py`):** Se reforzó la instrucción para separar siempre `nombre_insumo`, `cantidad` y `unidad` sin mezclar peso/volumen en el nombre, con test unitario en `ai-service/app/tests/unit/test_unit_prompts.py`.
+- **Modelos por defecto vigentes y timeout de 25s (`ai-service/app/config.py`, `.env.example`, `ai-service/.env.example`, `docker-compose.yml`, `docker-compose.prod.yml`, `render.yaml`):** Actualización de `GROQ_MODEL` a `openai/gpt-oss-120b`, `GROQ_VISION_MODEL` a `qwen/qwen3.8-27b` (verificados activos en `GET https://api.groq.com/openai/v1/models`) y `GEMINI_MODEL` a `gemini-3.8-flash` (referencia: `https://ai.google.dev/gemini-api/docs/models`). Se aumentó el timeout por defecto `AI_TIMEOUT_SECONDS` de 10 a 25 segundos para evitar caídas en contingencia por latencia en modelos de razonamiento (como `gpt-oss-120b`) o visión.
+- **Prompt y servicio de extracción (`ai-service/app/prompts/v1/extraer_precios.txt`, `ai-service/app/services/extraccion.py`):** En línea 2 se precisó "texto o imagen de una lista de precios". En la regla 4 se explicitó la separación de cantidad/peso/volumen comercializado de bultos ("Harina 0000 25kg" -> nombre: "Harina 0000", cantidad: 25, unidad: "kg"; "Dulce de leche repostero x 10 kg" -> nombre: "Dulce de leche repostero", cantidad: 10, unidad: "kg"), preservando la medida identitaria en descartables vendidos por pack ("Vaso Polipapel 240ml x 50 un" -> nombre: "Vaso Polipapel 240ml", cantidad: 50, unidad: "un") para no romper el matching exacto con el catálogo de insumos.
+- **Tests unitarios (`ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`, `test_unit_prompts.py`):** Se verificó el override de `GROQ_VISION_MODEL` con un valor no default (`qwen/qwen-vision-custom-test`) para garantizar que la variable de entorno tiene precedencia real, y se cubrieron las nuevas reglas del prompt de extracción.
 - **Verificación real punta a punta (`http://localhost:3000/app/` y `uvicorn` reiniciado en puerto 8001):**
   - Se validó extracción real con Groq (`proveedor_ia=groq`, `contingencia=false`, estado `LISTA`) desde CSV («Analizar Planilla con IA»), Excel `.xlsx` («Analizar Planilla con IA»), Word `.docx`, texto libre y foto PNG inventada usando `qwen/qwen3.8-27b` (separación correcta de nombre, cantidad, unidad y flete).
   - Se probó la aprobación completa («Aprobar e Impactar Costos en Recetas», HTTP 200) y se restauró la BD SQLite local a su estado previo para no alterar los datos demo.
   - Se probó «Consultar a la IA: insumos a reponer» (`POST /v1/resumen-semanal` con Groq real `openai/gpt-oss-120b`, sin contingencia) y «Auditar Cierre de Caja y Rentabilidad del Turno con IA» (auditoría local de Turno #1). Se verificó que «Recetas & Rentabilidad» no tiene botones de IA.
   - Capturas y descripción guardadas fuera del repo en `~/Escritorio/capturas-presentacion/pruebas-ia/`.
 Archivos tocados:
-- `.env.example`, `ai-service/.env.example`, `docker-compose.yml`
+- `.env.example`, `ai-service/.env.example`, `docker-compose.yml`, `docker-compose.prod.yml`, `render.yaml`
 - `ai-service/app/config.py`, `ai-service/app/prompts/v1/extraer_precios.txt`, `ai-service/app/services/extraccion.py`
 - `ai-service/app/tests/unit/{test_unit_adapters_y_servicios.py,test_unit_prompts.py}`
 - `docs/bitacora.md`
 Cómo probarlo:
-- `cd ai-service && .venv/bin/python -m pytest -q`
-- `cd backend-django && .venv/bin/python -m pytest -q`
+- `backend-django/.venv/bin/pytest backend-django/`
 - `cd backend-node && npm test && npm run lint`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check backend-django/ ai-service/`
+- `.venv/bin/ruff format --check backend-django/ ai-service/`
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 
 ---
