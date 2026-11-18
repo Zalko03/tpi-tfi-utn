@@ -1844,3 +1844,25 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint` (25 suites, 207 tests en verde).
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 ---
+
+
+
+Fecha: 2026-11-18
+Tarea: T4 — Mensajes de la API de Django de vos y superusuario mostrado como Dueño
+Rama: fix/textos-api-vos
+Qué se hizo y por qué:
+- Mensajes de error de Django pasados a vos y sin nombres internos de campos ni tecnicismos (ej. `"Ingresá el efectivo contado para cerrar la caja."`), incluyendo `apps/comun/excepciones.py` (401, 403, 429), `apps/comun/filtros.py`, `apps/caja/views.py`, `apps/usuarios/{permissions,services,tokens,views}.py`, `apps/ventas/{views,services,serializers}.py` y `apps/insumos/{views,services,serializers}.py`, manteniendo códigos HTTP y `{ mensaje, detalles }`. Se actualizó `docs/api-errores.md` y los tests que comparan textos.
+- Rol de `admin` en Equipo & Permisos: se verificó (en solo lectura) que `admin` es un superusuario sin fila en `PerfilUsuario` (creado con `createsuperuser`; no hay signal que cree perfil y `seed_demo` solo crea `duenio_demo`, `encargado_demo` y `cajero_demo`). `UsuarioSerializer` devolvía `rol: null` y la web caía en el fallback `'CAJERO'`. Sin tocar la base de datos ni crear migraciones, `UsuarioSerializer` y `tokens.py` ahora devuelven `ROL_DUENIO` y el catálogo completo de permisos para todo superusuario (tenga perfil `CAJERO` o no tenga perfil) y exponen `is_superuser`; `web/js/app.js` también prioriza `u.is_superuser` para mostrar "Dueño".
+Archivos tocados:
+- `backend-django/apps/comun/excepciones.py`, `backend-django/apps/comun/filtros.py`
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/usuarios/{permissions,serializers,services,tokens,views}.py`
+- `backend-django/apps/ventas/{serializers,services,views}.py`
+- `backend-django/apps/insumos/{serializers,services,views}.py`
+- `backend-django/apps/{comun,caja,usuarios,ventas}/tests/**`
+- `web/js/app.js`, `docs/api-errores.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
