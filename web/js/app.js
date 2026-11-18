@@ -3926,18 +3926,20 @@ const renderizarTarjetasPersonal = () => {
 
         const nombre = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.username || 'Usuario');
         const acciones = accionesEmpleadoVisiblesParaUsuario(estadoApp.usuario, u);
+        const esSuperusuario = Boolean(u.is_superuser);
+        const bloqueadoPorSuperusuario = esSuperusuario && !Boolean(estadoApp.usuario?.is_superuser);
 
         const botonesHtml = [];
         if (acciones.permisos) {
             botonesHtml.push(
-                `<button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">Permisos</button>`
+                `<button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">${esSuperusuario ? 'Ver permisos' : 'Permisos'}</button>`
             );
         }
-        if (acciones.darDeBaja) {
+        if (acciones.darDeBaja && !bloqueadoPorSuperusuario) {
             botonesHtml.push(
                 `<button type="button" class="btn-descartar-comercial btn-toggle-usuario" data-id="${u.id}">Dar de baja</button>`
             );
-        } else if (acciones.reactivar) {
+        } else if (acciones.reactivar && !bloqueadoPorSuperusuario) {
             botonesHtml.push(
                 `<button type="button" class="btn-secundario-comercial btn-toggle-usuario" data-id="${u.id}">Reactivar</button>`
             );
@@ -4039,24 +4041,34 @@ const mostrarModalPermisos = (u) => {
     if (!modal || !u) return;
 
     estadoApp.empleadoEditandoPermisos = u;
-    const rolActual = ((u.is_superuser ? 'DUENIO' : u.rol) || 'CAJERO').toUpperCase();
+    const esSuperusuario = Boolean(u.is_superuser);
+    const rolActual = ((esSuperusuario ? 'DUENIO' : u.rol) || 'CAJERO').toUpperCase();
     const rolEtiqueta = ETIQUETAS_ROL[rolActual] || 'Cajero';
 
     if ($('permisos-usuario-titulo')) {
         $('permisos-usuario-titulo').textContent = `Permisos de @${u.username}`;
     }
     if ($('permisos-usuario-rol')) {
-        $('permisos-usuario-rol').textContent = `Rol actual: ${rolEtiqueta}`;
+        $('permisos-usuario-rol').textContent = esSuperusuario
+            ? `Rol actual: ${rolEtiqueta} · El administrador principal tiene acceso completo y no se puede editar.`
+            : `Rol actual: ${rolEtiqueta}`;
     }
 
-    const puedeEditarRol = usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
+    const puedeEditarRol = !esSuperusuario && usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
     const grupoRol = $('grupo-selector-rol-permisos');
     const selectRol = $('select-permisos-rol');
     if (grupoRol) {
-        grupoRol.style.display = puedeEditarRol ? '' : 'none';
+        grupoRol.style.display = puedeEditarRol || esSuperusuario ? '' : 'none';
     }
     if (selectRol) {
         selectRol.value = ETIQUETAS_ROL[rolActual] ? rolActual : 'CAJERO';
+        selectRol.disabled = esSuperusuario;
+    }
+
+    const btnGuardar = $('btn-guardar-permisos');
+    if (btnGuardar) {
+        btnGuardar.disabled = esSuperusuario;
+        btnGuardar.style.display = esSuperusuario ? 'none' : '';
     }
 
     const contenedor = $('permisos-categorias-grilla');
@@ -4084,6 +4096,7 @@ const mostrarModalPermisos = (u) => {
                 checkbox.type = 'checkbox';
                 checkbox.dataset.permiso = item.clave;
                 checkbox.checked = Boolean(permisosIniciales[item.clave]);
+                checkbox.disabled = esSuperusuario;
 
                 const textoSpan = document.createElement('span');
                 textoSpan.textContent = item.etiqueta;
@@ -5101,13 +5114,16 @@ Flete y entrega a local: $4500`;
     });
 
     $('select-permisos-rol')?.addEventListener('change', (e) => {
+        if (estadoApp.empleadoEditandoPermisos?.is_superuser) return;
         aplicarPlantillaEnCasillasPermisos(obtenerPlantillaRol(e.target.value));
     });
 
     $('form-permisos-empleado')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const u = estadoApp.empleadoEditandoPermisos;
-        if (!u || !usuarioTienePermiso(estadoApp.usuario, 'personal.ajustar_permisos')) return;
+        if (!u || u.is_superuser || !usuarioTienePermiso(estadoApp.usuario, 'personal.ajustar_permisos')) {
+            return;
+        }
 
         const clavesMarcadas = Array.from(
             document.querySelectorAll('#permisos-categorias-grilla input[type="checkbox"][data-permiso]:checked')
