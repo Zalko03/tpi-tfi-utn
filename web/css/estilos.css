@@ -3546,6 +3546,7 @@ textarea:focus {
 }
 
 .carta-publica-titulo {
+    color: var(--color-crema-texto);
     font-size: 1.35rem;
     font-weight: 800;
     letter-spacing: -0.02em;
