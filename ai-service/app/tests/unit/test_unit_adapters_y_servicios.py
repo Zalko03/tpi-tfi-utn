@@ -114,15 +114,27 @@ class TestUnitExtraerObjetoJson:
 class TestUnitAdapters:
     """Pruebas unitarias de los adaptadores GeminiAdapter y OllamaAdapter."""
 
+    def test_configuracion_ia_valores_por_defecto_vigentes(self, monkeypatch):
+        from app.config import ConfiguracionIA
+
+        monkeypatch.delenv("GROQ_MODEL", raising=False)
+        monkeypatch.delenv("GROQ_VISION_MODEL", raising=False)
+        monkeypatch.delenv("GEMINI_MODEL", raising=False)
+
+        cfg = ConfiguracionIA()
+        assert cfg.groq_modelo == "openai/gpt-oss-120b"
+        assert cfg.groq_vision_modelo == "qwen/qwen3.8-27b"
+        assert cfg.gemini_modelo == "gemini-3.8-flash"
+
     async def test_gemini_adapter_falla_sin_api_key(self):
-        adaptador = GeminiAdapter(api_key="", modelo="gemini-1.5-flash")
+        adaptador = GeminiAdapter(api_key="", modelo="gemini-3.8-flash")
         with pytest.raises(ErrorProveedorIA, match="GEMINI_API_KEY no está configurada"):
             await adaptador.generar_json("instrucciones", "datos", timeout=2.0)
 
     async def test_gemini_adapter_envia_header_y_separa_system_de_user(self):
         adaptador = GeminiAdapter(
             api_key="clave-ficticia-test",
-            modelo="gemini-1.5-flash",
+            modelo="gemini-3.8-flash",
             base_url="https://api.ejemplo.test/v1beta",
         )
         respuesta_http_mock = MagicMock()
@@ -188,12 +200,12 @@ class TestUnitAdapters:
         assert json_llamada["messages"][1] == {"role": "user", "content": "USUARIO_OLLAMA"}
 
     async def test_groq_adapter_falla_sin_api_key_cuando_no_hay_fallback(self):
-        adaptador = GroqAdapter(api_key="", modelo="llama-3.3-70b-versatile", fallback_demo=False)
+        adaptador = GroqAdapter(api_key="", modelo="openai/gpt-oss-120b", fallback_demo=False)
         with pytest.raises(ErrorProveedorIA, match="GROQ_API_KEY no está configurada"):
             await adaptador.generar_json("instrucciones", "datos", timeout=2.0)
 
     async def test_groq_adapter_usa_fallback_determinista_sin_api_key(self):
-        adaptador = GroqAdapter(api_key="", modelo="llama-3.3-70b-versatile", fallback_demo=True)
+        adaptador = GroqAdapter(api_key="", modelo="openai/gpt-oss-120b", fallback_demo=True)
         texto_demo = (
             "Distribuidora Central Gastronómica - Lista Mayorista Octubre\n"
             "- Café en grano Especialidad Tostado 1 kg: $24.500\n"
@@ -211,7 +223,7 @@ class TestUnitAdapters:
     async def test_groq_adapter_envia_bearer_y_response_format_json(self):
         adaptador = GroqAdapter(
             api_key="gsk-clave-ficticia-groq",
-            modelo="llama-3.3-70b-versatile",
+            modelo="openai/gpt-oss-120b",
             base_url="https://api.groq.com/openai/v1",
             fallback_demo=False,
         )
@@ -247,7 +259,7 @@ class TestUnitAdapters:
 
         assert url_llamada == "https://api.groq.com/openai/v1/chat/completions"
         assert headers_llamada["Authorization"] == "Bearer gsk-clave-ficticia-groq"
-        assert json_llamada["model"] == "llama-3.3-70b-versatile"
+        assert json_llamada["model"] == "openai/gpt-oss-120b"
         assert json_llamada["response_format"] == {"type": "json_object"}
         assert json_llamada["messages"][0] == {"role": "system", "content": "SISTEMA_GROQ"}
         assert json_llamada["messages"][1] == {"role": "user", "content": "USUARIO_GROQ"}
@@ -255,7 +267,7 @@ class TestUnitAdapters:
     async def test_gemini_adapter_envia_imagen_como_inline_data(self):
         adaptador = GeminiAdapter(
             api_key="clave-ficticia-test",
-            modelo="gemini-1.5-flash",
+            modelo="gemini-3.8-flash",
             base_url="https://api.ejemplo.test/v1beta",
         )
         respuesta_http_mock = MagicMock()
@@ -291,7 +303,7 @@ class TestUnitAdapters:
         }
 
     async def test_groq_adapter_envia_imagen_como_image_url_con_modelo_vision(self, monkeypatch):
-        monkeypatch.setenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+        monkeypatch.setenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
         adaptador = GroqAdapter(
             api_key="gsk-clave-ficticia-groq",
             base_url="https://api.groq.com/openai/v1",
@@ -326,7 +338,7 @@ class TestUnitAdapters:
 
         assert resultado == {"moneda": "ARS", "items": []}
         json_llamada = cliente_mock.post.call_args.kwargs["json"]
-        assert json_llamada["model"] == "meta-llama/llama-4-scout-17b-16e-instruct"
+        assert json_llamada["model"] == "qwen/qwen3.8-27b"
         assert json_llamada["messages"][0] == {"role": "system", "content": "INSTRUCCION_FOTO"}
         contenido_user = json_llamada["messages"][1]["content"]
         assert contenido_user[0] == {"type": "text", "text": '{"proveedor_informado": "Norte"}'}

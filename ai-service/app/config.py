@@ -23,13 +23,13 @@ class ConfiguracionIA:
 
     @property
     def groq_modelo(self) -> str:
-        return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+        return os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
 
     @property
     def groq_vision_modelo(self) -> str:
         return os.getenv(
             "GROQ_VISION_MODEL",
-            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "qwen/qwen3.8-27b",
         ).strip()
 
     @property
@@ -49,7 +49,7 @@ class ConfiguracionIA:
 
     @property
     def gemini_modelo(self) -> str:
-        return os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+        return os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
 
     @property
     def gemini_base_url(self) -> str:
