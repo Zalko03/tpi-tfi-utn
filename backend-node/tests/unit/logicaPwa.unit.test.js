@@ -655,6 +655,47 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(resultado.registros[0].tipoEtiqueta).toBe('Cierre de Caja');
             expect(resultado.registros[2].tipoEtiqueta).toBe('Insumos · Ingreso');
         });
+
+        it('marca las ventas anuladas con badge "Anulada" y detalle de motivo sin ocultar confidencialidad', () => {
+            const fechaDia12 = new Date(2026, 10, 12, 11, 0, 0).toISOString();
+            const resultado = unificarTrazabilidadRegistros({
+                ventas: [
+                    {
+                        id: 21,
+                        fecha: fechaDia12,
+                        medio_pago: 'EFECTIVO',
+                        estado: 'ANULADA',
+                        motivo_anulacion: 'Ticket duplicado',
+                        total: '3500.00',
+                        usuario_nombre: 'encargado_demo',
+                        items: [{ producto_nombre: 'Latte', cantidad: 1 }],
+                    },
+                    {
+                        id: 22,
+                        fecha: fechaDia12,
+                        medio_pago: null,
+                        estado: 'ANULADA',
+                        motivo_anulacion: '',
+                        total: null,
+                        usuario_nombre: 'cajero_demo',
+                        items: [{ producto_nombre: 'Espresso', cantidad: 1 }],
+                    },
+                ],
+                fechaDesde: '2026-11-12',
+                fechaHasta: '2026-11-12',
+            });
+
+            expect(resultado.registros).toHaveLength(2);
+            const [r1, r2] = resultado.registros;
+            expect(r1.tipoEtiqueta).toBe('Venta · Anulada');
+            expect(r1.nivelBadge).toBe('peligro');
+            expect(r1.detalle).toContain('Anulada: Ticket duplicado');
+            expect(r1.montoCantidad).toContain('(Anulada)');
+
+            expect(r2.tipoEtiqueta).toBe('Venta · Anulada');
+            expect(r2.nivelBadge).toBe('peligro');
+            expect(r2.montoCantidad).toBe('Confidencial');
+        });
     });
 
     describe('Detección explícita de contingencia IA en Importaciones y Consultor IA', () => {

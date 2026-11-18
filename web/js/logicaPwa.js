@@ -1214,16 +1214,22 @@ export const unificarTrazabilidadRegistros = ({
             ? items.map((it) => `${Number(it.cantidad || 1)}x ${it.producto_nombre || `Prod #${it.producto}`}`).join(', ')
             : 'Ticket de mostrador';
         const medio = v.medio_pago ? ` · ${v.medio_pago}` : '';
+        const esAnulada = String(v.estado || 'EMITIDA').toUpperCase() === 'ANULADA';
+        const etiquetaBase = v.origen === 'offline' ? 'Venta (sin internet)' : 'Venta';
+        const motivoTexto = esAnulada && v.motivo_anulacion ? ` · Anulada: ${v.motivo_anulacion}` : '';
+        let montoTexto = 'Confidencial';
+        if (v.total !== null && v.total !== undefined) {
+            const montoFormateado = formatearMontoSimple(v.total);
+            montoTexto = esAnulada ? `${montoFormateado} (Anulada)` : montoFormateado;
+        }
         registros.push({
             id: `venta-${v.id}`,
             categoria: 'venta',
             fechaIso: v.fecha || v.creado_en || '',
-            tipoEtiqueta: v.origen === 'offline' ? 'Venta (sin internet)' : 'Venta',
-            nivelBadge: 'exito',
-            detalle: `Ticket #${v.id}${medio} · ${resumenItems}`,
-            montoCantidad: v.total !== null && v.total !== undefined
-                ? formatearMontoSimple(v.total)
-                : 'Confidencial',
+            tipoEtiqueta: esAnulada ? `${etiquetaBase} · Anulada` : etiquetaBase,
+            nivelBadge: esAnulada ? 'peligro' : 'exito',
+            detalle: `Ticket #${v.id}${medio} · ${resumenItems}${motivoTexto}`,
+            montoCantidad: montoTexto,
             responsable: v.usuario_nombre || (v.turno_caja ? `Turno #${v.turno_caja}` : 'Mostrador'),
         });
     }

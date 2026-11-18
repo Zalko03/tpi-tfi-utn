@@ -3805,7 +3805,10 @@ const auditarCierreCajaIA = async () => {
             // Continuar
         }
 
-        const totalVendidoTurno = ventasTurno.reduce((acc, v) => acc + (Number(v.total) || 0), 0);
+        const ventasEmitidasTurno = ventasTurno.filter(
+            (v) => String(v.estado || 'EMITIDA').toUpperCase() !== 'ANULADA'
+        );
+        const totalVendidoTurno = ventasEmitidasTurno.reduce((acc, v) => acc + (Number(v.total) || 0), 0);
         const diferenciaNum = Number(turnoAuditado.diferencia || 0);
 
         let dictamenDiferencia = 'ARQUEO EXACTO SIN DISCREPANCIAS';
@@ -3838,7 +3841,7 @@ const auditarCierreCajaIA = async () => {
                 <div class="ia-bloque-titulo">2. Conciliación de Fondos y Arqueo Ciego</div>
                 <ul>
                     <li><strong>Fondo Inicial de Apertura:</strong> ${formatearMoneda(turnoAuditado.efectivo_inicial)}</li>
-                    <li><strong>Facturación en Ventas Registrada:</strong> ${formatearMoneda(totalVendidoTurno)} (${ventasTurno.length} tickets emitidos)</li>
+                    <li><strong>Facturación en Ventas Registrada:</strong> ${formatearMoneda(totalVendidoTurno)} (${ventasEmitidasTurno.length} tickets emitidos)</li>
                     <li><strong>Movimientos de Caja Chica:</strong> ${movimientos.length} registros (Ingresos: ${formatearMoneda(totalIngresosChica)} | Egresos: ${formatearMoneda(totalEgresosChica)})</li>
                     <li><strong>Efectivo Esperado en Gaveta:</strong> ${turnoAuditado.efectivo_esperado !== null && turnoAuditado.efectivo_esperado !== undefined ? formatearMoneda(turnoAuditado.efectivo_esperado) : 'En curso'}</li>
                     <li><strong>Efectivo Declarado por el Cajero:</strong> ${turnoAuditado.efectivo_contado !== null && turnoAuditado.efectivo_contado !== undefined ? formatearMoneda(turnoAuditado.efectivo_contado) : 'Pendiente de cierre'}</li>
@@ -3848,7 +3851,7 @@ const auditarCierreCajaIA = async () => {
 
             <div class="ia-bloque">
                 <div class="ia-bloque-titulo">3. Evaluación de Rentabilidad y Desempeño</div>
-                <p>El turno presenta un volumen transaccional de ${ventasTurno.length} ventas con estricta preservación de snapshots de costos unitarios. No se detectan anomalías en la correlación entre insumos descontados y tickets facturados.</p>
+                <p>El turno presenta un volumen transaccional de ${ventasEmitidasTurno.length} ventas emitidas con estricta preservación de snapshots de costos unitarios. No se detectan anomalías en la correlación entre insumos descontados y tickets facturados.</p>
                 <p><strong>Dictamen Final:</strong> CONCILIACIÓN CONFORME A PROTOCOLO OPERATIVO GASTRONÓMICO.</p>
             </div>
         `;
