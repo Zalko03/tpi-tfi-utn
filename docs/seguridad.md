@@ -139,6 +139,7 @@ flowchart TD
 | `/api/compras/confirmar-importacion/` | `POST` | `compras.registrar` | Registro atómico de compras aprobadas por revisión humana |
 | `/api/recetas/` | `POST`/`PUT` | `recetas.crear` / `recetas.editar` | Modificación de fórmulas |
 | `/api/productos/:id/costo/`| `GET` | `recetas.ver_costos` | Protege desglose de costos y márgenes |
+| `/api/carta-publica/` | `GET` | `AllowAny` (público) | Solo productos activos (`id`, `nombre`, `precio_venta`) con `CartaPublicaRateThrottle`; jamás expone costos ni recetas |
 | `/api/usuarios/` | `CRUD` | `personal.*` | Exclusivo Dueño |
 
 ### 5.2 Backend Node (Consultas y Tiempo Real)
@@ -192,3 +193,4 @@ Ambos backends aplican límites por ventana y devuelven `HTTP 429` con el format
 - **`DJANGO_THROTTLE_ANON`:** `200/day` para peticiones anónimas.
 - **`DJANGO_THROTTLE_LOGIN`:** `10/minute` en autenticación (`/api/auth/token/`).
 - **`DJANGO_THROTTLE_RECALCULAR`:** `20/minute` en recálculo masivo de costos.
+- **`DJANGO_THROTTLE_CARTA_PUBLICA`:** `60/minute` en el endpoint anónimo `GET /api/carta-publica/`.

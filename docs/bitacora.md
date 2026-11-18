@@ -22,6 +22,42 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-18
+Tarea: T5 — Carta Digital pública por QR (HU15, Opción A: QR SVG en JS puro ISO/IEC 18004)
+Rama: feat/qr-carta-publica
+Cambios realizados:
+- **Backend Django (`backend-django/apps/comun/throttling.py`, `config/settings/base.py`, `.env.example`, `apps/recetas/`):**
+  - Se agregó `CartaPublicaRateThrottle(AnonRateThrottle)` (`scope = "carta_publica"`, tasa por defecto `DJANGO_THROTTLE_CARTA_PUBLICA=60/minute`).
+  - Se creó `listar_productos_carta_publica()` (`Producto.objects.filter(estado_activo=True).order_by("nombre")`), `CartaPublicaProductoSerializer` (únicamente `id`, `nombre`, `precio_venta`) y `CartaPublicaView` (`AllowAny`, `authentication_classes = []`, `throttle_classes = [CartaPublicaRateThrottle]`) montada en `GET /api/carta-publica/`.
+- **Generador QR ISO/IEC 18004 en JS puro (`web/js/logicaPwa.js`):**
+  - Se implementaron `puedeGestionarQrCarta(usuario)` (habilita únicamente con `recetas.editar`), `construirUrlCartaPublica(origin, pathname)` (respeta prefijo `/app/` o raíz `/`), `generarMatrizQr(texto)` (modo Byte UTF-8, Reed-Solomon GF(256) `0x11D`, versiones 1 a 10, niveles L/M, patrones de función, BCH(15,5) y selección óptima de máscara) y `generarSvgQrCarta(url, opciones)` con quiet zone de 4 módulos.
+- **Página pública y Modal QR (`web/carta.html`, `web/js/carta.js`, `web/index.html`, `web/js/app.js`, `web/css/estilos.css`, `backend-node/app.js`, `web/sw.js`):**
+  - Se creó `web/carta.html` + `web/js/carta.js` mobile-first, sin login y en voseo, consumiendo `GET /api/carta-publica/` con precios ARS, búsqueda en vivo, botón de actualizar, hora de consulta y estados de carga/vacío/error (sin script inline para respetar Helmet CSP).
+  - En `backend-node/app.js` se expusieron `/carta.html`, `/css` y `/js` además de `/app/carta.html`; en `web/sw.js` (`cafe-gestion-pwa-v3`) se precacheó `carta.html` y `carta.js` con fallback de navegación separado de `index.html`.
+  - En `#vista-recetas` se agregó `#btn-qr-carta-publica` (oculto con `hidden` sin `recetas.editar`) y el modal `#modal-qr-carta` con SVG, copia de URL, apertura en pestaña nueva, descarga SVG e impresión de cartel (`body.imprimiendo-qr-carta`).
+- **Tests (`backend-django/apps/recetas/tests/api/test_api_carta_publica.py`, `apps/comun/tests/unit/test_unit_throttling.py`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `tests/integration/clientePwa.integration.test.js`):**
+  - Pytest cubre HTTP 200 sin login, exclusión de inactivos, ausencia de costos/márgenes/mano de obra/insumos y HTTP 429 por throttle; Jest cubre permisos, URLs, decodificación integral ISO/IEC 18004 (BCH + zigzag + Byte mode) y servicio de `carta.html`.
+Conexiones nuevas o modificadas (reflejadas en `docs/CONNECTIONS.md`):
+- `web/carta.html` (`web/js/carta.js`) → `backend-django` (`GET /api/carta-publica/` anónimo con `CartaPublicaRateThrottle`).
+Problemas y decisiones técnicas:
+- Se eligió retornar `{"datos": [...], "total": N}` en `/api/carta-publica/` para mantener consistencia con `reporte_por_producto` y evitar paginación de 10 ítems en la carta completa; `carta.js` soporta tanto array como `{datos}`.
+- Se movió el JS de la carta a `web/js/carta.js` por la directiva CSP `scriptSrc: ["'self'"]` de Helmet en `backend-node/app.js`.
+Archivos tocados:
+- `.env.example`, `backend-django/config/settings/base.py`, `backend-django/apps/comun/throttling.py`
+- `backend-django/apps/recetas/{services.py,serializers.py,views.py,urls.py}`
+- `backend-django/apps/recetas/tests/api/test_api_carta_publica.py`, `backend-django/apps/comun/tests/unit/test_unit_throttling.py`
+- `backend-node/app.js`, `web/{carta.html,index.html,sw.js,css/estilos.css,js/carta.js,js/logicaPwa.js,js/app.js}`
+- `backend-node/tests/{unit/logicaPwa.unit.test.js,integration/clientePwa.integration.test.js}`
+- `docs/{CONNECTIONS.md,ARCHITECTURE.md,seguridad.md,bitacora.md}`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check ai-service/ backend-django/`
+- `.venv/bin/ruff format --check ai-service/ backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
+
+---
+Fecha: 2026-11-18
 Tarea: T1 — Modelos de IA vigentes por defecto, timeout de 25s, prompt de extracción y pruebas reales desde la web
 Rama: fix/ia-pruebas-reales
 Cambios realizados:
