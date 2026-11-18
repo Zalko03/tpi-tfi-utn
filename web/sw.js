@@ -1,21 +1,25 @@
-const NOMBRE_CACHE = 'cafe-gestion-pwa-v2';
+const NOMBRE_CACHE = 'cafe-gestion-pwa-v3';
 const RECURSOS_CASCARA = [
     '/app/',
     '/app/index.html',
+    '/app/carta.html',
     '/app/manifest.webmanifest',
     '/app/css/estilos.css',
     '/app/js/logicaPwa.js',
     '/app/js/app.js',
+    '/app/js/carta.js',
     '/app/vendor/pdfjs/pdf.min.js',
     '/app/vendor/pdfjs/pdf.worker.min.js',
     '/app/vendor/sheetjs/xlsx.full.min.js',
     '/app/vendor/mammoth/mammoth.browser.min.js',
     '/',
     '/index.html',
+    '/carta.html',
     '/manifest.webmanifest',
     '/css/estilos.css',
     '/js/logicaPwa.js',
     '/js/app.js',
+    '/js/carta.js',
     '/vendor/pdfjs/pdf.min.js',
     '/vendor/pdfjs/pdf.worker.min.js',
     '/vendor/sheetjs/xlsx.full.min.js',
@@ -77,6 +81,12 @@ self.addEventListener('fetch', (evento) => {
                 if (directa) return directa;
 
                 if (evento.request.mode === 'navigate') {
+                    if (url.pathname.endsWith('/carta.html')) {
+                        return (
+                            (await caches.match('/app/carta.html')) ||
+                            (await caches.match('/carta.html'))
+                        );
+                    }
                     return (
                         (await caches.match('/app/index.html')) ||
                         (await caches.match('/index.html'))

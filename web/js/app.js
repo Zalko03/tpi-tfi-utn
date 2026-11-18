@@ -16,6 +16,7 @@ import {
     calcularResumenCarrito,
     CALIDAD_JPEG_IMAGEN_IMPORTACION,
     construirDictPermisosDesdeSeleccion,
+    construirUrlCartaPublica,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -44,6 +45,7 @@ import {
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    generarSvgQrCarta,
     GRUPOS_PERMISOS_EQUIPO,
     guardarPreferenciaSonidosSilenciados,
     LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
@@ -61,6 +63,7 @@ import {
     parsearCsvProveedor,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    puedeGestionarQrCarta,
     seccionesVisiblesParaUsuario,
     siguienteIdCarga,
     SONIDOS,
@@ -678,6 +681,12 @@ const actualizarUIUsuario = () => {
         if ($('btn-config-servidor-header')) {
             $('btn-config-servidor-header').style.display = 'none';
         }
+        if ($('btn-qr-carta-publica')) {
+            $('btn-qr-carta-publica').hidden = true;
+        }
+        if ($('modal-qr-carta')) {
+            $('modal-qr-carta').style.display = 'none';
+        }
         if (pantallaLogin) pantallaLogin.style.display = 'flex';
         return;
     }
@@ -724,6 +733,7 @@ const actualizarUIUsuario = () => {
     }
 
     configurarVisibilidadPorRol(rol);
+    actualizarVisibilidadGestionRecetas();
     actualizarIndicadorColaOffline();
 };
 
@@ -2674,6 +2684,36 @@ const actualizarVisibilidadGestionRecetas = () => {
     if (btnNuevo) {
         btnNuevo.style.display = usuarioTienePermiso(estadoApp.usuario, 'recetas.crear') ? '' : 'none';
     }
+    const btnQr = $('btn-qr-carta-publica');
+    if (btnQr) {
+        btnQr.hidden = !puedeGestionarQrCarta(estadoApp.usuario);
+    }
+};
+
+let ultimoSvgQrCartaGenerado = '';
+
+const abrirModalQrCarta = () => {
+    if (!puedeGestionarQrCarta(estadoApp.usuario)) return;
+    const modal = $('modal-qr-carta');
+    if (!modal) return;
+
+    const urlCarta = construirUrlCartaPublica(window.location.origin, window.location.pathname);
+    ultimoSvgQrCartaGenerado = generarSvgQrCarta(urlCarta, { tamanoPx: 248 });
+
+    const contenedorSvg = $('qr-carta-svg-contenedor');
+    if (contenedorSvg) {
+        contenedorSvg.innerHTML = ultimoSvgQrCartaGenerado;
+    }
+    if ($('qr-carta-cartel-url')) {
+        $('qr-carta-cartel-url').textContent = urlCarta;
+    }
+    if ($('input-url-carta-publica')) {
+        $('input-url-carta-publica').value = urlCarta;
+    }
+    if ($('link-abrir-carta-publica')) {
+        $('link-abrir-carta-publica').href = urlCarta;
+    }
+    modal.style.display = 'flex';
 };
 
 const actualizarSelectUnidadReceta = () => {
@@ -4753,6 +4793,50 @@ Flete y entrega a local: $4500`;
     // 18. Recalcular toda la carta y Gestión de Productos / Recetas
     $('btn-recalcular-toda-carta')?.addEventListener('click', () => {
         conCargando($('btn-recalcular-toda-carta'), recalcularTodaLaCarta);
+    });
+
+    $('btn-qr-carta-publica')?.addEventListener('click', abrirModalQrCarta);
+
+    $('btn-copiar-url-carta')?.addEventListener('click', async () => {
+        const inputUrl = $('input-url-carta-publica');
+        const url = inputUrl?.value || '';
+        if (!url) return;
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(url);
+            } else if (inputUrl) {
+                inputUrl.select();
+                document.execCommand('copy');
+            }
+            mostrarToast('Enlace de la carta copiado.', 'exito');
+        } catch {
+            mostrarToast('No pudimos copiar el enlace automáticamente. Copialo desde el recuadro.', 'advertencia');
+        }
+    });
+
+    $('btn-descargar-qr-svg')?.addEventListener('click', () => {
+        if (!ultimoSvgQrCartaGenerado) return;
+        const blob = new Blob([ultimoSvgQrCartaGenerado], { type: 'image/svg+xml;charset=utf-8' });
+        const urlObj = URL.createObjectURL(blob);
+        const enlace = document.createElement('a');
+        enlace.href = urlObj;
+        enlace.download = 'qr-carta-sapori.svg';
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+        setTimeout(() => URL.revokeObjectURL(urlObj), 1000);
+        mostrarToast('Código QR descargado en SVG.', 'exito');
+    });
+
+    $('btn-imprimir-qr-carta')?.addEventListener('click', () => {
+        document.body.classList.add('imprimiendo-qr-carta');
+        const limpiarClasePrint = () => {
+            document.body.classList.remove('imprimiendo-qr-carta');
+            window.removeEventListener('afterprint', limpiarClasePrint);
+        };
+        window.addEventListener('afterprint', limpiarClasePrint);
+        window.print();
+        setTimeout(limpiarClasePrint, 600);
     });
 
     $('btn-modal-nuevo-producto')?.addEventListener('click', () => {

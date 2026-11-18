@@ -2782,3 +2782,536 @@ export const obtenerSonidoParaEvento = (evento, contexto = {}) => {
     }
 };
 
+/**
+ * Determina si el usuario actual tiene permiso para ver/descargar/imprimir
+ * el código QR de la carta pública (`recetas.editar`).
+ */
+export const puedeGestionarQrCarta = (usuario) => usuarioTienePermiso(usuario, 'recetas.editar');
+
+/**
+ * Construye la URL pública hacia `carta.html` respetando si la app
+ * corre bajo el prefijo `/app/` (Express / Nginx) o en raíz `/`.
+ */
+export const construirUrlCartaPublica = (origin = '', pathname = '/') => {
+    const origenLimpio = String(origin || '').trim().replace(/\/+$/, '');
+    const ruta = String(pathname || '/').trim() || '/';
+
+    let base = '';
+    if (ruta === '/app' || ruta.startsWith('/app/')) {
+        base = '/app';
+    } else if (ruta.endsWith('/')) {
+        base = ruta.slice(0, -1);
+    } else {
+        const ultimoSlash = ruta.lastIndexOf('/');
+        base = ultimoSlash > 0 ? ruta.slice(0, ultimoSlash) : '';
+    }
+
+    const rutaFinal = `${base}/carta.html`;
+    return origenLimpio ? `${origenLimpio}${rutaFinal}` : rutaFinal;
+};
+
+// ============================================================
+// GENERADOR DE CÓDIGO QR ESTÁNDAR ISO/IEC 18004 (JS PURO)
+// ============================================================
+const QR_GF_EXP = new Uint8Array(512);
+const QR_GF_LOG = new Uint8Array(256);
+(() => {
+    let valor = 1;
+    for (let i = 0; i < 255; i++) {
+        QR_GF_EXP[i] = valor;
+        QR_GF_LOG[valor] = i;
+        valor <<= 1;
+        if (valor & 0x100) {
+            valor ^= 0x11d;
+        }
+    }
+    for (let i = 255; i < 512; i++) {
+        QR_GF_EXP[i] = QR_GF_EXP[i - 255];
+    }
+})();
+
+const qrGfMul = (a, b) => {
+    if (a === 0 || b === 0) return 0;
+    return QR_GF_EXP[QR_GF_LOG[a] + QR_GF_LOG[b]];
+};
+
+const qrPolinomioGeneradorRs = (grado) => {
+    let poly = [1];
+    for (let i = 0; i < grado; i++) {
+        const factor = [1, QR_GF_EXP[i]];
+        const siguiente = new Array(poly.length + 1).fill(0);
+        for (let j = 0; j < poly.length; j++) {
+            for (let k = 0; k < factor.length; k++) {
+                siguiente[j + k] ^= qrGfMul(poly[j], factor[k]);
+            }
+        }
+        poly = siguiente;
+    }
+    return poly;
+};
+
+const qrCalcularReedSolomon = (datos, numEc) => {
+    const gen = qrPolinomioGeneradorRs(numEc);
+    const resto = new Uint8Array(datos.length + numEc);
+    resto.set(datos);
+    for (let i = 0; i < datos.length; i++) {
+        const coef = resto[i];
+        if (coef !== 0) {
+            for (let j = 0; j < gen.length; j++) {
+                resto[i + j] ^= qrGfMul(gen[j], coef);
+            }
+        }
+    }
+    return Array.from(resto.slice(datos.length));
+};
+
+const QR_SPECS = {
+    L: [
+        null,
+        { ver: 1, totalData: 19, ecPerBlock: 7, g1Blocks: 1, g1Data: 19, g2Blocks: 0, g2Data: 0, align: [] },
+        { ver: 2, totalData: 34, ecPerBlock: 10, g1Blocks: 1, g1Data: 34, g2Blocks: 0, g2Data: 0, align: [6, 18] },
+        { ver: 3, totalData: 55, ecPerBlock: 15, g1Blocks: 1, g1Data: 55, g2Blocks: 0, g2Data: 0, align: [6, 22] },
+        { ver: 4, totalData: 80, ecPerBlock: 20, g1Blocks: 1, g1Data: 80, g2Blocks: 0, g2Data: 0, align: [6, 26] },
+        { ver: 5, totalData: 108, ecPerBlock: 26, g1Blocks: 1, g1Data: 108, g2Blocks: 0, g2Data: 0, align: [6, 30] },
+        { ver: 6, totalData: 136, ecPerBlock: 18, g1Blocks: 2, g1Data: 68, g2Blocks: 0, g2Data: 0, align: [6, 34] },
+        { ver: 7, totalData: 156, ecPerBlock: 20, g1Blocks: 2, g1Data: 78, g2Blocks: 0, g2Data: 0, align: [6, 22, 38] },
+        { ver: 8, totalData: 194, ecPerBlock: 24, g1Blocks: 2, g1Data: 97, g2Blocks: 0, g2Data: 0, align: [6, 24, 42] },
+        { ver: 9, totalData: 232, ecPerBlock: 30, g1Blocks: 2, g1Data: 116, g2Blocks: 0, g2Data: 0, align: [6, 26, 46] },
+        { ver: 10, totalData: 274, ecPerBlock: 18, g1Blocks: 2, g1Data: 68, g2Blocks: 2, g2Data: 69, align: [6, 28, 50] },
+    ],
+    M: [
+        null,
+        { ver: 1, totalData: 16, ecPerBlock: 10, g1Blocks: 1, g1Data: 16, g2Blocks: 0, g2Data: 0, align: [] },
+        { ver: 2, totalData: 28, ecPerBlock: 16, g1Blocks: 1, g1Data: 28, g2Blocks: 0, g2Data: 0, align: [6, 18] },
+        { ver: 3, totalData: 44, ecPerBlock: 26, g1Blocks: 1, g1Data: 44, g2Blocks: 0, g2Data: 0, align: [6, 22] },
+        { ver: 4, totalData: 64, ecPerBlock: 18, g1Blocks: 2, g1Data: 32, g2Blocks: 0, g2Data: 0, align: [6, 26] },
+        { ver: 5, totalData: 86, ecPerBlock: 24, g1Blocks: 2, g1Data: 43, g2Blocks: 0, g2Data: 0, align: [6, 30] },
+        { ver: 6, totalData: 108, ecPerBlock: 16, g1Blocks: 4, g1Data: 27, g2Blocks: 0, g2Data: 0, align: [6, 34] },
+        { ver: 7, totalData: 124, ecPerBlock: 18, g1Blocks: 4, g1Data: 31, g2Blocks: 0, g2Data: 0, align: [6, 22, 38] },
+        { ver: 8, totalData: 154, ecPerBlock: 22, g1Blocks: 2, g1Data: 38, g2Blocks: 2, g2Data: 39, align: [6, 24, 42] },
+        { ver: 9, totalData: 182, ecPerBlock: 22, g1Blocks: 3, g1Data: 36, g2Blocks: 2, g2Data: 37, align: [6, 26, 46] },
+        { ver: 10, totalData: 216, ecPerBlock: 26, g1Blocks: 4, g1Data: 43, g2Blocks: 1, g2Data: 44, align: [6, 28, 50] },
+    ],
+};
+
+const QR_ECC_FORMAT_BITS = { L: 1, M: 0 };
+
+const qrCodificarBytesUtf8 = (texto) => {
+    if (typeof TextEncoder !== 'undefined') {
+        return Array.from(new TextEncoder().encode(texto));
+    }
+    const utf8 = unescape(encodeURIComponent(texto));
+    return Array.from(utf8, (c) => c.charCodeAt(0));
+};
+
+const qrCalcularInfoFormato = (nivelEcc, mascara) => {
+    const data5 = (QR_ECC_FORMAT_BITS[nivelEcc] << 3) | (mascara & 7);
+    let rem = data5 << 10;
+    for (let i = 14; i >= 10; i--) {
+        if ((rem >> i) & 1) {
+            rem ^= 0x537 << (i - 10);
+        }
+    }
+    return ((data5 << 10) | rem) ^ 0x5412;
+};
+
+const qrCalcularInfoVersion = (version) => {
+    let rem = version << 12;
+    for (let i = 17; i >= 12; i--) {
+        if ((rem >> i) & 1) {
+            rem ^= 0x1f25 << (i - 12);
+        }
+    }
+    return (version << 12) | rem;
+};
+
+const qrAplicarMascaraCondicion = (mascara, r, c) => {
+    switch (mascara) {
+        case 0:
+            return (r + c) % 2 === 0;
+        case 1:
+            return r % 2 === 0;
+        case 2:
+            return c % 3 === 0;
+        case 3:
+            return (r + c) % 3 === 0;
+        case 4:
+            return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0;
+        case 5:
+            return ((r * c) % 2) + ((r * c) % 3) === 0;
+        case 6:
+            return (((r * c) % 2) + ((r * c) % 3)) % 2 === 0;
+        case 7:
+            return (((r + c) % 2) + ((r * c) % 3)) % 2 === 0;
+        default:
+            return false;
+    }
+};
+
+const qrEvaluarPenalidad = (matriz) => {
+    const n = matriz.length;
+    let penalidad = 0;
+
+    // N1: corridas consecutivas >= 5 en filas y columnas
+    for (let i = 0; i < n; i++) {
+        let runFila = 1;
+        let runCol = 1;
+        for (let j = 1; j < n; j++) {
+            if (matriz[i][j] === matriz[i][j - 1]) {
+                runFila++;
+            } else {
+                if (runFila >= 5) penalidad += 3 + (runFila - 5);
+                runFila = 1;
+            }
+            if (matriz[j][i] === matriz[j - 1][i]) {
+                runCol++;
+            } else {
+                if (runCol >= 5) penalidad += 3 + (runCol - 5);
+                runCol = 1;
+            }
+        }
+        if (runFila >= 5) penalidad += 3 + (runFila - 5);
+        if (runCol >= 5) penalidad += 3 + (runCol - 5);
+    }
+
+    // N2: bloques 2x2 del mismo color
+    for (let r = 0; r < n - 1; r++) {
+        for (let c = 0; c < n - 1; c++) {
+            const v = matriz[r][c];
+            if (v === matriz[r][c + 1] && v === matriz[r + 1][c] && v === matriz[r + 1][c + 1]) {
+                penalidad += 3;
+            }
+        }
+    }
+
+    // N3: patrón 1011101 precedido o seguido de 0000
+    const esPatronN3 = (linea, idx) => {
+        const p1 =
+            idx + 10 < n &&
+            linea[idx] &&
+            !linea[idx + 1] &&
+            linea[idx + 2] &&
+            linea[idx + 3] &&
+            linea[idx + 4] &&
+            !linea[idx + 5] &&
+            linea[idx + 6] &&
+            !linea[idx + 7] &&
+            !linea[idx + 8] &&
+            !linea[idx + 9] &&
+            !linea[idx + 10];
+        const p2 =
+            idx + 10 < n &&
+            !linea[idx] &&
+            !linea[idx + 1] &&
+            !linea[idx + 2] &&
+            !linea[idx + 3] &&
+            linea[idx + 4] &&
+            !linea[idx + 5] &&
+            linea[idx + 6] &&
+            linea[idx + 7] &&
+            linea[idx + 8] &&
+            !linea[idx + 9] &&
+            linea[idx + 10];
+        return (p1 ? 40 : 0) + (p2 ? 40 : 0);
+    };
+    for (let i = 0; i < n; i++) {
+        const fila = matriz[i];
+        const col = matriz.map((f) => f[i]);
+        for (let j = 0; j <= n - 11; j++) {
+            penalidad += esPatronN3(fila, j);
+            penalidad += esPatronN3(col, j);
+        }
+    }
+
+    // N4: proporción de módulos oscuros respecto al 50%
+    let oscuros = 0;
+    for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+            if (matriz[r][c]) oscuros++;
+        }
+    }
+    const pct = (oscuros * 100) / (n * n);
+    penalidad += Math.floor(Math.abs(pct - 50) / 5) * 10;
+
+    return penalidad;
+};
+
+const qrColocarFormato = (matriz, nivelEcc, mascara) => {
+    const n = matriz.length;
+    const bits = qrCalcularInfoFormato(nivelEcc, mascara);
+    for (let i = 0; i < 15; i++) {
+        const mod = Boolean((bits >> i) & 1);
+        if (i < 6) {
+            matriz[i][8] = mod;
+        } else if (i < 8) {
+            matriz[i + 1][8] = mod;
+        } else {
+            matriz[n - 15 + i][8] = mod;
+        }
+
+        if (i < 8) {
+            matriz[8][n - i - 1] = mod;
+        } else if (i < 9) {
+            matriz[8][15 - i] = mod;
+        } else {
+            matriz[8][15 - i - 1] = mod;
+        }
+    }
+    matriz[n - 8][8] = true;
+};
+
+/**
+ * Genera la matriz booleana (true = módulo oscuro) de un código QR estándar ISO/IEC 18004
+ * en modo Byte (UTF-8), versiones 1 a 10 y nivel de corrección 'L' o 'M'.
+ */
+export const generarMatrizQr = (texto, opciones = {}) => {
+    const contenido = String(texto ?? '');
+    if (!contenido) {
+        throw new Error('El contenido para generar el código QR no puede estar vacío.');
+    }
+
+    const nivelEcc = String(opciones.nivelEcc || 'M').toUpperCase() === 'L' ? 'L' : 'M';
+    const bytes = qrCodificarBytesUtf8(contenido);
+    const tabla = QR_SPECS[nivelEcc];
+
+    let spec = null;
+    for (let v = 1; v <= 10; v++) {
+        const candidato = tabla[v];
+        const bitsConteo = v <= 9 ? 8 : 16;
+        const bitsNecesarios = 4 + bitsConteo + bytes.length * 8;
+        if (bitsNecesarios <= candidato.totalData * 8) {
+            spec = candidato;
+            break;
+        }
+    }
+    if (!spec) {
+        throw new Error('El texto excede la capacidad máxima soportada para el código QR.');
+    }
+
+    // 1. Armar flujo de bits en modo Byte (0100) + longitud + bytes + terminador + padding
+    const bits = [];
+    const agregarBits = (valor, cantidad) => {
+        for (let i = cantidad - 1; i >= 0; i--) {
+            bits.push((valor >> i) & 1);
+        }
+    };
+
+    agregarBits(0b0100, 4);
+    agregarBits(bytes.length, spec.ver <= 9 ? 8 : 16);
+    for (const b of bytes) {
+        agregarBits(b, 8);
+    }
+
+    const capacidadBits = spec.totalData * 8;
+    const terminador = Math.min(4, capacidadBits - bits.length);
+    for (let i = 0; i < terminador; i++) bits.push(0);
+    while (bits.length % 8 !== 0) bits.push(0);
+
+    const dataCodewords = [];
+    for (let i = 0; i < bits.length; i += 8) {
+        let byte = 0;
+        for (let j = 0; j < 8; j++) {
+            byte = (byte << 1) | bits[i + j];
+        }
+        dataCodewords.push(byte);
+    }
+    const padBytes = [0xec, 0x11];
+    let padIdx = 0;
+    while (dataCodewords.length < spec.totalData) {
+        dataCodewords.push(padBytes[padIdx % 2]);
+        padIdx++;
+    }
+
+    // 2. Bloques Reed-Solomon e intercalado ISO/IEC 18004
+    const bloques = [];
+    let offset = 0;
+    for (let b = 0; b < spec.g1Blocks; b++) {
+        const datos = dataCodewords.slice(offset, offset + spec.g1Data);
+        offset += spec.g1Data;
+        bloques.push({ datos, ec: qrCalcularReedSolomon(datos, spec.ecPerBlock) });
+    }
+    for (let b = 0; b < spec.g2Blocks; b++) {
+        const datos = dataCodewords.slice(offset, offset + spec.g2Data);
+        offset += spec.g2Data;
+        bloques.push({ datos, ec: qrCalcularReedSolomon(datos, spec.ecPerBlock) });
+    }
+
+    const codewordsFinales = [];
+    const maxDataLen = Math.max(spec.g1Data, spec.g2Data);
+    for (let i = 0; i < maxDataLen; i++) {
+        for (const bloque of bloques) {
+            if (i < bloque.datos.length) codewordsFinales.push(bloque.datos[i]);
+        }
+    }
+    for (let i = 0; i < spec.ecPerBlock; i++) {
+        for (const bloque of bloques) {
+            codewordsFinales.push(bloque.ec[i]);
+        }
+    }
+
+    const bitsFinales = [];
+    for (const cw of codewordsFinales) {
+        for (let i = 7; i >= 0; i--) {
+            bitsFinales.push((cw >> i) & 1);
+        }
+    }
+
+    // 3. Construir matriz base con patrones de función
+    const size = spec.ver * 4 + 17;
+    const base = Array.from({ length: size }, () => Array(size).fill(false));
+    const esFuncion = Array.from({ length: size }, () => Array(size).fill(false));
+
+    const colocarFinder = (topR, leftC) => {
+        for (let r = -1; r <= 7; r++) {
+            for (let c = -1; c <= 7; c++) {
+                const rr = topR + r;
+                const cc = leftC + c;
+                if (rr < 0 || rr >= size || cc < 0 || cc >= size) continue;
+                const enBorde = r === 0 || r === 6 || c === 0 || c === 6;
+                const enCentro = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+                const dentro = r >= 0 && r <= 6 && c >= 0 && c <= 6;
+                base[rr][cc] = dentro && (enBorde || enCentro);
+                esFuncion[rr][cc] = true;
+            }
+        }
+    };
+
+    colocarFinder(0, 0);
+    colocarFinder(0, size - 7);
+    colocarFinder(size - 7, 0);
+
+    // Patrones de alineación (versiones >= 2)
+    for (const cr of spec.align) {
+        for (const cc of spec.align) {
+            if (
+                (cr <= 8 && cc <= 8) ||
+                (cr <= 8 && cc >= size - 9) ||
+                (cr >= size - 9 && cc <= 8)
+            ) {
+                continue;
+            }
+            for (let dr = -2; dr <= 2; dr++) {
+                for (let dc = -2; dc <= 2; dc++) {
+                    const rr = cr + dr;
+                    const cc2 = cc + dc;
+                    const oscuro =
+                        Math.abs(dr) === 2 || Math.abs(dc) === 2 || (dr === 0 && dc === 0);
+                    base[rr][cc2] = oscuro;
+                    esFuncion[rr][cc2] = true;
+                }
+            }
+        }
+    }
+
+    // Patrones de sincronización (timing)
+    for (let i = 8; i < size - 8; i++) {
+        const mod = i % 2 === 0;
+        base[6][i] = mod;
+        esFuncion[6][i] = true;
+        base[i][6] = mod;
+        esFuncion[i][6] = true;
+    }
+
+    // Reservar zona de información de formato y módulo oscuro fijo
+    for (let i = 0; i < 9; i++) {
+        if (i !== 6) {
+            esFuncion[8][i] = true;
+            esFuncion[i][8] = true;
+        }
+    }
+    for (let i = 0; i < 8; i++) {
+        esFuncion[8][size - 1 - i] = true;
+        esFuncion[size - 1 - i][8] = true;
+    }
+    base[size - 8][8] = true;
+    esFuncion[size - 8][8] = true;
+
+    // Información de versión (versiones >= 7)
+    if (spec.ver >= 7) {
+        const bitsVer = qrCalcularInfoVersion(spec.ver);
+        for (let i = 0; i < 18; i++) {
+            const mod = Boolean((bitsVer >> i) & 1);
+            const r = Math.floor(i / 3);
+            const c = size - 11 + (i % 3);
+            base[r][c] = mod;
+            esFuncion[r][c] = true;
+            base[c][r] = mod;
+            esFuncion[c][r] = true;
+        }
+    }
+
+    // 4. Colocar bits en zigzag de abajo hacia arriba / arriba hacia abajo
+    let bitIdx = 0;
+    let haciaArriba = true;
+    for (let col = size - 1; col > 0; col -= 2) {
+        if (col === 6) col--;
+        for (let step = 0; step < size; step++) {
+            const fila = haciaArriba ? size - 1 - step : step;
+            for (let dc = 0; dc < 2; dc++) {
+                const c = col - dc;
+                if (!esFuncion[fila][c]) {
+                    const bit = bitIdx < bitsFinales.length ? bitsFinales[bitIdx] : 0;
+                    base[fila][c] = Boolean(bit);
+                    bitIdx++;
+                }
+            }
+        }
+        haciaArriba = !haciaArriba;
+    }
+
+    // 5. Seleccionar la máscara óptima (0..7) minimizando penalidad ISO
+    let mejorMatriz = null;
+    let mejorPenalidad = Infinity;
+
+    for (let mascara = 0; mascara < 8; mascara++) {
+        const candidata = base.map((fila, r) =>
+            fila.map((val, c) =>
+                esFuncion[r][c] ? val : qrAplicarMascaraCondicion(mascara, r, c) ? !val : val
+            )
+        );
+        qrColocarFormato(candidata, nivelEcc, mascara);
+        const penalidad = qrEvaluarPenalidad(candidata);
+        if (penalidad < mejorPenalidad) {
+            mejorPenalidad = penalidad;
+            mejorMatriz = candidata;
+        }
+    }
+
+    return mejorMatriz;
+};
+
+/**
+ * Genera un SVG vectorial nítido y escaneable con quiet zone ISO de 4 módulos
+ * para la URL pública de la carta digital.
+ */
+export const generarSvgQrCarta = (url, opciones = {}) => {
+    const matriz = generarMatrizQr(url, opciones);
+    const n = matriz.length;
+    const quietZone = Math.max(4, Number(opciones.quietZone ?? 4) || 4);
+    const totalModulos = n + quietZone * 2;
+    const tamanoPx = Number(opciones.tamanoPx ?? 260) || 260;
+    const colorFondo = String(opciones.colorFondo || '#FFFFFF');
+    const colorModulo = String(opciones.colorModulo || '#1A120E');
+
+    const segmentosPath = [];
+    for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+            if (matriz[r][c]) {
+                segmentosPath.push(`M${c + quietZone},${r + quietZone}h1v1h-1z`);
+            }
+        }
+    }
+
+    const urlEscapada = escaparHtml(url);
+    return (
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalModulos} ${totalModulos}" ` +
+        `width="${tamanoPx}" height="${tamanoPx}" role="img" ` +
+        `aria-label="Código QR para abrir la carta digital: ${urlEscapada}" ` +
+        `shape-rendering="crispEdges">` +
+        `<rect width="100%" height="100%" fill="${escaparHtml(colorFondo)}" />` +
+        `<path d="${segmentosPath.join('')}" fill="${escaparHtml(colorModulo)}" />` +
+        `</svg>`
+    );
+};
+
+

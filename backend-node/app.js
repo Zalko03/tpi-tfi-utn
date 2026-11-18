@@ -58,8 +58,13 @@ if (entorno !== 'test') {
     app.use(morgan('dev'));
 }
 
-// Cliente mínimo PWA y chequeo de salud sin rate limiting para no gastar cupo de API
+// Cliente mínimo PWA, carta pública y chequeo de salud sin rate limiting para no gastar cupo de API
 app.use('/app', express.static(rutaClienteWeb));
+app.get('/carta.html', (_req, res) => {
+    res.sendFile(path.join(rutaClienteWeb, 'carta.html'));
+});
+app.use('/css', express.static(path.join(rutaClienteWeb, 'css')));
+app.use('/js', express.static(path.join(rutaClienteWeb, 'js')));
 app.use('/health', healthRoutes);
 
 // Rate limiting perimetral general (T2.5)

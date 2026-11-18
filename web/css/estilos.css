@@ -2710,6 +2710,23 @@ textarea:focus {
         box-shadow: none;
         border: none;
     }
+    body.imprimiendo-qr-carta #ticket-papel-imprimible,
+    body.imprimiendo-qr-carta #ticket-papel-imprimible * {
+        visibility: hidden;
+    }
+    body.imprimiendo-qr-carta #qr-carta-imprimible,
+    body.imprimiendo-qr-carta #qr-carta-imprimible * {
+        visibility: visible;
+    }
+    body.imprimiendo-qr-carta #qr-carta-imprimible {
+        position: fixed;
+        left: 50%;
+        top: 2cm;
+        transform: translateX(-50%);
+        width: 340px;
+        box-shadow: none;
+        border: 2px solid #1A120E;
+    }
     .no-print {
         display: none !important;
     }
@@ -3402,5 +3419,282 @@ textarea:focus {
     .esqueleto-linea,
     .punto-pulso {
         animation: none;
+    }
+}
+
+[hidden] {
+    display: none !important;
+}
+
+/* ============================================================
+   MODAL QR CARTA PÚBLICA Y CARTEL IMPRIMIBLE
+   ============================================================ */
+.qr-carta-cartel {
+    background: var(--color-canvas);
+    border: 1px solid var(--color-borde-suave);
+    border-radius: var(--radio-lg);
+    padding: 1.5rem 1.25rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.qr-carta-cartel-marca {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-ambar);
+}
+
+.qr-carta-cartel-titulo {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--color-espresso);
+}
+
+.qr-carta-svg-contenedor {
+    background: #FFFFFF;
+    padding: 0.75rem;
+    border-radius: var(--radio-md);
+    border: 1px solid var(--color-borde-suave);
+    box-shadow: var(--sombra-card);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.qr-carta-svg-contenedor svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.qr-carta-cartel-url {
+    font-family: var(--fuente-mono);
+    font-size: 0.75rem;
+    color: var(--texto-mutado);
+    word-break: break-all;
+}
+
+.qr-carta-url-fila {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+.qr-carta-url-fila input {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--fuente-mono);
+    font-size: 0.82rem;
+}
+
+.qr-carta-link-abrir {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+/* ============================================================
+   PÁGINA PÚBLICA DE LA CARTA (web/carta.html)
+   ============================================================ */
+.carta-publica-body {
+    background: var(--color-canvas);
+    color: var(--texto-color);
+    min-height: 100vh;
+}
+
+.carta-publica-contenedor {
+    width: 100%;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 1.25rem 1rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.carta-publica-header {
+    background: var(--color-espresso);
+    color: var(--color-crema-texto);
+    border-radius: var(--radio-lg);
+    padding: 1.25rem 1.35rem;
+    box-shadow: var(--sombra-card);
+}
+
+.carta-publica-marca {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.carta-publica-icono {
+    width: 46px;
+    height: 46px;
+    border-radius: var(--radio-md);
+    background: rgba(250, 245, 240, 0.12);
+    color: #F4C095;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.carta-publica-titulo {
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+.carta-publica-subtitulo {
+    font-size: 0.88rem;
+    color: var(--color-crema-mutado);
+    margin-top: 0.15rem;
+}
+
+.carta-publica-controles {
+    display: flex;
+    gap: 0.65rem;
+    align-items: stretch;
+}
+
+.carta-publica-buscador-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.carta-publica-buscador-icono {
+    position: absolute;
+    left: 0.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--texto-mutado);
+    pointer-events: none;
+}
+
+.carta-publica-buscador {
+    width: 100%;
+    padding: 0.72rem 0.9rem 0.72rem 2.5rem;
+    border: 1px solid var(--color-borde-suave);
+    border-radius: var(--radio-md);
+    background: var(--color-blanco);
+    font-family: var(--fuente-principal);
+    font-size: 0.95rem;
+    color: var(--texto-color);
+}
+
+.carta-publica-buscador:focus {
+    outline: 2px solid rgba(163, 72, 31, 0.25);
+    border-color: var(--color-ambar);
+}
+
+.carta-publica-btn-actualizar {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.carta-publica-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    color: var(--texto-mutado);
+    padding: 0 0.2rem;
+}
+
+.carta-publica-cantidad {
+    font-weight: 600;
+}
+
+.carta-publica-hora {
+    font-family: var(--fuente-mono);
+    font-size: 0.78rem;
+}
+
+.carta-publica-estado {
+    background: var(--color-blanco);
+    border: 1px solid var(--color-borde-suave);
+    border-radius: var(--radio-lg);
+    padding: 2rem 1.25rem;
+    text-align: center;
+    box-shadow: var(--sombra-card);
+}
+
+.carta-publica-estado-error {
+    border-color: rgba(155, 44, 44, 0.28);
+    background: #FDF7F7;
+}
+
+.carta-publica-estado-titulo {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--texto-color);
+    margin-bottom: 0.3rem;
+}
+
+.carta-publica-lista {
+    list-style: none;
+    background: var(--color-blanco);
+    border: 1px solid var(--color-borde-suave);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-card);
+    overflow: hidden;
+}
+
+.carta-publica-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.15rem;
+    border-bottom: 1px solid var(--color-borde-suave);
+}
+
+.carta-publica-item:last-child {
+    border-bottom: none;
+}
+
+.carta-publica-item-nombre {
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--texto-color);
+    line-height: 1.35;
+}
+
+.carta-publica-item-precio {
+    font-family: var(--fuente-mono);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-ambar);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.carta-publica-footer {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--texto-mutado);
+    padding-top: 0.5rem;
+}
+
+@media (max-width: 480px) {
+    .carta-publica-controles {
+        flex-direction: column;
+    }
+
+    .qr-carta-url-fila {
+        flex-wrap: wrap;
+    }
+
+    .qr-carta-url-fila input {
+        flex: 1 1 100%;
     }
 }
