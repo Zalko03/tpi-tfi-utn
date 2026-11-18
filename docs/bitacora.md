@@ -22,6 +22,28 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-17
+Tarea: T3 — Movimientos de caja: cada cajero ve solo los suyos (y sí ve los de su turno)
+Rama: fix/movimientos-caja-cajero
+Cambios realizados:
+- **`MovimientoCajaViewSet.get_queryset` (`backend-django/apps/caja/views.py`):** Se filtró el queryset a `turno_caja__usuario=user` cuando el usuario autenticado no es superusuario ni posee `caja.gestionar_turnos_ajenos`, cubriendo tanto `list` como `retrieve` (retorna HTTP 404 ante movimientos de turnos ajenos).
+- **`TurnoCajaSerializer.to_representation` (`backend-django/apps/caja/serializers.py`):** El cajero no veía los movimientos de caja chica en la tarjeta de Caja de la web (`web/js/app.js`, `renderizarMovimientosCaja(turno.movimientos || [])`) porque `TurnoCajaSerializer` vaciaba `ret["movimientos"] = []` al faltar `caja.ver_efectivo_esperado`. Ahora se conservan los `movimientos` cuando el usuario es titular del turno (o tiene `caja.gestionar_turnos_ajenos`), manteniendo en `None` `efectivo_inicial`, `efectivo_esperado`, `diferencia`, `ventas_efectivo_total` y `cantidad_tickets` (arqueo ciego estricto).
+- **Tests:** Se agregó `backend-django/apps/caja/tests/api/test_api_movimientos_caja.py` (7 tests para cajero, cajero estándar con arqueo ciego, encargado, dueño, superusuario y serializer en turno ajeno) y se actualizó la aserción de `movimientos` del turno propio en `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`.
+Conexiones nuevas o modificadas (reflejadas en `docs/CONNECTIONS.md` y `docs/seguridad.md`):
+- `GET /api/caja/movimientos/` y `GET /api/caja/movimientos/:id/` quedan acotados al titular del turno salvo `caja.gestionar_turnos_ajenos`; `GET /api/caja/turnos/` devuelve `movimientos` del turno propio consumidos por `web/js/app.js` sin exponer montos del arqueo.
+Problemas y decisiones técnicas:
+- Un cajero sin `caja.ver_efectivo_esperado` tampoco conoce `efectivo_inicial`, `ventas_efectivo_total` ni `cantidad_tickets`, por lo que ver los `movimientos` de su propio turno no permite deducir `efectivo_esperado` y corrige la discrepancia en la tarjeta de Caja sin tocar el frontend.
+Archivos tocados:
+- `backend-django/apps/caja/{views.py,serializers.py}`
+- `backend-django/apps/caja/tests/api/test_api_movimientos_caja.py`
+- `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`
+- `docs/{CONNECTIONS.md,seguridad.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+
+---
+Fecha: 2026-11-17
 Tarea: T2 — Anulación real de ventas (`POST /api/ventas/{id}/anular/`)
 Rama: fix/anular-venta
 Cambios realizados:

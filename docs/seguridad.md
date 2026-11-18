@@ -131,6 +131,7 @@ flowchart TD
 | `/api/ventas/punto-equilibrio/` | `GET`/`POST` | `reportes.ver_financieros` | Punto de equilibrio y metas diaria y semanal (Exclusivo Dueño, HU11) |
 | `/api/caja/turnos/` | `POST` | `caja.abrir_turno` | Solo si no tiene un turno previo sin cerrar |
 | `/api/caja/turnos/:id/cerrar/`| `POST` | `caja.cerrar_turno` | Cajero solo puede cerrar su propio turno |
+| `/api/caja/movimientos/` | `GET` | `caja.registrar_movimiento` | Cajero: filtra solo movimientos de sus turnos (404 en detalle ajeno). Con `caja.gestionar_turnos_ajenos`: lista global |
 | `/api/caja/movimientos/` | `POST` | `caja.registrar_movimiento` | Registrar extracciones o ingresos |
 | `/api/insumos/` | `POST`/`PUT` | `insumos.crear` / `insumos.editar` | CRUD operativo |
 | `/api/compras/` | `POST` | `compras.registrar` | Alta de facturas y prorrateo |
