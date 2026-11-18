@@ -1866,3 +1866,23 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint`
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 ---
+
+Fecha: 2026-11-18
+Tarea: T4 (corrección post-auditoría) — Protección de superusuarios sin perfil, cierre de caja robusto y textos restantes
+Rama: fix/textos-api-vos
+Qué se hizo y por qué:
+- **Protección de superusuarios y ausencia de `PerfilUsuario` (`apps/usuarios/services.py`, `tokens.py`, `web/js/app.js`):** Se evitó `RelatedObjectDoesNotExist` (500) en `actualizar_personal` y `desactivar_personal` usando `getattr(usuario, "perfil", None)`. Se bloqueó con `ErrorReglaNegocio` (`ValidationError` en voseo, HTTP 400) que se modifique el rol o permisos de un superusuario o que un usuario no-superusuario modifique o desactive a un superusuario; `contar_duenios_activos` y `desactivar_personal` ahora contabilizan superusuarios activos en la regla de supervivencia del último dueño/administrador activo. `CustomTokenObtainPairSerializer` incluye `"is_superuser"` en `data["usuario"]` para consistencia con `UsuarioSerializer`, y `web/js/app.js` bloquea la edición de rol/permisos (modal en solo lectura) y acciones de baja/reactivación por no-superusuarios cuando `is_superuser === true`.
+- **Cierre de caja (`apps/caja/views.py`):** `TurnoCajaViewSet.cerrar` captura `(InvalidOperation, ValueError, TypeError)` y valores no finitos al convertir `efectivo_contado` a `Decimal`, devolviendo HTTP 400 con `"Ingresá un monto válido para el efectivo contado."`.
+- **Textos visibles restantes (`apps/usuarios/views.py`):** `LogoutView` ya no expone `str(e)` de SimpleJWT en `detalles` (`"Tu sesión ya venció o no es válida."`, `detalles: None`) y `UsuarioViewSet.destroy` responde `"Usuario desactivado correctamente."` sin jerga técnica.
+- **Tests:** Se agregaron pruebas para refresh de superusuario sin perfil, `is_superuser` en login, logout con token inválido, protección de superusuarios sin perfil en servicios y API, `DELETE /api/usuarios/:id/` y `efectivo_contado` inválido en cierre de caja.
+Archivos tocados:
+- `backend-django/apps/usuarios/{services.py,tokens.py,views.py}`
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/usuarios/tests/{api/test_api_auth.py,api/test_api_personal.py,unit/test_unit_supervivencia_duenio.py}`
+- `backend-django/apps/caja/tests/api/test_api_turnos_apertura.py`
+- `web/js/app.js`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
