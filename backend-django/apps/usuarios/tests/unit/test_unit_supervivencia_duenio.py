@@ -13,7 +13,7 @@ from apps.usuarios.constantes import (
     ROL_DUENIO,
     ROL_ENCARGADO,
 )
-from apps.usuarios.exceptions import ErrorSupervivenciaDuenio
+from apps.usuarios.exceptions import ErrorReglaNegocio, ErrorSupervivenciaDuenio
 from apps.usuarios.models import RegistroAuditoria
 from apps.usuarios.services import (
     activar_personal,
@@ -219,3 +219,74 @@ class TestUnitSupervivenciaDuenio:
             )
 
         assert "No podés otorgar el permiso" in str(exc_info.value)
+
+    def test_contar_duenios_activos_incluye_superusuarios_activos(self):
+        """Los superusuarios activos sin PerfilUsuario cuentan como dueños/administradores activos."""
+        admin = User.objects.create_superuser(
+            username="admin_sin_perfil_u",
+            email="admin_sp_u@cafe.local",
+            password="claveSegura123!",
+        )
+        assert contar_duenios_activos() == 1
+        assert contar_duenios_activos(excluir_usuario_id=admin.id) == 0
+
+    def test_desactivar_unico_superusuario_sin_perfil_lanza_supervivencia(self):
+        """No se puede desactivar al único superusuario activo aunque no tenga PerfilUsuario."""
+        admin = User.objects.create_superuser(
+            username="admin_unico_u",
+            email="admin_unico@cafe.local",
+            password="claveSegura123!",
+        )
+        with pytest.raises(ErrorSupervivenciaDuenio) as exc_info:
+            desactivar_personal(admin.id, desactivado_por=admin)
+
+        assert "único Dueño activo" in str(exc_info.value)
+        admin.refresh_from_db()
+        assert admin.is_active is True
+
+    def test_no_superusuario_no_puede_modificar_ni_desactivar_superusuario(self, duenio_unico):
+        """Un usuario no-superusuario no puede modificar ni desactivar a un superusuario."""
+        admin = User.objects.create_superuser(
+            username="admin_protegido_u",
+            email="admin_prot@cafe.local",
+            password="claveSegura123!",
+        )
+
+        with pytest.raises(ErrorReglaNegocio):
+            actualizar_personal(
+                admin.id,
+                datos_usuario={"first_name": "Intruso"},
+                modificado_por=duenio_unico,
+            )
+
+        with pytest.raises(ErrorReglaNegocio):
+            desactivar_personal(admin.id, desactivado_por=duenio_unico)
+
+        admin.refresh_from_db()
+        assert admin.is_active is True
+        assert admin.first_name == ""
+
+    def test_superusuario_no_admite_cambio_de_rol_o_permisos_y_edita_datos_basicos(self):
+        """Un superusuario sin perfil bloquea cambio de rol/permisos pero permite editar datos básicos."""
+        admin = User.objects.create_superuser(
+            username="admin_edicion_u",
+            email="admin_ed@cafe.local",
+            password="claveSegura123!",
+        )
+
+        with pytest.raises(ErrorReglaNegocio):
+            actualizar_personal(admin.id, rol=ROL_CAJERO, modificado_por=admin)
+
+        with pytest.raises(ErrorReglaNegocio):
+            actualizar_personal(
+                admin.id,
+                permisos={"ventas.crear": False},
+                modificado_por=admin,
+            )
+
+        actualizado = actualizar_personal(
+            admin.id,
+            datos_usuario={"first_name": "Administrador"},
+            modificado_por=admin,
+        )
+        assert actualizado.first_name == "Administrador"

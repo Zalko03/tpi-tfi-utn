@@ -110,3 +110,22 @@ class TestApiAperturaTurno:
             "mensaje": "El turno de caja ya está cerrado.",
             "detalles": None,
         }
+
+    @pytest.mark.parametrize("valor_invalido", ["abc", "", "NaN", "Infinity", ["100"], True])
+    def test_cerrar_con_efectivo_contado_invalido_responde_400_voseo(
+        self, client, cajero, valor_invalido
+    ):
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("5000.00"))
+        client.force_authenticate(user=cajero)
+
+        res = client.post(
+            f"/api/caja/turnos/{turno.id}/cerrar/",
+            {"efectivo_contado": valor_invalido},
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        assert res.json() == {
+            "mensaje": "Ingresá un monto válido para el efectivo contado.",
+            "detalles": None,
+        }

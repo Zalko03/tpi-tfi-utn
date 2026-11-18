@@ -53,6 +53,7 @@ class TestApiAuthEndpoints:
         assert "refresh" in data
         assert "usuario" in data
         assert data["usuario"]["username"] == "duenio_api"
+        assert data["usuario"]["is_superuser"] is False
         assert data["usuario"]["rol"] == ROL_DUENIO
         assert len(data["usuario"]["permisos"]) == 30
 
@@ -170,6 +171,7 @@ class TestApiAuthEndpoints:
             )
             assert res.status_code == 200
             data = res.json()
+            assert data["usuario"]["is_superuser"] is True
             assert data["usuario"]["rol"] == ROL_DUENIO
             assert data["usuario"]["permisos"] == sorted(PERMISOS_CATALOGO)
             decoded = jwt.decode(
@@ -180,3 +182,56 @@ class TestApiAuthEndpoints:
             )
             assert decoded["rol"] == ROL_DUENIO
             assert decoded["permisos"] == sorted(PERMISOS_CATALOGO)
+
+    def test_refresh_token_superusuario_sin_perfil_emite_duenio(self, client):
+        """POST /api/auth/token/refresh/ para superusuario sin PerfilUsuario mantiene rol DUENIO."""
+        from django.contrib.auth import get_user_model
+
+        from apps.usuarios.constantes import PERMISOS_CATALOGO
+
+        User = get_user_model()
+        User.objects.create_superuser(
+            username="admin_refresh_sp",
+            email="admin_rsp@cafe.local",
+            password="claveSegura123!",
+        )
+
+        res_login = client.post(
+            "/api/auth/token/",
+            {"username": "admin_refresh_sp", "password": "claveSegura123!"},
+            format="json",
+        )
+        assert res_login.status_code == 200
+        refresh_token = res_login.json()["refresh"]
+
+        res_refresh = client.post(
+            "/api/auth/token/refresh/",
+            {"refresh": refresh_token},
+            format="json",
+        )
+        assert res_refresh.status_code == 200
+        data_refresh = res_refresh.json()
+        assert "access" in data_refresh
+
+        decoded = jwt.decode(
+            data_refresh["access"],
+            settings.JWT_PUBLIC_KEY,
+            algorithms=["RS256"],
+            issuer="cafe-gestion-django",
+        )
+        assert decoded["username"] == "admin_refresh_sp"
+        assert decoded["rol"] == ROL_DUENIO
+        assert decoded["permisos"] == sorted(PERMISOS_CATALOGO)
+
+    def test_logout_token_invalido_responde_400_sin_texto_tecnico(self, client):
+        """POST /api/auth/token/blacklist/ con token inválido no expone errores en inglés."""
+        res = client.post(
+            "/api/auth/token/blacklist/",
+            {"refresh": "token-invalido-123"},
+            format="json",
+        )
+        assert res.status_code == 400
+        assert res.json() == {
+            "mensaje": "Tu sesión ya venció o no es válida.",
+            "detalles": None,
+        }
