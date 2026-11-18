@@ -1,6 +1,6 @@
 """ViewSets para turnos y movimientos de caja."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db.models import Q
 from django.utils import timezone
@@ -112,7 +112,18 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        contado = Decimal(str(efectivo_contado))
+        try:
+            contado = Decimal(str(efectivo_contado))
+            if not contado.is_finite():
+                raise ValueError("El efectivo contado debe ser un número finito.")
+        except (InvalidOperation, ValueError, TypeError):
+            return Response(
+                {
+                    "mensaje": "Ingresá un monto válido para el efectivo contado.",
+                    "detalles": None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         esperado = turno.calcular_efectivo_esperado()
         diferencia = contado - esperado
 

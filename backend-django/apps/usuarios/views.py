@@ -84,11 +84,11 @@ class LogoutView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             return Response(
                 {
-                    "mensaje": "La sesión ya venció o no es válida.",
-                    "detalles": str(e),
+                    "mensaje": "Tu sesión ya venció o no es válida.",
+                    "detalles": None,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -168,7 +168,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         )
         return Response(
             {
-                "mensaje": "Usuario desactivado lógicamente exitosamente.",
+                "mensaje": "Usuario desactivado correctamente.",
                 "detalles": None,
             },
             status=status.HTTP_200_OK,
