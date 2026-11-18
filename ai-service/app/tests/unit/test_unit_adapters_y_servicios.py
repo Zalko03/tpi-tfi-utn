@@ -303,7 +303,7 @@ class TestUnitAdapters:
         }
 
     async def test_groq_adapter_envia_imagen_como_image_url_con_modelo_vision(self, monkeypatch):
-        monkeypatch.setenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
+        monkeypatch.setenv("GROQ_VISION_MODEL", "qwen/qwen-vision-custom-test")
         adaptador = GroqAdapter(
             api_key="gsk-clave-ficticia-groq",
             base_url="https://api.groq.com/openai/v1",
@@ -338,7 +338,7 @@ class TestUnitAdapters:
 
         assert resultado == {"moneda": "ARS", "items": []}
         json_llamada = cliente_mock.post.call_args.kwargs["json"]
-        assert json_llamada["model"] == "qwen/qwen3.8-27b"
+        assert json_llamada["model"] == "qwen/qwen-vision-custom-test"
         assert json_llamada["messages"][0] == {"role": "system", "content": "INSTRUCCION_FOTO"}
         contenido_user = json_llamada["messages"][1]["content"]
         assert contenido_user[0] == {"type": "text", "text": '{"proveedor_informado": "Norte"}'}

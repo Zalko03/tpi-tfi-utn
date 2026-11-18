@@ -17,17 +17,22 @@ class TestUnitPrompts:
         assert "nombre_insumo" in contenido
         assert "cantidad" in contenido
         assert "unidad" in contenido
+        assert "texto o imagen de una lista de precios" in contenido
+        assert "Harina 0000 25kg" in contenido
+        assert "Vaso Polipapel 240ml" in contenido
 
     def test_armado_prompt_extraccion_texto_e_imagen_separa_nombre_cantidad_y_unidad(self):
         prompt_texto = construir_instrucciones_extraccion("v1", tiene_imagen=False)
         prompt_foto = construir_instrucciones_extraccion("v1", tiene_imagen=True)
 
         assert "Separá siempre el nombre del insumo de su cantidad y unidad" in prompt_texto
+        assert "Vaso Polipapel 240ml" in prompt_texto
         assert "foto adjunta" not in prompt_texto
 
         assert "foto adjunta" in prompt_foto
         assert "separando siempre nombre_insumo, cantidad y unidad" in prompt_foto
         assert "no incluyas la cantidad ni la unidad dentro de nombre_insumo" in prompt_foto
+        assert "Vaso Polipapel 240ml" in prompt_foto
 
     def test_carga_prompt_resumen_semanal_v1(self):
         contenido = cargar_prompt("resumen_semanal", "v1")
