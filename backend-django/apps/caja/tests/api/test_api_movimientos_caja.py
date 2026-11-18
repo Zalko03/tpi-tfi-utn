@@ -9,6 +9,7 @@ from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
 from apps.caja.serializers import TurnoCajaSerializer
+from apps.caja.services import MENSAJE_TURNO_CERRADO_MOVIMIENTO
 from apps.usuarios.constantes import ROL_CAJERO, ROL_DUENIO, ROL_ENCARGADO
 from apps.usuarios.services import crear_personal
 
@@ -234,3 +235,124 @@ class TestApiMovimientosCaja:
         assert data["movimientos"] == []
         assert data["efectivo_inicial"] is None
         assert data["efectivo_esperado"] is None
+
+    def test_cajero_puede_registrar_movimiento_en_turno_propio_abierto(
+        self, client, cajero_uno, datos_movimientos
+    ):
+        turno_c1, _, _ = datos_movimientos["turnos"]
+        client.force_authenticate(user=cajero_uno)
+
+        res = client.post(
+            "/api/caja/movimientos/",
+            {
+                "turno_caja": turno_c1.id,
+                "tipo": "SALIDA",
+                "monto": "800.00",
+                "motivo": "Compra servilletas",
+            },
+            format="json",
+        )
+        assert res.status_code == status.HTTP_201_CREATED
+        assert res.json()["turno_caja"] == turno_c1.id
+
+    def test_cajero_no_puede_registrar_movimiento_en_turno_ajeno(
+        self, client, cajero_uno, datos_movimientos
+    ):
+        _, turno_c2, _ = datos_movimientos["turnos"]
+        cantidad_previa = MovimientoCaja.objects.filter(turno_caja=turno_c2).count()
+        client.force_authenticate(user=cajero_uno)
+
+        res = client.post(
+            "/api/caja/movimientos/",
+            {
+                "turno_caja": turno_c2.id,
+                "tipo": "SALIDA",
+                "monto": "1000.00",
+                "motivo": "Intento en turno ajeno",
+            },
+            format="json",
+        )
+        assert res.status_code == status.HTTP_403_FORBIDDEN
+        cuerpo = res.json()
+        assert "mensaje" in cuerpo and "detalles" in cuerpo
+        assert MovimientoCaja.objects.filter(turno_caja=turno_c2).count() == cantidad_previa
+
+    def test_no_permite_registrar_movimiento_en_turno_cerrado(self, client, cajero_uno, encargado):
+        turno_cerrado = TurnoCaja.objects.create(
+            usuario=cajero_uno,
+            efectivo_inicial=Decimal("4000.00"),
+            estado="CERRADO",
+        )
+
+        client.force_authenticate(user=cajero_uno)
+        res_cajero = client.post(
+            "/api/caja/movimientos/",
+            {
+                "turno_caja": turno_cerrado.id,
+                "tipo": "ENTRADA",
+                "monto": "500.00",
+                "motivo": "Intento en turno cerrado",
+            },
+            format="json",
+        )
+        assert res_cajero.status_code == status.HTTP_400_BAD_REQUEST
+        assert res_cajero.json() == {
+            "mensaje": MENSAJE_TURNO_CERRADO_MOVIMIENTO,
+            "detalles": {"non_field_errors": [MENSAJE_TURNO_CERRADO_MOVIMIENTO]},
+        }
+
+        client.force_authenticate(user=encargado)
+        res_encargado = client.post(
+            "/api/caja/movimientos/",
+            {
+                "turno_caja": turno_cerrado.id,
+                "tipo": "SALIDA",
+                "monto": "500.00",
+                "motivo": "Intento encargado turno cerrado",
+            },
+            format="json",
+        )
+        assert res_encargado.status_code == status.HTTP_400_BAD_REQUEST
+        assert MovimientoCaja.objects.filter(turno_caja=turno_cerrado).count() == 0
+
+    def test_encargado_puede_registrar_movimiento_en_turno_ajeno_abierto(
+        self, client, encargado, datos_movimientos
+    ):
+        _, turno_c2, _ = datos_movimientos["turnos"]
+        client.force_authenticate(user=encargado)
+
+        res = client.post(
+            "/api/caja/movimientos/",
+            {
+                "turno_caja": turno_c2.id,
+                "tipo": "ENTRADA",
+                "monto": "1200.00",
+                "motivo": "Refuerzo de cambio",
+            },
+            format="json",
+        )
+        assert res.status_code == status.HTTP_201_CREATED
+        assert res.json()["turno_caja"] == turno_c2.id
+
+    def test_cajero_rechazado_con_403_en_patch_y_delete_movimiento(
+        self, client, cajero_uno, datos_movimientos
+    ):
+        mov_propio, _ = datos_movimientos["movimientos_c1"]
+        mov_ajeno = datos_movimientos["movimiento_c2"]
+        client.force_authenticate(user=cajero_uno)
+
+        for mov_id in (mov_propio.id, mov_ajeno.id):
+            res_patch = client.patch(
+                f"/api/caja/movimientos/{mov_id}/",
+                {"motivo": "Editado sin permiso"},
+                format="json",
+            )
+            assert res_patch.status_code == status.HTTP_403_FORBIDDEN
+            assert "mensaje" in res_patch.json() and "detalles" in res_patch.json()
+
+            res_delete = client.delete(f"/api/caja/movimientos/{mov_id}/")
+            assert res_delete.status_code == status.HTTP_403_FORBIDDEN
+            assert "mensaje" in res_delete.json() and "detalles" in res_delete.json()
+
+        assert MovimientoCaja.objects.filter(id=mov_propio.id).exists()
+        assert MovimientoCaja.objects.filter(id=mov_ajeno.id).exists()
