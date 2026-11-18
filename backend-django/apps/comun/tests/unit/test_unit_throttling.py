@@ -5,7 +5,11 @@ Tarea T2.5 y docs/seguridad.md.
 
 from rest_framework.test import APIRequestFactory, APISimpleTestCase
 
-from apps.comun.throttling import LoginRateThrottle, RecalculoRateThrottle
+from apps.comun.throttling import (
+    CartaPublicaRateThrottle,
+    LoginRateThrottle,
+    RecalculoRateThrottle,
+)
 
 
 class TestUnitThrottling(APISimpleTestCase):
@@ -16,6 +20,13 @@ class TestUnitThrottling(APISimpleTestCase):
     def test_recalculo_rate_throttle_posee_scope_correcto(self):
         throttle = RecalculoRateThrottle()
         self.assertEqual(throttle.scope, "recalcular")
+
+    def test_carta_publica_rate_throttle_posee_scope_y_tasa_configurada(self):
+        throttle = CartaPublicaRateThrottle()
+        self.assertEqual(throttle.scope, "carta_publica")
+        tasa = throttle.get_rate()
+        self.assertIsNotNone(tasa)
+        self.assertIn("/minute", tasa)
 
     def test_login_rate_throttle_obtiene_tasa_configurada(self):
         throttle = LoginRateThrottle()

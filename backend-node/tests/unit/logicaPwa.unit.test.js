@@ -15,6 +15,7 @@ import {
     calcularFactorConversionReceta,
     calcularResumenCarrito,
     construirDictPermisosDesdeSeleccion,
+    construirUrlCartaPublica,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -50,6 +51,8 @@ import {
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    generarMatrizQr,
+    generarSvgQrCarta,
     GRUPOS_PERMISOS_EQUIPO,
     guardarPreferenciaSonidosSilenciados,
     LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
@@ -73,6 +76,7 @@ import {
     PERMISOS_POR_SECCION,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    puedeGestionarQrCarta,
     reconstruirLineasDeItemsPdf,
     ROLES_PLANTILLAS,
     seccionesVisiblesParaUsuario,
@@ -1955,6 +1959,284 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
 
             expect(extraerBase64DeDataUrl('data:image/jpeg;base64,/9j/4AAQ')).toBe('/9j/4AAQ');
             expect(extraerBase64DeDataUrl('sin-prefijo')).toBe('');
+        });
+    });
+
+    describe('Carta pública por QR: permisos, URL y codificador ISO/IEC 18004 (T5)', () => {
+        it('puedeGestionarQrCarta habilita solo si tiene permiso recetas.editar (dueño y encargado sí, cajero y cocina no)', () => {
+            expect(puedeGestionarQrCarta({ rol: 'DUENIO', permisos: [] })).toBe(true);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'ENCARGADO',
+                    permisos: ['recetas.ver', 'recetas.crear', 'recetas.editar', 'recetas.ver_costos'],
+                })
+            ).toBe(true);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'ENCARGADO',
+                    permisos: ['recetas.ver'],
+                })
+            ).toBe(false);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'CAJERO',
+                    permisos: ['ventas.cobrar_ticket'],
+                })
+            ).toBe(false);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'COCINA',
+                    permisos: ['recetas.ver', 'insumos.ver'],
+                })
+            ).toBe(false);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'COCINA',
+                    permisos: ['recetas.editar'],
+                })
+            ).toBe(true);
+            expect(puedeGestionarQrCarta(null)).toBe(false);
+        });
+
+        it('construirUrlCartaPublica respeta prefijo /app/ o raíz /', () => {
+            expect(construirUrlCartaPublica('http://localhost:3000', '/app/index.html')).toBe(
+                'http://localhost:3000/app/carta.html'
+            );
+            expect(construirUrlCartaPublica('http://localhost:3000', '/app/')).toBe(
+                'http://localhost:3000/app/carta.html'
+            );
+            expect(construirUrlCartaPublica('http://localhost:3000', '/app')).toBe(
+                'http://localhost:3000/app/carta.html'
+            );
+            expect(construirUrlCartaPublica('https://cafesapori.com/', '/')).toBe(
+                'https://cafesapori.com/carta.html'
+            );
+            expect(construirUrlCartaPublica('https://cafesapori.com', '/index.html')).toBe(
+                'https://cafesapori.com/carta.html'
+            );
+        });
+
+        it('generarMatrizQr produce una matriz cuadrada determinista con finder, separadores, timing y dark module ISO', () => {
+            expect(() => generarMatrizQr('')).toThrow();
+
+            const urlCorta = 'http://localhost:3000/app/carta.html';
+            const m1 = generarMatrizQr(urlCorta);
+            const m2 = generarMatrizQr(urlCorta);
+            expect(m1).toEqual(m2);
+
+            const n = m1.length;
+            expect(n).toBeGreaterThanOrEqual(21);
+            expect((n - 17) % 4).toBe(0);
+            for (const fila of m1) {
+                expect(fila.length).toBe(n);
+            }
+
+            // Verificar 3 finder patterns 7x7 + separadores blancos
+            const verificarFinder = (r0, c0) => {
+                for (let r = 0; r < 7; r++) {
+                    for (let c = 0; c < 7; c++) {
+                        const borde = r === 0 || r === 6 || c === 0 || c === 6;
+                        const centro = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+                        expect(m1[r0 + r][c0 + c]).toBe(borde || centro);
+                    }
+                }
+            };
+            verificarFinder(0, 0);
+            verificarFinder(0, n - 7);
+            verificarFinder(n - 7, 0);
+
+            // Separadores blancos
+            for (let i = 0; i < 8; i++) {
+                expect(m1[7][i]).toBe(false);
+                expect(m1[i][7]).toBe(false);
+                expect(m1[7][n - 1 - i]).toBe(false);
+                expect(m1[i][n - 8]).toBe(false);
+                expect(m1[n - 8][i]).toBe(false);
+                expect(m1[n - 1 - i][7]).toBe(false);
+            }
+
+            // Timing patterns fila 6 y col 6
+            for (let i = 8; i < n - 8; i++) {
+                expect(m1[6][i]).toBe(i % 2 === 0);
+                expect(m1[i][6]).toBe(i % 2 === 0);
+            }
+
+            // Dark module fijo ISO en (n - 8, 8)
+            expect(m1[n - 8][8]).toBe(true);
+        });
+
+        it('decodifica integralmente los bits de formato BCH(15,5), desenmascara y recupera la URL original (v1 a v6+)', () => {
+            const urlsPrueba = [
+                'http://localhost/carta.html',
+                'http://localhost:3000/app/carta.html',
+                'https://sapori-cafe-gestion.onrender.com/app/carta.html?sucursal=resistencia&vista=qr&largo=123456789012345678901234567890',
+            ];
+
+            const mascaraFn = (m, r, c) => {
+                if (m === 0) return (r + c) % 2 === 0;
+                if (m === 1) return r % 2 === 0;
+                if (m === 2) return c % 3 === 0;
+                if (m === 3) return (r + c) % 3 === 0;
+                if (m === 4) return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0;
+                if (m === 5) return ((r * c) % 2) + ((r * c) % 3) === 0;
+                if (m === 6) return (((r * c) % 2) + ((r * c) % 3)) % 2 === 0;
+                return (((r + c) % 2) + ((r * c) % 3)) % 2 === 0;
+            };
+
+            const alignTabla = {
+                1: [],
+                2: [6, 18],
+                3: [6, 22],
+                4: [6, 26],
+                5: [6, 30],
+                6: [6, 34],
+                7: [6, 22, 38],
+            };
+
+            const dataCountTabla = {
+                M: { 1: 16, 2: 28, 3: 44, 4: 64, 5: 86, 6: 108, 7: 124 },
+            };
+
+            for (const url of urlsPrueba) {
+                const matriz = generarMatrizQr(url, { nivelEcc: 'M' });
+                const n = matriz.length;
+                const ver = (n - 17) / 4;
+
+                // Leer ambas copias de format info y verificar coincidencia + BCH(15,5)
+                let fmtA = 0;
+                let fmtB = 0;
+                for (let i = 0; i < 15; i++) {
+                    const bA =
+                        i < 6
+                            ? matriz[i][8]
+                            : i < 8
+                              ? matriz[i + 1][8]
+                              : matriz[n - 15 + i][8];
+                    const bB =
+                        i < 8
+                            ? matriz[8][n - i - 1]
+                            : i < 9
+                              ? matriz[8][15 - i]
+                              : matriz[8][15 - i - 1];
+                    if (bA) fmtA |= 1 << i;
+                    if (bB) fmtB |= 1 << i;
+                }
+                expect(fmtA).toBe(fmtB);
+
+                const rawFmt = fmtA ^ 0x5412;
+                let rem = rawFmt;
+                for (let i = 14; i >= 10; i--) {
+                    if ((rem >> i) & 1) rem ^= 0x537 << (i - 10);
+                }
+                expect(rem).toBe(0);
+
+                const eccBits = (rawFmt >> 13) & 3;
+                const maskId = (rawFmt >> 10) & 7;
+                expect(eccBits).toBe(0); // 'M' = 00
+
+                // Marcar módulos de función para leer los bits de datos en zigzag
+                const esFunc = Array.from({ length: n }, () => Array(n).fill(false));
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) esFunc[r][c] = true;
+                }
+                for (let r = 0; r < 9; r++) {
+                    for (let c = n - 8; c < n; c++) esFunc[r][c] = true;
+                }
+                for (let r = n - 8; r < n; r++) {
+                    for (let c = 0; c < 9; c++) esFunc[r][c] = true;
+                }
+                for (let i = 8; i < n - 8; i++) {
+                    esFunc[6][i] = true;
+                    esFunc[i][6] = true;
+                }
+                for (const cr of alignTabla[ver]) {
+                    for (const cc of alignTabla[ver]) {
+                        if ((cr <= 8 && cc <= 8) || (cr <= 8 && cc >= n - 9) || (cr >= n - 9 && cc <= 8)) continue;
+                        for (let dr = -2; dr <= 2; dr++) {
+                            for (let dc = -2; dc <= 2; dc++) esFunc[cr + dr][cc + dc] = true;
+                        }
+                    }
+                }
+                if (ver >= 7) {
+                    for (let r = 0; r < 6; r++) {
+                        for (let c = n - 11; c < n - 8; c++) {
+                            esFunc[r][c] = true;
+                            esFunc[c][r] = true;
+                        }
+                    }
+                }
+
+                const bitsLeidos = [];
+                let subir = true;
+                for (let col = n - 1; col > 0; col -= 2) {
+                    if (col === 6) col--;
+                    for (let step = 0; step < n; step++) {
+                        const fila = subir ? n - 1 - step : step;
+                        for (let dc = 0; dc < 2; dc++) {
+                            const c = col - dc;
+                            if (!esFunc[fila][c]) {
+                                const crudo = matriz[fila][c];
+                                const desenmascarado = mascaraFn(maskId, fila, c) ? !crudo : crudo;
+                                bitsLeidos.push(desenmascarado ? 1 : 0);
+                            }
+                        }
+                    }
+                    subir = !subir;
+                }
+
+                // Deshacer intercalado para recuperar los bytes de datos (v3: 1 bloque, v4-v7: 2 o 4 bloques)
+                const totalData = dataCountTabla.M[ver];
+                const numBloques = ver <= 3 ? 1 : ver <= 5 ? 2 : 4;
+                const dataPorBloque = totalData / numBloques;
+                const codewords = [];
+                for (let i = 0; i + 7 < bitsLeidos.length; i += 8) {
+                    let b = 0;
+                    for (let j = 0; j < 8; j++) b = (b << 1) | bitsLeidos[i + j];
+                    codewords.push(b);
+                }
+
+                const bloquesDatos = Array.from({ length: numBloques }, () => []);
+                for (let i = 0; i < totalData; i++) {
+                    bloquesDatos[i % numBloques].push(codewords[i]);
+                }
+                const dataUnida = bloquesDatos.flat();
+                expect(dataUnida.length).toBe(dataPorBloque * numBloques);
+
+                const dataBits = [];
+                for (const b of dataUnida) {
+                    for (let i = 7; i >= 0; i--) dataBits.push((b >> i) & 1);
+                }
+                const leerInt = (inicio, len) => {
+                    let v = 0;
+                    for (let i = 0; i < len; i++) v = (v << 1) | dataBits[inicio + i];
+                    return v;
+                };
+
+                expect(leerInt(0, 4)).toBe(0b0100); // Modo Byte
+                const longitud = leerInt(4, 8);
+                const bytesDecodificados = [];
+                for (let i = 0; i < longitud; i++) {
+                    bytesDecodificados.push(leerInt(12 + i * 8, 8));
+                }
+                const textoRecuperado = new TextDecoder().decode(new Uint8Array(bytesDecodificados));
+                expect(textoRecuperado).toBe(url);
+            }
+        });
+
+        it('generarSvgQrCarta devuelve SVG válido con quiet zone de 4 módulos y escape de atributos', () => {
+            const url = 'http://localhost:3000/app/carta.html';
+            const matriz = generarMatrizQr(url);
+            const svg = generarSvgQrCarta(url, { tamanoPx: 240 });
+
+            const esperadoViewBox = `viewBox="0 0 ${matriz.length + 8} ${matriz.length + 8}"`;
+            expect(svg).toContain('<svg ');
+            expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"');
+            expect(svg).toContain(esperadoViewBox);
+            expect(svg).toContain('width="240" height="240"');
+            expect(svg).toContain('shape-rendering="crispEdges"');
+            expect(svg).toContain('<rect width="100%" height="100%"');
+            expect(svg).toContain('<path d="M');
+            expect(svg).toContain('</svg>');
         });
     });
 });

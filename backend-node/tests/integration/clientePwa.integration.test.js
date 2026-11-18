@@ -21,6 +21,10 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('btn-csv-confirmar-directo');
         expect(res.text).toContain('btn-csv-desde-texto');
         expect(res.text).toContain('btn-modal-nuevo-producto');
+        expect(res.text).toContain('btn-qr-carta-publica');
+        expect(res.text).toContain('modal-qr-carta');
+        expect(res.text).toContain('btn-imprimir-qr-carta');
+        expect(res.text).toContain('btn-descargar-qr-svg');
         expect(res.text).toContain('modal-nuevo-producto');
         expect(res.text).toContain('modal-editar-precio-producto');
         expect(res.text).toContain('form-agregar-receta-item');
@@ -53,6 +57,29 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(manifest.icons.length).toBeGreaterThanOrEqual(1);
     });
 
+    it('sirve la página pública carta.html sin autenticación en /app/carta.html y /carta.html', async () => {
+        const [resAppCarta, resRaizCarta, resCartaJs] = await Promise.all([
+            request(app).get('/app/carta.html'),
+            request(app).get('/carta.html'),
+            request(app).get('/app/js/carta.js'),
+        ]);
+
+        expect(resAppCarta.status).toBe(200);
+        expect(resAppCarta.headers['content-type']).toMatch(/text\/html/);
+        expect(resAppCarta.text).toContain('Carta Digital');
+        expect(resAppCarta.text).toContain('carta-buscador');
+        expect(resAppCarta.text).toContain('carta-lista-productos');
+        expect(resAppCarta.text).toContain('js/carta.js');
+        expect(resAppCarta.text).not.toContain('input-token-jwt');
+
+        expect(resRaizCarta.status).toBe(200);
+        expect(resRaizCarta.headers['content-type']).toMatch(/text\/html/);
+        expect(resRaizCarta.text).toContain('Carta Digital');
+
+        expect(resCartaJs.status).toBe(200);
+        expect(resCartaJs.text).toContain('/api/carta-publica/');
+    });
+
     it('sirve el Service Worker (sw.js), la hoja de estilos y los módulos JS del cliente PWA', async () => {
         const [
             resSw,
@@ -75,7 +102,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         ]);
 
         expect(resSw.status).toBe(200);
-        expect(resSw.text).toContain('cafe-gestion-pwa-v2');
+        expect(resSw.text).toContain('cafe-gestion-pwa-v3');
+        expect(resSw.text).toContain('/app/carta.html');
+        expect(resSw.text).toContain('/app/js/carta.js');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.worker.min.js');
         expect(resSw.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');
