@@ -22,6 +22,33 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-18
+Tarea: T6 — Consolidación de presentación, evidencias visuales (IA y QR), script de capturas y guion de video
+Rama: feat/presentacion-evidencias
+Cambios realizados:
+- Se verificó `/home/evilkitty/orq/tareas/`: no existe `T6_capturas_presentacion.txt`; la consigna presente es `T6_guion_video.txt`, junto con las capturas previas en `~/Escritorio/capturas-presentacion/` (`CAMBIOS.md`, `01`..`07` y `pruebas-ia/01`..`08`).
+- Se creó `docs/PRESENTACION_Y_EVIDENCIAS.md` (y copia del guion en `/home/evilkitty/orq/resultados/T6_presentacion_y_guion.md`) con el alcance real del sistema, guía paso a paso de ejecución (Docker y local), inventario consolidado de evidencias (flujo general, módulo IA con Groq y módulo QR Carta Pública HU15), guion de 2 minutos (~264 palabras en español rioplatense, 7 escenas) y tabla de pruebas verificadas.
+- Se creó `scripts/capturar_carta_qr.sh` (cero dependencias nuevas) para verificar `GET /api/carta-publica/`, exportar `qr-carta-ejemplo.svg` con `web/js/logicaPwa.js` y generar capturas Desktop (`1280×900`) y Mobile (`390×844`) de `web/carta.html` en `~/Escritorio/capturas-presentacion/qr-carta/`.
+- Al inspeccionar las capturas de `carta.html`, se detectó bajo contraste en `.carta-publica-titulo` (heredaba color oscuro de la regla global `h1` sobre fondo `--color-espresso`); se corrigió en `web/css/estilos.css` aplicando `color: var(--color-crema-texto)` y se regeneraron las capturas.
+- Se corrigió una condición de carrera en `backend-node/tests/integration/importacionIA.integration.test.js` moviendo el mock de `global.fetch` antes de `POST /api/importaciones` para evitar que `setImmediate` dispare `fetch` real cuando `ai-service` no está levantado.
+Conexiones nuevas o modificadas (reflejadas en `docs/CONNECTIONS.md`):
+- Sin cambios de contratos ni conexiones entre servicios.
+Problemas y decisiones técnicas:
+- La captura del modal `#modal-qr-carta` dentro de `#vista-recetas` quedó documentada como captura manual con sesión autenticada de Dueño/Encargado para no leer `.env` ni automatizar credenciales desde el script.
+Archivos tocados:
+- `docs/PRESENTACION_Y_EVIDENCIAS.md`, `docs/bitacora.md`
+- `scripts/capturar_carta_qr.sh`
+- `web/css/estilos.css`
+- `backend-node/tests/integration/importacionIA.integration.test.js`
+Cómo probarlo:
+- `./scripts/capturar_carta_qr.sh`
+- `backend-django/.venv/bin/pytest backend-django/ -q`
+- `ai-service/.venv/bin/pytest ai-service/ -q`
+- `.venv/bin/ruff check backend-django/ ai-service/` && `.venv/bin/ruff format --check backend-django/ ai-service/`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
+
+---
+Fecha: 2026-11-18
 Tarea: T5 — Carta Digital pública por QR (HU15, Opción A: QR SVG en JS puro ISO/IEC 18004)
 Rama: feat/qr-carta-publica
 Cambios realizados:
