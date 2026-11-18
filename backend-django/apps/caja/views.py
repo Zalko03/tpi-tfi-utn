@@ -134,12 +134,22 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
 
 
 class MovimientoCajaViewSet(viewsets.ModelViewSet):
-    queryset = MovimientoCaja.objects.all()
+    queryset = MovimientoCaja.objects.select_related("turno_caja", "turno_caja__usuario").all()
     serializer_class = MovimientoCajaSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["turno_caja", "tipo"]
     ordering_fields = ["fecha", "monto", "id"]
     ordering = ["-fecha", "-id"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = getattr(self.request, "user", None)
+        if not user or not user.is_authenticated:
+            return qs.none()
+        if user.is_superuser or usuario_tiene_permiso(self.request, "caja.gestionar_turnos_ajenos"):
+            return qs
+        # Un cajero habilitado para ver/registrar movimientos solo accede a los de sus propios turnos.
+        return qs.filter(turno_caja__usuario=user)
 
     def filter_queryset(self, queryset):
         qs = super().filter_queryset(queryset)
