@@ -21,6 +21,22 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-18
+Tarea: T3 (corrección post-auditoría) — Validación de turno abierto y titularidad en `POST /api/caja/movimientos/`
+Rama: fix/movimientos-caja-cajero
+Cambios realizados:
+- **Servicio y validaciones de creación (`backend-django/apps/caja/services.py`, `serializers.py`, `views.py`):** Se agregó `validar_movimiento_en_turno` y `registrar_movimiento_caja` (con `@transaction.atomic` y `select_for_update()` sobre `TurnoCaja`). Al hacer `POST /api/caja/movimientos/`, se rechaza con HTTP 403 si el usuario no es superusuario ni posee `caja.gestionar_turnos_ajenos` e intenta registrar sobre un turno ajeno, y con HTTP 400 (`"No podés registrar movimientos en un turno de caja que ya está cerrado."`) si el turno está `CERRADO`.
+- **Permisos de lectura (`MovimientoCajaViewSet.get_permissions`):** `list` y `retrieve` aceptan `TieneAlgunPermiso("caja.registrar_movimiento", "caja.gestionar_turnos_ajenos")`, manteniendo HTTP 403 para el cajero estándar sin esos permisos (coherente con `test_api_permisos_negativos.py` y arqueo ciego en `GET /api/caja/turnos/`), filtro por titular para cajeros con `caja.registrar_movimiento` y vista global para encargado/dueño.
+- **Tests (`backend-django/apps/caja/tests/api/test_api_movimientos_caja.py`):** Se agregaron pruebas para `POST` en turno propio abierto (201), `POST` de cajero en turno ajeno (403), `POST` en turno `CERRADO` (400), `POST` de encargado en turno ajeno abierto (201) y `PATCH`/`DELETE` de cajero sobre movimientos propios y ajenos (403).
+Archivos tocados:
+- `backend-django/apps/caja/{services.py,serializers.py,views.py}`
+- `backend-django/apps/caja/tests/api/test_api_movimientos_caja.py`
+- `docs/{seguridad.md,CONNECTIONS.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+
+---
 Fecha: 2026-11-17
 Tarea: T3 — Movimientos de caja: cada cajero ve solo los suyos (y sí ve los de su turno)
 Rama: fix/movimientos-caja-cajero
