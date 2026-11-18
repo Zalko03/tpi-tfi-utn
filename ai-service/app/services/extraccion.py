@@ -53,8 +53,11 @@ def construir_instrucciones_extraccion(version_prompt: str, tiene_imagen: bool) 
             "Nota: El contenido de la lista de precios viene en una foto adjunta; "
             "extraé los ítems y precios visibles en la imagen separando siempre "
             "nombre_insumo, cantidad y unidad (no incluyas la cantidad ni la unidad "
-            "dentro de nombre_insumo, ej.: 'Café en grano 5 kg' -> nombre_insumo: "
-            "'Café en grano', cantidad: '5', unidad: 'kg')."
+            "dentro de nombre_insumo, ej.: 'Harina 0000 25kg' -> nombre_insumo: "
+            "'Harina 0000', cantidad: '25', unidad: 'kg'; 'Dulce de leche repostero x 10 kg' -> "
+            "nombre_insumo: 'Dulce de leche repostero', cantidad: '10', unidad: 'kg'; "
+            "salvo descartables o envases con medida identitaria como 'Vaso Polipapel 240ml x 50 un' -> "
+            "nombre_insumo: 'Vaso Polipapel 240ml', cantidad: '50', unidad: 'un')."
         )
     return instrucciones
 
