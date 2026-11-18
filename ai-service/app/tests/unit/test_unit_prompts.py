@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.services.extraccion import construir_instrucciones_extraccion
 from app.services.prompts import cargar_prompt
 
 
@@ -13,6 +14,20 @@ class TestUnitPrompts:
         assert "JSON" in contenido
         assert "items" in contenido
         assert "precio_total" in contenido
+        assert "nombre_insumo" in contenido
+        assert "cantidad" in contenido
+        assert "unidad" in contenido
+
+    def test_armado_prompt_extraccion_texto_e_imagen_separa_nombre_cantidad_y_unidad(self):
+        prompt_texto = construir_instrucciones_extraccion("v1", tiene_imagen=False)
+        prompt_foto = construir_instrucciones_extraccion("v1", tiene_imagen=True)
+
+        assert "Separá siempre el nombre del insumo de su cantidad y unidad" in prompt_texto
+        assert "foto adjunta" not in prompt_texto
+
+        assert "foto adjunta" in prompt_foto
+        assert "separando siempre nombre_insumo, cantidad y unidad" in prompt_foto
+        assert "no incluyas la cantidad ni la unidad dentro de nombre_insumo" in prompt_foto
 
     def test_carga_prompt_resumen_semanal_v1(self):
         contenido = cargar_prompt("resumen_semanal", "v1")
