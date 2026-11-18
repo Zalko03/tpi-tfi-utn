@@ -17,7 +17,20 @@ from rest_framework_simplejwt.serializers import (
 )
 from rest_framework_simplejwt.settings import api_settings
 
+from apps.usuarios.constantes import PERMISOS_CATALOGO, ROL_CAJERO, ROL_DUENIO
+
 User = get_user_model()
+
+
+def _obtener_rol_y_permisos_token(user: Any) -> tuple[str, list[str]]:
+    """Resuelve el rol y los permisos vigentes para los claims JWT y respuesta de login."""
+    if getattr(user, "is_superuser", False):
+        permisos = sorted(PERMISOS_CATALOGO) if getattr(user, "is_active", True) else []
+        return ROL_DUENIO, permisos
+    perfil = getattr(user, "perfil", None)
+    if perfil:
+        return perfil.rol, perfil.obtener_permisos_activos()
+    return ROL_CAJERO, []
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -38,13 +51,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["email"] = user.email or ""
 
         # Claims de dominio (rol y array de permisos granulares)
-        perfil = getattr(user, "perfil", None)
-        if perfil:
-            token["rol"] = perfil.rol
-            token["permisos"] = perfil.obtener_permisos_activos()
-        else:
-            token["rol"] = "DUENIO" if user.is_superuser else "CAJERO"
-            token["permisos"] = []
+        rol, permisos = _obtener_rol_y_permisos_token(user)
+        token["rol"] = rol
+        token["permisos"] = permisos
 
         return token
 
@@ -55,9 +64,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise AuthenticationFailed("Tu cuenta fue desactivada.")
 
-        perfil = getattr(user, "perfil", None)
-        rol = perfil.rol if perfil else ("DUENIO" if user.is_superuser else "CAJERO")
-        permisos = perfil.obtener_permisos_activos() if perfil else []
+        rol, permisos = _obtener_rol_y_permisos_token(user)
 
         data["usuario"] = {
             "id": user.id,
@@ -105,13 +112,9 @@ class CustomTokenRefreshSerializer(TokenRefreshSerializer):
         access["username"] = user.username
         access["email"] = user.email or ""
 
-        perfil = getattr(user, "perfil", None)
-        if perfil:
-            access["rol"] = perfil.rol
-            access["permisos"] = perfil.obtener_permisos_activos()
-        else:
-            access["rol"] = "DUENIO" if user.is_superuser else "CAJERO"
-            access["permisos"] = []
+        rol, permisos = _obtener_rol_y_permisos_token(user)
+        access["rol"] = rol
+        access["permisos"] = permisos
 
         data = {"access": str(access)}
 
@@ -131,9 +134,8 @@ class CustomTokenRefreshSerializer(TokenRefreshSerializer):
             refresh["user_id"] = user.id
             refresh["username"] = user.username
             refresh["email"] = user.email or ""
-            if perfil:
-                refresh["rol"] = perfil.rol
-                refresh["permisos"] = perfil.obtener_permisos_activos()
+            refresh["rol"] = rol
+            refresh["permisos"] = permisos
 
             refresh.outstand()
             data["refresh"] = str(refresh)

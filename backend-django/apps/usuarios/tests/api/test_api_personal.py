@@ -150,3 +150,39 @@ class TestApiPersonalEndpoints:
         assert (
             permiso_checker.has_object_permission(MockRequest(duenio), None, turno_cajero1) is True
         )
+
+    def test_superusuario_sin_perfil_o_con_perfil_cajero_se_serializa_como_duenio(
+        self, client, duenio
+    ):
+        """Un superusuario siempre se expone con rol DUENIO y todos los permisos sin tocar la BD."""
+        from apps.usuarios.constantes import PERMISOS_CATALOGO
+        from apps.usuarios.models import PerfilUsuario
+
+        admin_sin_perfil = User.objects.create_superuser(
+            username="admin_sin_perfil",
+            email="admin_sp@cafe.local",
+            password="claveSegura123!",
+        )
+        admin_con_perfil_cajero = User.objects.create_superuser(
+            username="admin_perfil_cajero",
+            email="admin_pc@cafe.local",
+            password="claveSegura123!",
+        )
+        PerfilUsuario.objects.create(usuario=admin_con_perfil_cajero, rol=ROL_CAJERO)
+
+        client.force_authenticate(user=duenio)
+        res = client.get("/api/usuarios/?limite=50")
+        assert res.status_code == 200
+        usuarios_por_nombre = {u["username"]: u for u in res.json()["datos"]}
+
+        for username in ("admin_sin_perfil", "admin_perfil_cajero"):
+            u = usuarios_por_nombre[username]
+            assert u["is_superuser"] is True
+            assert u["rol"] == ROL_DUENIO
+            assert u["permisos_activos"] == sorted(PERMISOS_CATALOGO)
+
+        client.force_authenticate(user=admin_sin_perfil)
+        res_me = client.get("/api/usuarios/me/")
+        assert res_me.status_code == 200
+        assert res_me.json()["rol"] == ROL_DUENIO
+        assert res_me.json()["is_superuser"] is True

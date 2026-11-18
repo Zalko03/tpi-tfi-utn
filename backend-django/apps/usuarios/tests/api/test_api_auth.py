@@ -141,3 +141,42 @@ class TestApiAuthEndpoints:
             format="json",
         )
         assert res_fallido.status_code in (400, 401)
+
+    def test_login_superusuario_sin_perfil_o_con_perfil_cajero_emite_duenio(self, client):
+        """El login de un superusuario siempre emite rol DUENIO y permisos completos."""
+        from django.contrib.auth import get_user_model
+
+        from apps.usuarios.constantes import PERMISOS_CATALOGO
+        from apps.usuarios.models import PerfilUsuario
+
+        User = get_user_model()
+        User.objects.create_superuser(
+            username="admin_login_sp",
+            email="admin_lsp@cafe.local",
+            password="claveSegura123!",
+        )
+        admin_pc = User.objects.create_superuser(
+            username="admin_login_pc",
+            email="admin_lpc@cafe.local",
+            password="claveSegura123!",
+        )
+        PerfilUsuario.objects.create(usuario=admin_pc, rol=ROL_CAJERO)
+
+        for username in ("admin_login_sp", "admin_login_pc"):
+            res = client.post(
+                "/api/auth/token/",
+                {"username": username, "password": "claveSegura123!"},
+                format="json",
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert data["usuario"]["rol"] == ROL_DUENIO
+            assert data["usuario"]["permisos"] == sorted(PERMISOS_CATALOGO)
+            decoded = jwt.decode(
+                data["access"],
+                settings.JWT_PUBLIC_KEY,
+                algorithms=["RS256"],
+                issuer="cafe-gestion-django",
+            )
+            assert decoded["rol"] == ROL_DUENIO
+            assert decoded["permisos"] == sorted(PERMISOS_CATALOGO)

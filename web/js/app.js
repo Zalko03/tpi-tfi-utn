@@ -3920,7 +3920,7 @@ const renderizarTarjetasPersonal = () => {
         const card = document.createElement('div');
         card.className = 'usuario-tarjeta-comercial';
 
-        const rol = (u.rol || 'CAJERO').toUpperCase();
+        const rol = ((u.is_superuser ? 'DUENIO' : u.rol) || 'CAJERO').toUpperCase();
         const rolEtiqueta = ETIQUETAS_ROL[rol] || 'Cajero';
         const rolClase = rol === 'DUENIO' ? 'duenio' : rol === 'ENCARGADO' ? 'encargado' : 'cajero';
 
@@ -4039,7 +4039,7 @@ const mostrarModalPermisos = (u) => {
     if (!modal || !u) return;
 
     estadoApp.empleadoEditandoPermisos = u;
-    const rolActual = (u.rol || 'CAJERO').toUpperCase();
+    const rolActual = ((u.is_superuser ? 'DUENIO' : u.rol) || 'CAJERO').toUpperCase();
     const rolEtiqueta = ETIQUETAS_ROL[rolActual] || 'Cajero';
 
     if ($('permisos-usuario-titulo')) {
@@ -5115,7 +5115,7 @@ Flete y entrega a local: $4500`;
         const permisosDict = construirDictPermisosDesdeSeleccion(clavesMarcadas);
 
         const puedeEditarRol = usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
-        const rolOriginal = (u.rol || 'CAJERO').toUpperCase();
+        const rolOriginal = ((u.is_superuser ? 'DUENIO' : u.rol) || 'CAJERO').toUpperCase();
         const nuevoRol = ($('select-permisos-rol')?.value || rolOriginal).toUpperCase();
         const cambioRol = puedeEditarRol && nuevoRol !== rolOriginal;
 
