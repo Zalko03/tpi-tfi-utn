@@ -118,5 +118,12 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
                 ret["diferencia"] = None
                 ret["ventas_efectivo_total"] = None
                 ret["cantidad_tickets"] = None
-                ret["movimientos"] = []
+                usuario_id = getattr(request.user, "id", None)
+                es_titular = (
+                    usuario_id is not None and getattr(instance, "usuario_id", None) == usuario_id
+                )
+                if not es_titular and not usuario_tiene_permiso(
+                    request, "caja.gestionar_turnos_ajenos"
+                ):
+                    ret["movimientos"] = []
         return ret

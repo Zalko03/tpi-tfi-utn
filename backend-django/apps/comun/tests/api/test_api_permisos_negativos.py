@@ -617,7 +617,7 @@ class TestApiPermisosNegativosSistematicos:
                 assert item["precio_unitario"] is None
                 assert item["costo_unitario_snapshot"] is None
 
-        # GET /api/caja/turnos/<id>/ oculta movimientos y montos del turno
+        # GET /api/caja/turnos/<id>/ muestra los movimientos del turno propio pero oculta los montos (arqueo ciego)
         res_turno = client.get(f"/api/caja/turnos/{turno.id}/")
         assert res_turno.status_code == status.HTTP_200_OK
         t_data = res_turno.json()
@@ -625,7 +625,8 @@ class TestApiPermisosNegativosSistematicos:
         assert t_data["efectivo_esperado"] is None
         assert t_data["efectivo_inicial"] is None
         assert t_data["cantidad_tickets"] is None
-        assert t_data["movimientos"] == []
+        assert len(t_data["movimientos"]) == 1
+        assert t_data["movimientos"][0]["motivo"] == "Cambio"
 
     def test_arqueo_duenio_recibe_ventas_efectivo_total(self, client, duenio):
         """Dueño con caja.ver_efectivo_esperado ve ventas_efectivo_total del turno."""
