@@ -7,8 +7,10 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from django.db import IntegrityError, transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
 from django.db.models.functions import TruncDate
-from rest_framework.exceptions import ValidationError
+from django.utils import timezone
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from apps.caja.models import TurnoCaja
 from apps.recetas.models import Producto
 from apps.ventas.models import Venta, VentaItem
 
@@ -168,6 +170,51 @@ def registrar_venta(
     venta.save(update_fields=["total", "costo_total_snapshot", "fecha"])
 
     return venta
+
+
+@transaction.atomic
+def anular_venta(
+    venta: Venta,
+    usuario,
+    motivo: str = "",
+    permiso_verificado: bool = False,
+) -> Venta:
+    """
+    Anula una venta emitida sin borrar el registro contable.
+    Regla conservadora: no se permite anular si el turno de caja de la venta ya fue cerrado.
+    """
+    if not permiso_verificado:
+        if (
+            usuario is None
+            or not getattr(usuario, "is_authenticated", False)
+            or not getattr(usuario, "is_active", False)
+        ):
+            raise PermissionDenied("No tiene permisos para realizar esta acción")
+        if not getattr(usuario, "is_superuser", False):
+            perfil = getattr(usuario, "perfil", None)
+            if not perfil or not perfil.tiene_permiso("ventas.anular_ticket"):
+                raise PermissionDenied("No tiene permisos para realizar esta acción")
+
+    venta_bloqueada = Venta.objects.select_for_update().get(pk=venta.pk)
+    if venta_bloqueada.estado == "ANULADA":
+        raise ValidationError(["Esta venta ya se encuentra anulada."])
+
+    if venta_bloqueada.turno_caja_id is not None:
+        turno_actual = TurnoCaja.objects.select_for_update().get(pk=venta_bloqueada.turno_caja_id)
+        if turno_actual.estado != "ABIERTO":
+            raise ValidationError(
+                ["No se puede anular una venta porque el turno de caja ya está cerrado."]
+            )
+
+    motivo_limpio = str(motivo or "").strip()[:255]
+    venta_bloqueada.estado = "ANULADA"
+    venta_bloqueada.anulada_en = timezone.now()
+    venta_bloqueada.anulada_por = (
+        usuario if usuario is not None and getattr(usuario, "pk", None) is not None else None
+    )
+    venta_bloqueada.motivo_anulacion = motivo_limpio
+    venta_bloqueada.save(update_fields=["estado", "anulada_en", "anulada_por", "motivo_anulacion"])
+    return venta_bloqueada
 
 
 def construir_queryset_reporte_ventas_por_producto(fecha_inicio=None, fecha_fin=None):

@@ -45,6 +45,7 @@ class VentaSerializer(serializers.ModelSerializer):
     items_entrada = VentaItemInputSerializer(many=True, write_only=True, required=True)
     id_operacion = serializers.UUIDField(required=False, allow_null=True)
     usuario_nombre = serializers.ReadOnlyField(source="turno_caja.usuario.username")
+    anulada_por_nombre = serializers.ReadOnlyField(source="anulada_por.username")
 
     class Meta:
         model = Venta
@@ -56,6 +57,11 @@ class VentaSerializer(serializers.ModelSerializer):
             "fecha",
             "medio_pago",
             "origen",
+            "estado",
+            "anulada_en",
+            "anulada_por",
+            "anulada_por_nombre",
+            "motivo_anulacion",
             "total",
             "costo_total_snapshot",
             "items",
@@ -66,6 +72,11 @@ class VentaSerializer(serializers.ModelSerializer):
             "id",
             "usuario_nombre",
             "fecha",
+            "estado",
+            "anulada_en",
+            "anulada_por",
+            "anulada_por_nombre",
+            "motivo_anulacion",
             "total",
             "costo_total_snapshot",
             "creado_en",
