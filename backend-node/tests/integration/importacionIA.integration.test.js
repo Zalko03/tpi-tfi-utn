@@ -735,29 +735,7 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
         expect(resMuyGrande.status).toBe(400);
         expect(resMuyGrande.body.detalles).toContain('La foto es demasiado pesada. Máximo 5 MB.');
 
-        // Payload > 100 KB (prueba que el límite JSON ampliado funciona en /api/importaciones)
-        const imagenMedianaB64 = Buffer.alloc(160 * 1024, 0x42).toString('base64');
-        const resOk = await request(app)
-            .post('/api/importaciones')
-            .set('Authorization', `Bearer ${tokenDuenio}`)
-            .send({
-                proveedorNombre: 'Mayorista Con Foto',
-                origenArchivo: 'imagen',
-                imagenBase64: imagenMedianaB64,
-                imagenMime: 'image/jpeg',
-            });
-
-        expect(resOk.status).toBe(202);
-        expect(resOk.body).toHaveProperty('importacionId');
-
-        const docMongo = await ImportacionIA.findById(resOk.body.importacionId).lean();
-        expect(docMongo.entrada.origenArchivo).toBe('imagen');
-        expect(docMongo.entrada.textoLista).toBeNull();
-        expect(docMongo.entrada.imagenMime).toBe('image/jpeg');
-        expect(docMongo.entrada.imagenTamanoBytes).toBe(160 * 1024);
-        expect(docMongo.entrada.imagenHash).toMatch(/^[a-f0-9]{64}$/);
-        expect(JSON.stringify(docMongo)).not.toContain(imagenMedianaB64);
-
+        // Mock antes de POST para evitar carrera entre setImmediate y fetch real cuando ai-service no corre
         global.fetch = jest.fn().mockResolvedValue({
             ok: true,
             status: 200,
@@ -780,6 +758,29 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
                 contingencia: false,
             }),
         });
+
+        // Payload > 100 KB (prueba que el límite JSON ampliado funciona en /api/importaciones)
+        const imagenMedianaB64 = Buffer.alloc(160 * 1024, 0x42).toString('base64');
+        const resOk = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                proveedorNombre: 'Mayorista Con Foto',
+                origenArchivo: 'imagen',
+                imagenBase64: imagenMedianaB64,
+                imagenMime: 'image/jpeg',
+            });
+
+        expect(resOk.status).toBe(202);
+        expect(resOk.body).toHaveProperty('importacionId');
+
+        const docMongo = await ImportacionIA.findById(resOk.body.importacionId).lean();
+        expect(docMongo.entrada.origenArchivo).toBe('imagen');
+        expect(docMongo.entrada.textoLista).toBeNull();
+        expect(docMongo.entrada.imagenMime).toBe('image/jpeg');
+        expect(docMongo.entrada.imagenTamanoBytes).toBe(160 * 1024);
+        expect(docMongo.entrada.imagenHash).toMatch(/^[a-f0-9]{64}$/);
+        expect(JSON.stringify(docMongo)).not.toContain(imagenMedianaB64);
 
         await procesarImportacionEnSegundoPlano(resOk.body.importacionId, {
             proveedorNombre: 'Mayorista Con Foto',
