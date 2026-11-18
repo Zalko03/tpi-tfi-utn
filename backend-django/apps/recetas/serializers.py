@@ -8,6 +8,18 @@ from apps.recetas.models import Producto, RecetaItem
 from apps.recetas.services import actualizar_costo_y_margen_producto
 
 
+class CartaPublicaProductoSerializer(serializers.ModelSerializer):
+    """
+    Serializador público de solo lectura para la carta digital por QR (HU15).
+    Declara exclusivamente id, nombre y precio_venta para no exponer jamás costos ni recetas.
+    """
+
+    class Meta:
+        model = Producto
+        fields = ["id", "nombre", "precio_venta"]
+        read_only_fields = ["id", "nombre", "precio_venta"]
+
+
 class RecetaItemSerializer(serializers.ModelSerializer):
     insumo_nombre = serializers.ReadOnlyField(source="insumo.nombre")
     insumo_unidad_base = serializers.ReadOnlyField(source="insumo.unidad_base")

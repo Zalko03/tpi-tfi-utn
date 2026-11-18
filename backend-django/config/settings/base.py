@@ -78,6 +78,7 @@ REST_FRAMEWORK = {
         "user": os.environ.get("DJANGO_THROTTLE_USER", "10000/day"),
         "login": os.environ.get("DJANGO_THROTTLE_LOGIN", "10/minute"),
         "recalcular": os.environ.get("DJANGO_THROTTLE_RECALCULAR", "20/minute"),
+        "carta_publica": os.environ.get("DJANGO_THROTTLE_CARTA_PUBLICA", "60/minute"),
     },
     "DEFAULT_PAGINATION_CLASS": "apps.comun.paginacion.PaginacionEstandar",
     "EXCEPTION_HANDLER": "apps.comun.excepciones.manejador_excepciones_api",

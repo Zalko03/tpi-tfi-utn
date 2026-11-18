@@ -21,3 +21,12 @@ class RecalculoRateThrottle(UserRateThrottle):
     """
 
     scope = "recalcular"
+
+
+class CartaPublicaRateThrottle(AnonRateThrottle):
+    """
+    Control de tasa anónimo para la consulta pública de la carta digital (HU15).
+    Protege el catálogo público contra scraping masivo o abuso sin exigir sesión.
+    """
+
+    scope = "carta_publica"
