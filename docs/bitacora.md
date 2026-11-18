@@ -22,6 +22,31 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-17
+Tarea: T2 — Anulación real de ventas (`POST /api/ventas/{id}/anular/`)
+Rama: fix/anular-venta
+Cambios realizados:
+- **Modelo y migración (`backend-django/apps/ventas/`):** Se agregaron `estado` (`EMITIDA` / `ANULADA`, default `EMITIDA`), `anulada_en`, `anulada_por`, `motivo_anulacion` e índice `idx_venta_estado_fecha` en `Venta` (`0005_venta_anulada_en_venta_anulada_por_venta_estado_and_more.py`), conservando las ventas sin borrado físico.
+- **Servicio y API (`apps/ventas/services.py`, `serializers.py`, `views.py`):** Se implementó `anular_venta(venta, usuario, motivo)` con `@transaction.atomic` y `select_for_update()`, validando `ventas.anular_ticket` (403), doble anulación (400) y estado del turno (400 si `CERRADO`). `VentaViewSet.anular` delega en el servicio y `VentaSerializer` expone los campos de anulación como `read_only`.
+- **Exclusión en caja, reportes y consumo (`apps/caja/`, `apps/ventas/`, `apps/insumos/`):** Se filtró `estado="EMITIDA"` en `TurnoCaja.calcular_efectivo_esperado`, `TurnoCajaSerializer` (`ventas_efectivo_total`, `cantidad_tickets`), `construir_queryset_reporte_ventas_por_producto` (reporte por producto y ranking), `obtener_ganancia_diaria` (y punto de equilibrio) y `obtener_movimientos_stock_trazabilidad` (consumo de insumos).
+- **Web (`web/js/logicaPwa.js`, `web/js/app.js`):** En la trazabilidad de Reportes, las ventas con `estado === 'ANULADA'` se muestran marcadas con `"Anulada"` y badge `.peligro` (manteniendo `"Confidencial"` si `total` es `null`), y en la auditoría de turno (`auditarCierreCajaIA`) se excluyen del total vendido y conteo de emitidas. No se agregó botón para anular en la UI por no existir previamente (fuera de alcance de la tarea).
+- **Tests:** Pruebas unitarias y de API en Django (`test_unit_anulacion_ventas.py`, `test_api_anulacion_ventas.py`) y unitarias en Jest (`logicaPwa.unit.test.js`).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `POST /api/ventas/:id/anular/` pasa de stub a mutación transaccional real de `Venta.estado` (`ANULADA`); `GET /api/ventas/` expone `estado`, `anulada_en`, `anulada_por`, `anulada_por_nombre` y `motivo_anulacion` consumidos por `web/js/logicaPwa.js`.
+Problemas y decisiones técnicas:
+- **Regla de turno cerrado:** `PLAN_IMPLEMENTACION.md` §3, `PROPUESTA.md` y `seguridad.md` §5.1 no definen si se puede anular una venta de un turno cerrado. Se eligió la regla conservadora: rechazar con HTTP 400 si `turno_caja` está `CERRADO` (para no invalidar arqueos ya cerrados); si `turno_caja` es `ABIERTO` (o `None`, p. ej. ventas importadas sin turno), se permite anular.
+Archivos tocados:
+- `backend-django/apps/ventas/{models.py,serializers.py,services.py,views.py,migrations/0005_venta_anulada_en_venta_anulada_por_venta_estado_and_more.py}`
+- `backend-django/apps/caja/{models.py,serializers.py}`, `backend-django/apps/insumos/services.py`
+- `backend-django/apps/ventas/tests/{unit/test_unit_anulacion_ventas.py,api/test_api_anulacion_ventas.py}`
+- `web/js/{logicaPwa.js,app.js}`, `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/{CONNECTIONS.md,ARCHITECTURE.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+
+---
+Fecha: 2026-11-17
 Tarea: Extracción de precios con IA desde foto de lista de proveedor (Web, Node y ai-service)
 Rama: feature/mejoras-profesor
 Cambios realizados:
