@@ -410,11 +410,15 @@ def obtener_movimientos_stock_trazabilidad(
             )
 
     if tipo_norm in ("", "EGRESO"):
-        qs_items = VentaItem.objects.select_related(
-            "venta",
-            "venta__turno_caja__usuario",
-            "producto",
-        ).prefetch_related("producto__receta_items__insumo")
+        qs_items = (
+            VentaItem.objects.filter(venta__estado="EMITIDA")
+            .select_related(
+                "venta",
+                "venta__turno_caja__usuario",
+                "producto",
+            )
+            .prefetch_related("producto__receta_items__insumo")
+        )
 
         if fecha_desde is not None:
             qs_items = qs_items.filter(venta__fecha__gte=fecha_desde)

@@ -222,7 +222,7 @@ def construir_queryset_reporte_ventas_por_producto(fecha_inicio=None, fecha_fin=
     Construye el QuerySet agregado en SQL (GROUP BY producto) filtrado por fecha de venta.
     Aprovecha idx_venta_fecha en Venta e idx_ventaitem_venta_prod en VentaItem (T3.4).
     """
-    qs = VentaItem.objects.all()
+    qs = VentaItem.objects.filter(venta__estado="EMITIDA")
     if fecha_inicio is not None:
         qs = qs.filter(venta__fecha__gte=fecha_inicio)
     if fecha_fin is not None:
@@ -293,8 +293,8 @@ def obtener_ganancia_diaria(fecha_inicio=None, fecha_fin=None) -> dict:
     Ganancia diaria = Σ (precio_unitario - costo_unitario_snapshot) * cantidad
     sobre los ítems vendidos, usando estrictamente el costo congelado al vender.
     """
-    qs_items = VentaItem.objects.all()
-    qs_ventas = Venta.objects.all()
+    qs_items = VentaItem.objects.filter(venta__estado="EMITIDA")
+    qs_ventas = Venta.objects.filter(estado="EMITIDA")
 
     if fecha_inicio is not None:
         qs_items = qs_items.filter(venta__fecha__gte=fecha_inicio)

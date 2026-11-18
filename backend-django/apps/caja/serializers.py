@@ -77,11 +77,18 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
             cache_prefetch = getattr(obj, "_prefetched_objects_cache", None)
             if isinstance(cache_prefetch, dict) and "ventas" in cache_prefetch:
                 total = sum(
-                    (v.total for v in obj.ventas.all() if v.medio_pago == "EFECTIVO"),
+                    (
+                        v.total
+                        for v in obj.ventas.all()
+                        if v.medio_pago == "EFECTIVO"
+                        and getattr(v, "estado", "EMITIDA") == "EMITIDA"
+                    ),
                     Decimal("0.00"),
                 )
             else:
-                agregado = obj.ventas.filter(medio_pago="EFECTIVO").aggregate(total=Sum("total"))
+                agregado = obj.ventas.filter(medio_pago="EFECTIVO", estado="EMITIDA").aggregate(
+                    total=Sum("total")
+                )
                 total = (agregado.get("total") if isinstance(agregado, dict) else None) or Decimal(
                     "0.00"
                 )
@@ -93,8 +100,10 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
         try:
             cache_prefetch = getattr(obj, "_prefetched_objects_cache", None)
             if isinstance(cache_prefetch, dict) and "ventas" in cache_prefetch:
-                return len(obj.ventas.all())
-            conteo = obj.ventas.count()
+                return sum(
+                    1 for v in obj.ventas.all() if getattr(v, "estado", "EMITIDA") == "EMITIDA"
+                )
+            conteo = obj.ventas.filter(estado="EMITIDA").count()
             return int(conteo) if isinstance(conteo, (int, float)) else 0
         except (TypeError, ValueError, AttributeError):
             return 0
