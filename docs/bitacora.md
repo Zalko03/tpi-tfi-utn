@@ -22,6 +22,29 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-18
+Tarea: T1 — Modelos de IA vigentes por defecto, prompt de extracción y pruebas reales desde la web
+Rama: fix/ia-pruebas-reales
+Cambios realizados:
+- **Modelos por defecto vigentes (`ai-service/app/config.py`, `.env.example`, `ai-service/.env.example`, `docker-compose.yml`):** Actualización de `GROQ_MODEL` a `openai/gpt-oss-120b`, `GROQ_VISION_MODEL` a `qwen/qwen3.8-27b` (verificados activos en `GET https://api.groq.com/openai/v1/models`) y `GEMINI_MODEL` a `gemini-3.8-flash` (referencia: `https://ai.google.dev/gemini-api/docs/models`, familia Gemini Flash vigente con soporte multimodal/visión), junto con sus tests unitarios (`ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`).
+- **Prompt de extracción en fotos (`ai-service/app/prompts/v1/extraer_precios.txt`, `ai-service/app/services/extraccion.py`):** Se reforzó la instrucción para separar siempre `nombre_insumo`, `cantidad` y `unidad` sin mezclar peso/volumen en el nombre, con test unitario en `ai-service/app/tests/unit/test_unit_prompts.py`.
+- **Verificación real punta a punta (`http://localhost:3000/app/` y `uvicorn` reiniciado en puerto 8001):**
+  - Se validó extracción real con Groq (`proveedor_ia=groq`, `contingencia=false`, estado `LISTA`) desde CSV («Analizar Planilla con IA»), Excel `.xlsx` («Analizar Planilla con IA»), Word `.docx`, texto libre y foto PNG inventada usando `qwen/qwen3.8-27b` (separación correcta de nombre, cantidad, unidad y flete).
+  - Se probó la aprobación completa («Aprobar e Impactar Costos en Recetas», HTTP 200) y se restauró la BD SQLite local a su estado previo para no alterar los datos demo.
+  - Se probó «Consultar a la IA: insumos a reponer» (`POST /v1/resumen-semanal` con Groq real `openai/gpt-oss-120b`, sin contingencia) y «Auditar Cierre de Caja y Rentabilidad del Turno con IA» (auditoría local de Turno #1). Se verificó que «Recetas & Rentabilidad» no tiene botones de IA.
+  - Capturas y descripción guardadas fuera del repo en `~/Escritorio/capturas-presentacion/pruebas-ia/`.
+Archivos tocados:
+- `.env.example`, `ai-service/.env.example`, `docker-compose.yml`
+- `ai-service/app/config.py`, `ai-service/app/prompts/v1/extraer_precios.txt`, `ai-service/app/services/extraccion.py`
+- `ai-service/app/tests/unit/{test_unit_adapters_y_servicios.py,test_unit_prompts.py}`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+
+---
+Fecha: 2026-11-18
 Tarea: T3 (corrección post-auditoría) — Validación de turno abierto y titularidad en `POST /api/caja/movimientos/`
 Rama: fix/movimientos-caja-cajero
 Cambios realizados:
