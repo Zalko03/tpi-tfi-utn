@@ -65,7 +65,8 @@ const importacionIASchema = new mongoose.Schema(
         entrada: {
             textoLista: {
                 type: String,
-                required: [true, 'El texto de la lista de precios es obligatorio'],
+                required: false,
+                default: null,
                 trim: true,
             },
             proveedorNombre: {
@@ -75,8 +76,20 @@ const importacionIASchema = new mongoose.Schema(
             },
             origenArchivo: {
                 type: String,
-                enum: ['texto', 'csv', 'pdf'],
+                enum: ['texto', 'csv', 'pdf', 'imagen'],
                 default: 'texto',
+            },
+            imagenHash: {
+                type: String,
+                default: null,
+            },
+            imagenTamanoBytes: {
+                type: Number,
+                default: null,
+            },
+            imagenMime: {
+                type: String,
+                default: null,
             },
         },
         salida: {

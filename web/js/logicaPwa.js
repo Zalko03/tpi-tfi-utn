@@ -944,6 +944,44 @@ export const procesarColaVentasOffline = async ({
 /**
  * Formatea una fecha Date a 'YYYY-MM-DD' usando la zona horaria local.
  */
+/**
+ * Mientras se escribe una fecha en el filtro: deja solo dígitos y agrega las barras
+ * (ej. "17102026" -> "17/10/2026").
+ */
+export const formatearEntradaFecha = (texto = '') => {
+    const digitos = String(texto ?? '').replace(/\D/g, '').slice(0, 8);
+    if (digitos.length <= 2) return digitos;
+    if (digitos.length <= 4) return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+    return `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4)}`;
+};
+
+/**
+ * Convierte "dd/mm/aaaa" a "aaaa-mm-dd". Devuelve '' si está vacío y null si la fecha
+ * está incompleta o no existe (ej. 31/02/2026).
+ */
+export const fechaTextoAIso = (texto = '') => {
+    const limpio = String(texto ?? '').trim();
+    if (!limpio) return '';
+    const m = limpio.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const [, dia, mes, anio] = m;
+    const fecha = new Date(Number(anio), Number(mes) - 1, Number(dia));
+    if (
+        fecha.getFullYear() !== Number(anio)
+        || fecha.getMonth() !== Number(mes) - 1
+        || fecha.getDate() !== Number(dia)
+    ) {
+        return null;
+    }
+    return `${anio}-${mes}-${dia}`;
+};
+
+/** Convierte "aaaa-mm-dd" a "dd/mm/aaaa" (o '' si no es una fecha válida). */
+export const fechaIsoATexto = (iso = '') => {
+    const m = String(iso ?? '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+};
+
 export const formatearFechaLocalInput = (fecha = new Date()) => {
     const d = fecha instanceof Date ? fecha : new Date(fecha);
     if (Number.isNaN(d.getTime())) return '';
@@ -1626,6 +1664,160 @@ export const TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES = 5 * 1024 * 1024;
 export const MENSAJE_ARCHIVO_DEMASIADO_GRANDE =
     'El archivo supera el límite máximo permitido de 5 MB.';
 export const MENSAJE_DOC_ANTIGUO = 'Guardá el archivo como .docx y volvé a subirlo';
+export const MIMES_IMAGEN_IMPORTACION_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp'];
+export const EXTENSIONES_IMAGEN_IMPORTACION_PERMITIDAS = ['.jpg', '.jpeg', '.png', '.webp'];
+export const LADO_MAXIMO_IMAGEN_IMPORTACION_PX = 1600;
+export const CALIDAD_JPEG_IMAGEN_IMPORTACION = 0.85;
+export const MENSAJE_TIPO_IMAGEN_INVALIDO = 'Elegí una foto JPG, PNG o WEBP.';
+export const MENSAJE_FOTO_LISTA_IA = 'Foto lista para analizar con IA';
+
+const EXTENSIONES_IMAGEN_CUALQUIERA = [
+    ...EXTENSIONES_IMAGEN_IMPORTACION_PERMITIDAS,
+    '.gif',
+    '.bmp',
+    '.svg',
+    '.heic',
+    '.heif',
+    '.tiff',
+    '.tif',
+    '.avif',
+    '.ico',
+];
+const EXTENSIONES_TEXTO_IMPORTACION = ['.csv', '.txt'];
+
+/**
+ * Determina si un archivo seleccionado corresponde a una imagen (permitida o no).
+ */
+export const esArchivoImagenImportacion = (archivo) => {
+    if (!archivo) return false;
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    if (tipo.startsWith('image/')) return true;
+    return EXTENSIONES_IMAGEN_CUALQUIERA.some((ext) => nombre.endsWith(ext));
+};
+
+/**
+ * Valida que una imagen seleccionada para importación sea JPG, PNG o WEBP y no supere 5 MB.
+ */
+export const validarArchivoImagenImportacion = (
+    archivo,
+    maxBytes = TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES
+) => {
+    if (!archivo) {
+        return { valido: false, mensajeError: 'No se seleccionó ninguna foto.' };
+    }
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    const extPermitida = EXTENSIONES_IMAGEN_IMPORTACION_PERMITIDAS.some((ext) =>
+        nombre.endsWith(ext)
+    );
+    const mimePermitido = MIMES_IMAGEN_IMPORTACION_PERMITIDOS.includes(tipo);
+
+    if ((tipo && !mimePermitido) || (!tipo && !extPermitida)) {
+        return { valido: false, mensajeError: MENSAJE_TIPO_IMAGEN_INVALIDO };
+    }
+    if (!mimePermitido && !extPermitida) {
+        return { valido: false, mensajeError: MENSAJE_TIPO_IMAGEN_INVALIDO };
+    }
+
+    const tamano = Number(archivo.size ?? 0);
+    if (Number.isFinite(tamano) && tamano <= 0 && archivo.size !== undefined) {
+        return { valido: false, mensajeError: 'La foto está vacía. Elegí otra.' };
+    }
+    if (Number.isFinite(tamano) && tamano > maxBytes) {
+        return { valido: false, mensajeError: MENSAJE_ARCHIVO_DEMASIADO_GRANDE };
+    }
+    return { valido: true, mensajeError: null };
+};
+
+/**
+ * Valida tipo y tamaño de cualquier archivo elegido en la carga de listas de proveedores.
+ */
+export const validarArchivoImportacionGeneral = (
+    archivo,
+    maxBytes = TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES
+) => {
+    if (!archivo) {
+        return { valido: false, mensajeError: 'No se seleccionó ningún archivo.' };
+    }
+    if (esArchivoDocAntiguo(archivo)) {
+        return { valido: false, mensajeError: MENSAJE_DOC_ANTIGUO };
+    }
+    if (esArchivoImagenImportacion(archivo)) {
+        return validarArchivoImagenImportacion(archivo, maxBytes);
+    }
+
+    const nombre = String(archivo.name || '').trim().toLowerCase();
+    const tipo = String(archivo.type || '').trim().toLowerCase();
+    const esTexto =
+        EXTENSIONES_TEXTO_IMPORTACION.some((ext) => nombre.endsWith(ext)) ||
+        tipo === 'text/csv' ||
+        tipo === 'text/plain';
+    const soportado =
+        esArchivoPdf(archivo) || esArchivoExcel(archivo) || esArchivoDocx(archivo) || esTexto;
+
+    if (!soportado) {
+        return {
+            valido: false,
+            mensajeError:
+                'Formato no compatible. Subí Excel, PDF, Word, foto (JPG, PNG, WEBP) o texto.',
+        };
+    }
+    return validarTamanoArchivoImportacion(archivo, maxBytes);
+};
+
+/**
+ * Calcula ancho y alto finales para reescalar una foto sin deformarla,
+ * acotando su lado mayor a `ladoMaximo` píxeles.
+ */
+export const calcularDimensionesReescaladoImagen = (
+    anchoOriginal,
+    altoOriginal,
+    ladoMaximo = LADO_MAXIMO_IMAGEN_IMPORTACION_PX
+) => {
+    const ancho = Number(anchoOriginal);
+    const alto = Number(altoOriginal);
+    const maxLado = Number(ladoMaximo);
+
+    if (
+        !Number.isFinite(ancho) ||
+        !Number.isFinite(alto) ||
+        !Number.isFinite(maxLado) ||
+        ancho <= 0 ||
+        alto <= 0 ||
+        maxLado <= 0
+    ) {
+        throw new Error('Dimensiones de imagen inválidas.');
+    }
+
+    const mayorLado = Math.max(ancho, alto);
+    if (mayorLado <= maxLado) {
+        return {
+            ancho: Math.round(ancho),
+            alto: Math.round(alto),
+            reescalada: false,
+        };
+    }
+
+    const escala = maxLado / mayorLado;
+    return {
+        ancho: Math.max(1, Math.round(ancho * escala)),
+        alto: Math.max(1, Math.round(alto * escala)),
+        reescalada: true,
+    };
+};
+
+/**
+ * Extrae el contenido base64 puro quitando el prefijo `data:<mime>;base64,`.
+ */
+export const extraerBase64DeDataUrl = (dataUrl = '') => {
+    const texto = String(dataUrl || '').trim();
+    const indice = texto.indexOf(';base64,');
+    if (!texto.startsWith('data:') || indice === -1) {
+        return '';
+    }
+    return texto.slice(indice + ';base64,'.length).trim();
+};
 
 /**
  * Valida antes de leer un archivo que no supere el tamaño máximo permitido (5 MB por defecto).
@@ -2101,11 +2293,15 @@ export const extraerMensajeErrorApi = (
     if (Array.isArray(data.detalles) && data.detalles.length > 0) {
         detalleMsg = String(data.detalles[0]);
     } else if (data.detalles && typeof data.detalles === 'object') {
-        const primerValor = Object.values(data.detalles)[0];
-        if (Array.isArray(primerValor) && primerValor.length > 0) {
-            detalleMsg = String(primerValor[0]);
-        } else if (typeof primerValor === 'string') {
-            detalleMsg = primerValor;
+        if (typeof data.detalles.mensaje === 'string' && data.detalles.mensaje.trim()) {
+            detalleMsg = data.detalles.mensaje;
+        } else {
+            const primerValor = Object.values(data.detalles)[0];
+            if (Array.isArray(primerValor) && primerValor.length > 0) {
+                detalleMsg = String(primerValor[0]);
+            } else if (typeof primerValor === 'string') {
+                detalleMsg = primerValor;
+            }
         }
     } else if (typeof data.detalles === 'string' && data.detalles.trim()) {
         detalleMsg = data.detalles;
@@ -2229,5 +2425,354 @@ export const validarCarritoContraCatalogo = (carrito = [], catalogo = []) => {
         valido: true,
         mensaje: '',
     };
+};
+
+// Debe coincidir con PERMISOS_CATALOGO y ROLES_PLANTILLAS en backend-django/apps/usuarios/constantes.py
+export const GRUPOS_PERMISOS_EQUIPO = [
+    {
+        id: 'ventas',
+        titulo: 'Ventas',
+        permisos: [
+            { clave: 'ventas.cobrar_ticket', etiqueta: 'Cobrar tickets' },
+            { clave: 'ventas.anular_ticket', etiqueta: 'Anular tickets' },
+            { clave: 'ventas.aplicar_descuento', etiqueta: 'Aplicar descuentos' },
+            { clave: 'ventas.ver_historial_propio', etiqueta: 'Ver sus propias ventas' },
+            { clave: 'ventas.ver_historial_todos', etiqueta: 'Ver las ventas de todo el equipo' },
+        ],
+    },
+    {
+        id: 'caja',
+        titulo: 'Caja',
+        permisos: [
+            { clave: 'caja.abrir_turno', etiqueta: 'Abrir turno de caja' },
+            { clave: 'caja.cerrar_turno', etiqueta: 'Cerrar turno de caja' },
+            { clave: 'caja.ver_efectivo_esperado', etiqueta: 'Ver el efectivo esperado en caja' },
+            { clave: 'caja.registrar_movimiento', etiqueta: 'Registrar entradas y salidas de caja' },
+            { clave: 'caja.gestionar_turnos_ajenos', etiqueta: 'Administrar turnos de otros empleados' },
+        ],
+    },
+    {
+        id: 'insumos',
+        titulo: 'Insumos',
+        permisos: [
+            { clave: 'insumos.ver', etiqueta: 'Ver insumos' },
+            { clave: 'insumos.crear', etiqueta: 'Agregar insumos' },
+            { clave: 'insumos.editar', etiqueta: 'Editar insumos' },
+            { clave: 'insumos.eliminar', etiqueta: 'Borrar insumos' },
+        ],
+    },
+    {
+        id: 'compras',
+        titulo: 'Compras',
+        permisos: [
+            { clave: 'compras.ver', etiqueta: 'Ver compras realizadas' },
+            { clave: 'compras.registrar', etiqueta: 'Registrar compras' },
+        ],
+    },
+    {
+        id: 'recetas',
+        titulo: 'Recetas y carta',
+        permisos: [
+            { clave: 'recetas.ver', etiqueta: 'Ver la carta y las recetas' },
+            { clave: 'recetas.crear', etiqueta: 'Crear productos y recetas' },
+            { clave: 'recetas.editar', etiqueta: 'Editar precios y recetas' },
+            { clave: 'recetas.eliminar', etiqueta: 'Quitar ingredientes o recetas' },
+            { clave: 'recetas.ver_costos', etiqueta: 'Ver costos de las recetas' },
+        ],
+    },
+    {
+        id: 'reportes',
+        titulo: 'Reportes',
+        permisos: [
+            { clave: 'reportes.ver_financieros', etiqueta: 'Ver reportes de ganancias y dinero' },
+            { clave: 'reportes.ver_operativos', etiqueta: 'Ver reportes de actividad del local' },
+        ],
+    },
+    {
+        id: 'ia',
+        titulo: 'Asistente IA',
+        permisos: [
+            { clave: 'ia.importar_listas', etiqueta: 'Cargar listas de proveedores con IA' },
+        ],
+    },
+    {
+        id: 'personal',
+        titulo: 'Equipo',
+        permisos: [
+            { clave: 'personal.ver', etiqueta: 'Ver la lista del equipo' },
+            { clave: 'personal.crear', etiqueta: 'Agregar empleados' },
+            { clave: 'personal.editar', etiqueta: 'Cambiar datos y rol de empleados' },
+            { clave: 'personal.ajustar_permisos', etiqueta: 'Dar o quitar permisos' },
+            { clave: 'personal.desactivar', etiqueta: 'Dar de baja y reactivar empleados' },
+        ],
+    },
+    {
+        id: 'auditoria',
+        titulo: 'Registro de cambios',
+        permisos: [
+            { clave: 'auditoria.ver_logs', etiqueta: 'Ver el registro de cambios del equipo' },
+        ],
+    },
+];
+
+export const PERMISOS_CATALOGO_EQUIPO = GRUPOS_PERMISOS_EQUIPO.flatMap((grupo) =>
+    grupo.permisos.map((item) => item.clave)
+);
+
+// Debe coincidir con ROLES_PLANTILLAS en backend-django/apps/usuarios/constantes.py
+export const ROLES_PLANTILLAS = {
+    DUENIO: Object.fromEntries(PERMISOS_CATALOGO_EQUIPO.map((clave) => [clave, true])),
+    ENCARGADO: {
+        'ventas.cobrar_ticket': true,
+        'ventas.anular_ticket': true,
+        'ventas.aplicar_descuento': true,
+        'ventas.ver_historial_propio': true,
+        'ventas.ver_historial_todos': true,
+        'caja.abrir_turno': true,
+        'caja.cerrar_turno': true,
+        'caja.ver_efectivo_esperado': true,
+        'caja.registrar_movimiento': true,
+        'caja.gestionar_turnos_ajenos': true,
+        'insumos.ver': true,
+        'insumos.crear': true,
+        'insumos.editar': true,
+        'insumos.eliminar': false,
+        'compras.ver': true,
+        'compras.registrar': true,
+        'recetas.ver': true,
+        'recetas.crear': true,
+        'recetas.editar': true,
+        'recetas.eliminar': false,
+        'recetas.ver_costos': true,
+        'reportes.ver_financieros': false,
+        'reportes.ver_operativos': true,
+        'ia.importar_listas': false,
+        'personal.ver': false,
+        'personal.crear': false,
+        'personal.editar': false,
+        'personal.ajustar_permisos': false,
+        'personal.desactivar': false,
+        'auditoria.ver_logs': false,
+    },
+    CAJERO: {
+        'ventas.cobrar_ticket': true,
+        'ventas.anular_ticket': false,
+        'ventas.aplicar_descuento': false,
+        'ventas.ver_historial_propio': true,
+        'ventas.ver_historial_todos': false,
+        'caja.abrir_turno': true,
+        'caja.cerrar_turno': true,
+        'caja.ver_efectivo_esperado': false,
+        'caja.registrar_movimiento': false,
+        'caja.gestionar_turnos_ajenos': false,
+        'insumos.ver': false,
+        'insumos.crear': false,
+        'insumos.editar': false,
+        'insumos.eliminar': false,
+        'compras.ver': false,
+        'compras.registrar': false,
+        'recetas.ver': false,
+        'recetas.crear': false,
+        'recetas.editar': false,
+        'recetas.eliminar': false,
+        'recetas.ver_costos': false,
+        'reportes.ver_financieros': false,
+        'reportes.ver_operativos': false,
+        'ia.importar_listas': false,
+        'personal.ver': false,
+        'personal.crear': false,
+        'personal.editar': false,
+        'personal.ajustar_permisos': false,
+        'personal.desactivar': false,
+        'auditoria.ver_logs': false,
+    },
+};
+
+/**
+ * Devuelve una copia de la plantilla de permisos predeterminados para un rol dado.
+ */
+export const obtenerPlantillaRol = (rol = 'CAJERO') => {
+    const claveRol = String(rol || 'CAJERO').trim().toUpperCase();
+    const plantilla = ROLES_PLANTILLAS[claveRol] || ROLES_PLANTILLAS.CAJERO;
+    return { ...plantilla };
+};
+
+/**
+ * Construye el diccionario completo { clave: boolean } para todas las claves del catálogo
+ * a partir de una lista/Set de claves marcadas o un objeto parcial de casillas.
+ */
+export const construirDictPermisosDesdeSeleccion = (seleccion = []) => {
+    const activas = new Set();
+    if (Array.isArray(seleccion) || seleccion instanceof Set) {
+        for (const clave of seleccion) {
+            if (typeof clave === 'string') activas.add(clave);
+        }
+    } else if (seleccion && typeof seleccion === 'object') {
+        for (const [clave, valor] of Object.entries(seleccion)) {
+            if (valor) activas.add(clave);
+        }
+    }
+    const completo = {};
+    for (const clave of PERMISOS_CATALOGO_EQUIPO) {
+        completo[clave] = activas.has(clave);
+    }
+    return completo;
+};
+
+/**
+ * Obtiene el diccionario completo de permisos iniciales de un empleado para premarcar casillas.
+ */
+export const obtenerPermisosInicialesEmpleado = (empleado) => {
+    if (Array.isArray(empleado?.permisos_activos)) {
+        return construirDictPermisosDesdeSeleccion(empleado.permisos_activos);
+    }
+    const base = obtenerPlantillaRol(empleado?.rol || 'CAJERO');
+    if (
+        empleado?.permisos &&
+        typeof empleado.permisos === 'object' &&
+        !Array.isArray(empleado.permisos)
+    ) {
+        for (const clave of PERMISOS_CATALOGO_EQUIPO) {
+            if (clave in empleado.permisos) {
+                base[clave] = Boolean(empleado.permisos[clave]);
+            }
+        }
+    }
+    return base;
+};
+
+/**
+ * Indica qué botones globales de la pantalla Equipo & Permisos ve el usuario actual.
+ */
+export const accionesEquipoVisiblesParaUsuario = (usuarioActual) => ({
+    agregarEmpleado: usuarioTienePermiso(usuarioActual, 'personal.crear'),
+});
+
+/**
+ * Indica qué acciones ve el usuario actual sobre la tarjeta de un empleado.
+ * Un usuario nunca puede darse de baja ni reactivarse a sí mismo.
+ */
+export const accionesEmpleadoVisiblesParaUsuario = (usuarioActual, empleado) => {
+    if (!usuarioActual || !empleado) {
+        return {
+            permisos: false,
+            cambiarRol: false,
+            darDeBaja: false,
+            reactivar: false,
+        };
+    }
+
+    const idActual = usuarioActual.id ?? usuarioActual.user_id ?? null;
+    const idEmpleado = empleado.id ?? null;
+    const tieneAmbosIds =
+        idActual !== null &&
+        idActual !== undefined &&
+        idEmpleado !== null &&
+        idEmpleado !== undefined;
+    const esMismoUsuario = tieneAmbosIds
+        ? Number(idActual) === Number(idEmpleado)
+        : Boolean(
+              usuarioActual.username &&
+                  empleado.username &&
+                  usuarioActual.username === empleado.username
+          );
+
+    const puedeDesactivar = usuarioTienePermiso(usuarioActual, 'personal.desactivar');
+    const estaActivo = empleado.is_active !== false;
+
+    return {
+        permisos: usuarioTienePermiso(usuarioActual, 'personal.ajustar_permisos'),
+        cambiarRol: usuarioTienePermiso(usuarioActual, 'personal.editar'),
+        darDeBaja: puedeDesactivar && estaActivo && !esMismoUsuario,
+        reactivar: puedeDesactivar && !estaActivo && !esMismoUsuario,
+    };
+};
+
+export const CLAVE_SONIDOS_SILENCIADOS = 'sapori_sonidos_silenciados';
+
+/**
+ * Secuencias de notas puras para sintetizar avisos cortos con Web Audio API.
+ * Cada nota incluye frecuencia en Hz (> 0) y duración en segundos (> 0).
+ */
+export const SONIDOS = {
+    cobro: [
+        { frecuencia: 523.25, duracion: 0.09, retardo: 0, tipo: 'triangle', ganancia: 0.09 },
+        { frecuencia: 659.25, duracion: 0.14, retardo: 0.085, tipo: 'triangle', ganancia: 0.1 },
+    ],
+    escaneo: [{ frecuencia: 1046.5, duracion: 0.045, retardo: 0, tipo: 'sine', ganancia: 0.07 }],
+    error: [{ frecuencia: 196.0, duracion: 0.16, retardo: 0, tipo: 'triangle', ganancia: 0.1 }],
+    caja: [
+        { frecuencia: 440.0, duracion: 0.08, retardo: 0, tipo: 'sine', ganancia: 0.08 },
+        { frecuencia: 587.33, duracion: 0.13, retardo: 0.08, tipo: 'sine', ganancia: 0.09 },
+    ],
+    aviso: [
+        { frecuencia: 783.99, duracion: 0.07, retardo: 0, tipo: 'sine', ganancia: 0.08 },
+        { frecuencia: 880.0, duracion: 0.1, retardo: 0.1, tipo: 'sine', ganancia: 0.08 },
+    ],
+};
+
+/**
+ * Lee si el usuario silenció los sonidos; por defecto quedan activados (false).
+ * Tolera entornos sin localStorage o errores de acceso.
+ */
+export const leerPreferenciaSonidosSilenciados = (storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (!storage || typeof storage.getItem !== 'function') return false;
+    try {
+        const valor = storage.getItem(CLAVE_SONIDOS_SILENCIADOS);
+        return valor === 'true' || valor === '1';
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Guarda la preferencia de silencio en storage sin propagar errores de cuota o seguridad.
+ */
+export const guardarPreferenciaSonidosSilenciados = (silenciado, storagePersonalizado = null) => {
+    const storage = obtenerStorageSeguro(storagePersonalizado);
+    if (!storage || typeof storage.setItem !== 'function') return false;
+    try {
+        storage.setItem(CLAVE_SONIDOS_SILENCIADOS, silenciado ? 'true' : 'false');
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Devuelve qué sonido de SONIDOS corresponde a un evento del sistema, o null si no debe sonar.
+ */
+export const obtenerSonidoParaEvento = (evento, contexto = {}) => {
+    switch (evento) {
+        case 'cobro':
+        case 'venta.cobrada':
+        case 'venta.offline':
+        case 'importacion.confirmada':
+            return 'cobro';
+        case 'escaneo':
+        case 'carrito.agregado':
+            return 'escaneo';
+        case 'caja':
+        case 'turno.abierto':
+        case 'turno.cerrado':
+            return 'caja';
+        case 'error':
+            return 'error';
+        case 'aviso':
+            return 'aviso';
+        case 'toast':
+            return contexto?.tipo === 'peligro' ? 'error' : null;
+        case 'socket': {
+            const nombreEvento = contexto?.nombreEvento;
+            if (nombreEvento === 'stock.bajo') return 'aviso';
+            if (nombreEvento === 'costo.actualizado' && Boolean(contexto?.payload?.alertaMargenBajo)) {
+                return 'aviso';
+            }
+            return null;
+        }
+        default:
+            return null;
+    }
 };
 

@@ -1,9 +1,22 @@
 """Esquemas Pydantic v2 para la extracción de precios desde listas de proveedores (HU7)."""
 
+import base64
+import binascii
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
+
+MIMES_IMAGEN_PERMITIDOS = {"image/jpeg", "image/png", "image/webp"}
+MAX_IMAGEN_BASE64_CHARS = 7 * 1024 * 1024
+MAX_IMAGEN_BYTES = 5 * 1024 * 1024
 
 UNIDADES_PERMITIDAS = {
     "g",
@@ -30,11 +43,19 @@ MAPEO_NORMALIZACION_UNIDADES = {
 
 
 class SolicitudExtraccionPrecios(BaseModel):
-    """Entrada con el texto desestructurado de la lista de precios del proveedor."""
+    """Entrada con el texto desestructurado o foto de la lista de precios del proveedor."""
 
-    texto_lista: str = Field(
-        ...,
-        min_length=3,
+    imagen_base64: Optional[str] = Field(
+        default=None,
+        max_length=MAX_IMAGEN_BASE64_CHARS,
+        description="Imagen de la lista de precios codificada en base64 sin prefijo data:.",
+    )
+    imagen_mime: Optional[str] = Field(
+        default=None,
+        description="Tipo MIME de la imagen ('image/jpeg', 'image/png', 'image/webp').",
+    )
+    texto_lista: Optional[str] = Field(
+        default=None,
         max_length=15000,
         description="Texto crudo pegado de la lista de precios del proveedor (WhatsApp, PDF, texto).",
     )
@@ -51,18 +72,68 @@ class SolicitudExtraccionPrecios(BaseModel):
     origen_archivo: Optional[str] = Field(
         default=None,
         max_length=20,
-        description="Origen opcional del contenido ('texto', 'csv', 'pdf').",
+        description="Origen opcional del contenido ('texto', 'csv', 'pdf', 'imagen').",
     )
+
+    @field_validator("imagen_base64")
+    @classmethod
+    def validar_imagen_base64(cls, valor: Optional[str]) -> Optional[str]:
+        if valor is None:
+            return None
+        limpio = valor.strip()
+        if not limpio:
+            raise ValueError("La imagen en base64 no puede estar vacía.")
+        if limpio.startswith("data:"):
+            raise ValueError("La imagen debe enviarse en base64 sin prefijo data:.")
+        if len(limpio) > MAX_IMAGEN_BASE64_CHARS:
+            raise ValueError("La imagen supera el tamaño máximo permitido de 7 MB en base64.")
+        try:
+            decodificada = base64.b64decode(limpio, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("La imagen no tiene un formato base64 válido.") from exc
+        if len(decodificada) == 0:
+            raise ValueError("La imagen decodificada no puede estar vacía.")
+        if len(decodificada) > MAX_IMAGEN_BYTES:
+            raise ValueError("La imagen supera el tamaño máximo permitido de 5 MB.")
+        return limpio
+
+    @field_validator("imagen_mime")
+    @classmethod
+    def validar_imagen_mime(cls, valor: Optional[str]) -> Optional[str]:
+        if valor is None:
+            return None
+        normalizado = valor.strip().lower()
+        if normalizado not in MIMES_IMAGEN_PERMITIDOS:
+            raise ValueError("El tipo de imagen debe ser image/jpeg, image/png o image/webp.")
+        return normalizado
 
     @field_validator("texto_lista")
     @classmethod
-    def validar_texto_no_vacio(cls, valor: str) -> str:
+    def validar_texto_no_vacio(cls, valor: Optional[str], info: ValidationInfo) -> Optional[str]:
+        if valor is None:
+            return None
         limpio = valor.strip()
         if not limpio:
+            if info.data.get("imagen_base64"):
+                return None
             raise ValueError("El texto de la lista de precios no puede estar vacío.")
         if limpio.startswith("%PDF-"):
             raise ValueError("El texto recibido corresponde a un PDF binario sin extraer texto.")
+        if len(limpio) < 3:
+            raise ValueError("El texto de la lista de precios debe tener al menos 3 caracteres.")
         return limpio
+
+    @model_validator(mode="after")
+    def validar_texto_o_imagen(self) -> "SolicitudExtraccionPrecios":
+        if self.imagen_base64 and not self.imagen_mime:
+            raise ValueError("Tenés que indicar imagen_mime cuando enviás una imagen.")
+        if self.imagen_mime and not self.imagen_base64:
+            raise ValueError("Tenés que enviar imagen_base64 cuando indicás imagen_mime.")
+        if self.origen_archivo == "imagen" and not self.imagen_base64:
+            raise ValueError("Si origen_archivo es 'imagen' tenés que enviar imagen_base64.")
+        if not self.texto_lista and not self.imagen_base64:
+            raise ValueError("Tenés que enviar el texto de la lista o una imagen.")
+        return self
 
     model_config = ConfigDict(
         json_schema_extra={

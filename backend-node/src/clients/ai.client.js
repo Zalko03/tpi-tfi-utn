@@ -80,11 +80,19 @@ export const validarYNormalizarSalidaIA = (datos) => {
  * Consume POST /v1/extraer-precios de ai-service con timeout acotado y degradación elegante.
  */
 export const extraerPreciosIA = async (
-    { textoLista, proveedorNombre = null, versionPrompt = 'v1', origenArchivo = null },
-    timeoutMs = 12000,
+    {
+        textoLista = null,
+        proveedorNombre = null,
+        versionPrompt = 'v1',
+        origenArchivo = null,
+        imagenBase64 = null,
+        imagenMime = null,
+    },
+    timeoutMs = null,
     correlationId = null
 ) => {
     const inicio = Date.now();
+    const timeoutEfectivo = timeoutMs ?? (imagenBase64 ? 25000 : 12000);
     try {
         const headers = {
             'Content-Type': 'application/json',
@@ -95,19 +103,25 @@ export const extraerPreciosIA = async (
         }
 
         const cuerpo = {
-            texto_lista: textoLista,
             proveedor_nombre: proveedorNombre,
             version_prompt: versionPrompt,
         };
+        if (textoLista) {
+            cuerpo.texto_lista = textoLista;
+        }
         if (origenArchivo) {
             cuerpo.origen_archivo = origenArchivo;
+        }
+        if (imagenBase64) {
+            cuerpo.imagen_base64 = imagenBase64;
+            cuerpo.imagen_mime = imagenMime || 'image/jpeg';
         }
 
         const respuesta = await fetch(`${aiServiceUrl}/v1/extraer-precios`, {
             method: 'POST',
             headers,
             body: JSON.stringify(cuerpo),
-            signal: AbortSignal.timeout(timeoutMs),
+            signal: AbortSignal.timeout(timeoutEfectivo),
         });
 
         if (!respuesta.ok) {

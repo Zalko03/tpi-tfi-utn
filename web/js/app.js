@@ -5,11 +5,20 @@
  */
 
 import {
+    accionesCajaVisiblesParaUsuario,
+    accionesEmpleadoVisiblesParaUsuario,
+    accionesEquipoVisiblesParaUsuario,
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
     calcularCostosExtraReceta,
+    calcularDimensionesReescaladoImagen,
     calcularFactorConversionReceta,
     calcularResumenCarrito,
+    CALIDAD_JPEG_IMAGEN_IMPORTACION,
+    construirDictPermisosDesdeSeleccion,
+    fechaIsoATexto,
+    fechaTextoAIso,
+    formatearEntradaFecha,
     crearFetchConSesion,
     construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
@@ -17,6 +26,7 @@ import {
     esArchivoDocAntiguo,
     esArchivoDocx,
     esArchivoExcel,
+    esArchivoImagenImportacion,
     esArchivoPdf,
     esCargaVigente,
     escaparHtml,
@@ -24,6 +34,7 @@ import {
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
     evaluarTextoComoCsvDirecto,
+    extraerBase64DeDataUrl,
     extraerCsvDeExcelBuffer,
     extraerMensajeErrorApi,
     extraerTextoDeDocxBuffer,
@@ -33,20 +44,29 @@ import {
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    GRUPOS_PERMISOS_EQUIPO,
+    guardarPreferenciaSonidosSilenciados,
+    LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
+    leerPreferenciaSonidosSilenciados,
     MENSAJE_DOC_ANTIGUO,
+    MENSAJE_FOTO_LISTA_IA,
     MENSAJE_IA_NO_DISPONIBLE,
     mensajeErrorParaUsuario,
     obtenerContenidoPlantillaCsv,
+    obtenerPermisosInicialesEmpleado,
+    obtenerPlantillaRol,
+    obtenerSonidoParaEvento,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     parsearCsvProveedor,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
     seccionesVisiblesParaUsuario,
-    accionesCajaVisiblesParaUsuario,
     siguienteIdCarga,
+    SONIDOS,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
+    validarArchivoImportacionGeneral,
     validarCarritoContraCatalogo,
     validarRangoFechas,
     validarTamanoArchivoImportacion,
@@ -136,11 +156,14 @@ export const estadoApp = {
     importacionActual: null,
     csvParseadoActual: null,
     csvContingenciaFallback: null,
+    imagenImportacionActual: null,
     ultimoOrigenArchivo: 'texto',
     insumos: [],
     proveedores: [],
     turnosHistorial: [],
     usuariosEquipo: [],
+    empleadoEditandoPermisos: null,
+    empleadoParaBaja: null,
     productoDesgloseId: null,
     filtroCategoriaActual: 'todos',
     idCargaReportes: 0,
@@ -192,6 +215,189 @@ const obtenerIconoProducto = (nombre = '') => {
 };
 
 // ============================================================
+// SONIDOS SINTÉTICOS CON WEB AUDIO API (SIN ARCHIVOS EXTERNOS)
+// ============================================================
+let audioContexto = null;
+let huboInteraccionAudio = false;
+let sonidosSilenciados = leerPreferenciaSonidosSilenciados();
+
+const obtenerOCrearAudioContext = () => {
+    if (typeof window === 'undefined') return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioContexto) {
+        try {
+            audioContexto = new AudioCtx();
+        } catch {
+            return null;
+        }
+    }
+    if (audioContexto.state === 'suspended' && typeof audioContexto.resume === 'function') {
+        audioContexto.resume().catch(() => {});
+    }
+    return audioContexto;
+};
+
+const registrarDesbloqueoAudio = () => {
+    if (typeof window === 'undefined') return;
+    const desbloquear = () => {
+        huboInteraccionAudio = true;
+        obtenerOCrearAudioContext();
+    };
+    // Los navegadores bloquean el audio hasta la primera interacción del usuario.
+    window.addEventListener('pointerdown', desbloquear, { capture: true, once: true, passive: true });
+    window.addEventListener('keydown', desbloquear, { capture: true, once: true, passive: true });
+    window.addEventListener('click', desbloquear, { capture: true, once: true, passive: true });
+};
+
+const reproducirSonido = (nombreSonido) => {
+    if (!nombreSonido || sonidosSilenciados || !huboInteraccionAudio) return;
+    const notas = SONIDOS[nombreSonido];
+    if (!Array.isArray(notas) || notas.length === 0) return;
+
+    const ctx = obtenerOCrearAudioContext();
+    if (!ctx) return;
+
+    try {
+        const inicioBase = ctx.currentTime + 0.005;
+        for (const nota of notas) {
+            const freq = Number(nota.frecuencia);
+            const dur = Number(nota.duracion);
+            const retardo = Math.max(0, Number(nota.retardo) || 0);
+            const gananciaMax = Math.min(0.18, Math.max(0.01, Number(nota.ganancia) || 0.08));
+            if (!(freq > 0) || !(dur > 0)) continue;
+
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = nota.tipo || 'sine';
+            osc.frequency.setValueAtTime(freq, inicioBase + retardo);
+
+            const t0 = inicioBase + retardo;
+            const ataque = Math.min(0.01, dur * 0.25);
+            const tFin = t0 + dur;
+
+            // Envolvente corta de ataque/decaimiento para evitar chasquidos al iniciar o cortar la onda.
+            gain.gain.setValueAtTime(0.0001, t0);
+            gain.gain.linearRampToValueAtTime(gananciaMax, t0 + ataque);
+            gain.gain.exponentialRampToValueAtTime(0.0001, tFin);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.start(t0);
+            osc.stop(tFin + 0.01);
+        }
+    } catch {
+        // Ignoramos fallos de reproducción en entornos restringidos.
+    }
+};
+
+const actualizarBotonSonidosUI = () => {
+    const btn = $('btn-toggle-sonidos');
+    if (!btn) return;
+    const iconoActivo = btn.querySelector('.icono-sonido-activo');
+    const iconoSilenciado = btn.querySelector('.icono-sonido-silenciado');
+    const texto = sonidosSilenciados ? 'Activar sonidos' : 'Silenciar sonidos';
+    btn.setAttribute('aria-label', texto);
+    btn.setAttribute('title', texto);
+    btn.setAttribute('aria-pressed', sonidosSilenciados ? 'true' : 'false');
+    btn.classList.toggle('sonidos-silenciados', sonidosSilenciados);
+    if (iconoActivo) iconoActivo.hidden = sonidosSilenciados;
+    if (iconoSilenciado) iconoSilenciado.hidden = !sonidosSilenciados;
+};
+
+// ============================================================
+// LOADERS EN BOTONES Y SECCIONES (CSS PURO + ACCESIBILIDAD)
+// ============================================================
+const conCargando = async (boton, accionAsync) => {
+    if (!boton) {
+        return await accionAsync();
+    }
+    // Evita doble clic o reentrada mientras la operación sigue en curso.
+    if (boton.dataset.cargando === '1') {
+        return undefined;
+    }
+
+    const estabaDeshabilitado = Boolean(boton.disabled);
+    boton.dataset.cargando = '1';
+    boton.disabled = true;
+    boton.setAttribute('aria-busy', 'true');
+    boton.classList.add('btn-cargando');
+
+    let textoSr = boton.querySelector('.texto-cargando-sr');
+    if (!textoSr) {
+        textoSr = document.createElement('span');
+        textoSr.className = 'sr-only texto-cargando-sr';
+        textoSr.textContent = ' Cargando…';
+        boton.appendChild(textoSr);
+    }
+
+    try {
+        return await accionAsync();
+    } finally {
+        delete boton.dataset.cargando;
+        boton.disabled = estabaDeshabilitado;
+        boton.removeAttribute('aria-busy');
+        boton.classList.remove('btn-cargando');
+        const srActual = boton.querySelector('.texto-cargando-sr');
+        if (srActual) srActual.remove();
+    }
+};
+
+const construirEstadoCargandoBloque = (texto = 'Cargando…') => `
+    <div class="estado-cargando-bloque" role="status" aria-live="polite">
+        <span class="spinner-carga" aria-hidden="true"></span>
+        <span>${escaparHtml(texto)}</span>
+    </div>
+`;
+
+const construirCargandoPos = () => {
+    const tarjetasEsqueleto = Array.from({ length: 4 }, () => `
+        <div class="esqueleto-pos-card" aria-hidden="true">
+            <span class="esqueleto-linea esqueleto-w-40"></span>
+            <span class="esqueleto-linea esqueleto-w-85"></span>
+            <span class="esqueleto-linea esqueleto-w-50"></span>
+        </div>
+    `).join('');
+    return `${construirEstadoCargandoBloque('Cargando carta…')}${tarjetasEsqueleto}`;
+};
+
+const construirFilasCargandoTabla = (columnas, texto = 'Cargando…', filasEsqueleto = 3) => {
+    const anchos = ['esqueleto-w-75', 'esqueleto-w-50', 'esqueleto-w-60', 'esqueleto-w-40', 'esqueleto-w-85'];
+    const celdasEsqueleto = Array.from(
+        { length: columnas },
+        (_, i) => `<td><span class="esqueleto-linea ${anchos[i % anchos.length]}"></span></td>`
+    ).join('');
+    const filas = Array.from(
+        { length: filasEsqueleto },
+        () => `<tr class="fila-esqueleto" aria-hidden="true">${celdasEsqueleto}</tr>`
+    ).join('');
+
+    return `
+        <tr class="fila-cargando-estado">
+            <td colspan="${columnas}" class="col-centro py-4">
+                <div class="estado-cargando-inline" role="status" aria-live="polite">
+                    <span class="spinner-carga" aria-hidden="true"></span>
+                    <span>${escaparHtml(texto)}</span>
+                </div>
+            </td>
+        </tr>
+        ${filas}
+    `;
+};
+
+const construirCargandoEquipo = () => {
+    const tarjetas = Array.from({ length: 3 }, () => `
+        <div class="esqueleto-equipo-card" aria-hidden="true">
+            <span class="esqueleto-linea esqueleto-w-60"></span>
+            <span class="esqueleto-linea esqueleto-w-40"></span>
+            <span class="esqueleto-linea esqueleto-w-85"></span>
+        </div>
+    `).join('');
+    return `${construirEstadoCargandoBloque('Cargando equipo…')}${tarjetas}`;
+};
+
+// ============================================================
 // TOAST NOTIFICACIONES FLOTANTES (CERO EMOJIS)
 // ============================================================
 export const mostrarToast = (mensaje, tipo = 'info') => {
@@ -200,6 +406,9 @@ export const mostrarToast = (mensaje, tipo = 'info') => {
     // Recién vencida la sesión, los pedidos que ya estaban en camino fallan en cadena:
     // solo se deja el aviso de "Tu sesión venció".
     if (tipo !== 'exito' && Date.now() < (estadoApp.avisosSilenciadosHasta || 0)) return;
+
+    const sonidoToast = obtenerSonidoParaEvento('toast', { tipo });
+    if (sonidoToast) reproducirSonido(sonidoToast);
 
     const toast = document.createElement('div');
     toast.className = `toast-notif ${tipo}`;
@@ -570,6 +779,7 @@ const configurarVisibilidadPorRol = (rol) => {
     }
 
     actualizarVisibilidadGestionRecetas();
+    actualizarVisibilidadGestionEquipo();
 };
 
 const intentarReanudarSesionOffline = (usernameSolicitado = '') => {
@@ -866,6 +1076,9 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 
     const totalAlertas = estadoApp.contadores.ventas + estadoApp.contadores.alertasMargen + estadoApp.contadores.alertasStock;
     if ($('contador-notificaciones')) $('contador-notificaciones').textContent = String(totalAlertas);
+
+    const sonidoSocket = obtenerSonidoParaEvento('socket', { nombreEvento, payload });
+    if (sonidoSocket) reproducirSonido(sonidoSocket);
 };
 
 // ============================================================
@@ -873,6 +1086,12 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 // ============================================================
 export const cargarCatalogo = async () => {
     if (estadoApp.modoConexion !== 'offline' && navigator.onLine !== false) {
+        if ($('grilla-productos')) {
+            $('grilla-productos').innerHTML = construirCargandoPos();
+        }
+        if ($('tabla-recetas-productos-body')) {
+            $('tabla-recetas-productos-body').innerHTML = construirFilasCargandoTabla(7, 'Cargando recetas…', 3);
+        }
         try {
             const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
                 headers: {
@@ -902,12 +1121,15 @@ export const cargarCatalogo = async () => {
                     ? 'Sin conexión al servidor para actualizar la carta. Se muestra la última carta guardada.'
                     : 'No hay carta disponible. Conectate a internet para cargar los productos antes de vender.';
             mostrarToast(msg, 'advertencia');
+        } finally {
+            renderizarCatalogoPOS();
+            renderizarTablaRecetas();
         }
     } else {
         estadoApp.catalogo = leerCacheCatalogoLocal();
+        renderizarCatalogoPOS();
+        renderizarTablaRecetas();
     }
-    renderizarCatalogoPOS();
-    renderizarTablaRecetas();
     if (estadoApp.productoDesgloseId !== null && $('panel-desglose-receta')?.style.display !== 'none') {
         const productoActual = estadoApp.catalogo.find(
             (p) => Number(p.id) === Number(estadoApp.productoDesgloseId)
@@ -997,6 +1219,7 @@ const renderizarCatalogoPOS = () => {
 const agregarProducto = (prod, cantidad = 1) => {
     estadoApp.carrito = agregarProductoAlCarrito(estadoApp.carrito, prod, cantidad);
     renderizarCarritoTicket();
+    reproducirSonido(obtenerSonidoParaEvento('carrito.agregado'));
 
     const inputLaser = $('input-codigo-barras');
     if (inputLaser) {
@@ -1106,10 +1329,11 @@ const registrarCobroEnColaOffline = (payload, resumen, metodoPago) => {
     if ($('estado-caja')) {
         $('estado-caja').textContent = 'Sin internet: la venta quedó guardada y se enviará sola.';
     }
+    reproducirSonido(obtenerSonidoParaEvento('venta.offline'));
     mostrarToast('Sin internet: la venta quedó guardada y se enviará sola.', 'advertencia');
 };
 
-const cobrarTicketVenta = async () => {
+const cobrarTicketVenta = async () => conCargando($('btn-cobrar-ticket'), async () => {
     const validacionCatalogo = validarCarritoContraCatalogo(
         estadoApp.carrito,
         estadoApp.catalogo
@@ -1192,6 +1416,7 @@ const cobrarTicketVenta = async () => {
         const data = await res.json();
 
         if (res.ok) {
+            reproducirSonido(obtenerSonidoParaEvento('venta.cobrada'));
             mostrarToast(`Venta #${data.id} cobrada con éxito.`, 'exito');
             mostrarModalTicketTermico(data, resumen, metodoPago);
             estadoApp.carrito = [];
@@ -1206,7 +1431,7 @@ const cobrarTicketVenta = async () => {
         // Ante caída de red o servidor inaccesible, no bloqueamos al cajero
         registrarCobroEnColaOffline(payload, resumen, metodoPago);
     }
-};
+});
 
 const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
     const modal = $('modal-ticket-termico');
@@ -1225,7 +1450,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
     if (leyendaEl) {
         leyendaEl.textContent = datosVenta.offline
             ? 'Comprobante emitido sin internet - se enviará al volver la conexión'
-            : 'Comprobante comercial no fiscal emitido por Sapori Stock';
+            : 'No válido como factura';
     }
 
     const itemsBody = $('ticket-termico-items-body');
@@ -1443,6 +1668,7 @@ const cerrarTurnoCaja = async (efectivoContado) => {
         const data = await res.json();
 
         if (res.ok) {
+            reproducirSonido(obtenerSonidoParaEvento('turno.cerrado'));
             mostrarToast('Turno cerrado exitosamente con arqueo ciego.', 'exito');
             if ($('input-efectivo-contado')) $('input-efectivo-contado').value = '';
             cargarTurnoActivo();
@@ -1740,7 +1966,121 @@ const procesarArchivoDocxSeleccionado = async (archivo, origenSelector = 'ia') =
     }
 };
 
+const limpiarFotoImportacionActual = ({ limpiarAviso = false } = {}) => {
+    estadoApp.imagenImportacionActual = null;
+    const preview = $('preview-foto-lista-ia');
+    const imgPreview = $('img-preview-foto-ia');
+    const textarea = $('textarea-lista-ia');
+    if (preview) preview.style.display = 'none';
+    if (imgPreview) imgPreview.removeAttribute('src');
+    if (textarea) textarea.required = true;
+    if (estadoApp.ultimoOrigenArchivo === 'imagen') {
+        estadoApp.ultimoOrigenArchivo = 'texto';
+    }
+    if (limpiarAviso) {
+        mostrarEstadoArchivoPdf('', 'info');
+    }
+};
+
+const redimensionarImagenParaImportacion = async (archivo) => {
+    const dataUrlOriginal = await new Promise((resolve, reject) => {
+        const lector = new FileReader();
+        lector.onload = () => resolve(String(lector.result || ''));
+        lector.onerror = () => reject(new Error('No se pudo leer la foto seleccionada.'));
+        lector.readAsDataURL(archivo);
+    });
+
+    const imagen = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('No se pudo cargar la foto. Probá con otra imagen.'));
+        img.src = dataUrlOriginal;
+    });
+
+    const { ancho, alto } = calcularDimensionesReescaladoImagen(
+        imagen.naturalWidth || imagen.width,
+        imagen.naturalHeight || imagen.height,
+        LADO_MAXIMO_IMAGEN_IMPORTACION_PX
+    );
+
+    const canvas = document.createElement('canvas');
+    canvas.width = ancho;
+    canvas.height = alto;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        throw new Error('Tu navegador no pudo preparar la foto para analizar.');
+    }
+    // Fondo blanco para evitar transparencias oscuras al convertir PNG/WEBP a JPEG
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, ancho, alto);
+    ctx.drawImage(imagen, 0, 0, ancho, alto);
+
+    const dataUrlJpeg = canvas.toDataURL('image/jpeg', CALIDAD_JPEG_IMAGEN_IMPORTACION);
+    const base64 = extraerBase64DeDataUrl(dataUrlJpeg);
+    if (!base64) {
+        throw new Error('No se pudo preparar la foto en formato JPEG.');
+    }
+
+    return {
+        dataUrl: dataUrlJpeg,
+        base64,
+        mime: 'image/jpeg',
+        ancho,
+        alto,
+    };
+};
+
+const procesarArchivoImagenSeleccionado = async (archivo, origenSelector = 'ia') => {
+    if (!archivo) return;
+    mostrarEstadoArchivoPdf(`Preparando la foto “${archivo.name}”…`, 'info');
+    try {
+        const { dataUrl, base64, mime, ancho, alto } =
+            await redimensionarImagenParaImportacion(archivo);
+
+        estadoApp.imagenImportacionActual = {
+            base64,
+            mime,
+            dataUrl,
+            nombre: archivo.name,
+            ancho,
+            alto,
+        };
+        estadoApp.ultimoOrigenArchivo = 'imagen';
+        estadoApp.csvParseadoActual = null;
+        estadoApp.csvContingenciaFallback = null;
+        if ($('panel-preview-csv')) {
+            $('panel-preview-csv').style.display = 'none';
+        }
+        const textarea = $('textarea-lista-ia');
+        if (textarea) {
+            textarea.value = '';
+            textarea.required = false;
+        }
+        if ($('img-preview-foto-ia')) {
+            $('img-preview-foto-ia').src = dataUrl;
+        }
+        if ($('texto-preview-foto-ia')) {
+            $('texto-preview-foto-ia').textContent = MENSAJE_FOTO_LISTA_IA;
+        }
+        if ($('preview-foto-lista-ia')) {
+            $('preview-foto-lista-ia').style.display = 'flex';
+        }
+        mostrarEstadoArchivoPdf(MENSAJE_FOTO_LISTA_IA, 'info');
+        mostrarToast(MENSAJE_FOTO_LISTA_IA, 'exito');
+        if (origenSelector === 'csv') {
+            $('preview-foto-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        }
+    } catch (err) {
+        console.error('Error al preparar la foto:', err);
+        limpiarFotoImportacionActual();
+        const msg = err?.message || 'No se pudo procesar la foto seleccionada.';
+        mostrarEstadoArchivoPdf(msg, 'advertencia');
+        mostrarToast(msg, 'peligro');
+    }
+};
+
 const aplicarCsvParseadoEnPreview = (resultado, origenEtiqueta = 'archivo CSV') => {
+    limpiarFotoImportacionActual();
     estadoApp.csvParseadoActual = resultado;
     estadoApp.csvContingenciaFallback = resultado;
     estadoApp.ultimoOrigenArchivo =
@@ -1763,12 +2103,26 @@ const procesarArchivoImportacionSeleccionado = async (archivo, origenSelector = 
         return;
     }
 
+    const validacionArchivo = validarArchivoImportacionGeneral(archivo);
+    if (!validacionArchivo.valido) {
+        mostrarEstadoArchivoPdf(validacionArchivo.mensajeError, 'advertencia');
+        mostrarToast(validacionArchivo.mensajeError, 'peligro');
+        return;
+    }
+
     const validacionTamano = validarTamanoArchivoImportacion(archivo);
     if (!validacionTamano.valido) {
         mostrarEstadoArchivoPdf(validacionTamano.mensajeError, 'advertencia');
         mostrarToast(validacionTamano.mensajeError, 'peligro');
         return;
     }
+
+    if (esArchivoImagenImportacion(archivo)) {
+        await procesarArchivoImagenSeleccionado(archivo, origenSelector);
+        return;
+    }
+
+    limpiarFotoImportacionActual();
 
     if (esArchivoPdf(archivo)) {
         await procesarArchivoPdfSeleccionado(archivo, origenSelector);
@@ -1860,10 +2214,14 @@ const construirHtmlAlertaContingenciaIA = ({
     sugerenciaAlternativa = '',
     mostrarBotonCsvDirecto = false,
 } = {}) => {
-    const listaAdvertencias = Array.isArray(advertencias)
-        ? advertencias.filter((a) => a && a !== detalleTecnico)
-        : [];
-    const detalleHtml = detalleTecnico
+    // Las advertencias de contingencia son errores técnicos (ej. "fetch failed"): quedan en
+    // los logs de Node y no se muestran. El motivo solo se muestra si agrega algo al título.
+    void advertencias;
+    const listaAdvertencias = [];
+    const motivoRepetido = String(detalleTecnico || '')
+        .replace(/\.$/, '')
+        .startsWith(String(mensajePrincipal || '').replace(/\.$/, ''));
+    const detalleHtml = detalleTecnico && !motivoRepetido
         ? `<p class="alerta-contingencia-ia-detalle"><strong>Motivo:</strong> ${escaparHtml(detalleTecnico)}</p>`
         : '';
     const advertenciasHtml =
@@ -1977,18 +2335,7 @@ const enviarCsvAlCircuitoAprobacion = async () => {
     }
 };
 
-let confirmacionCsvDirectaEnCurso = false;
-
-const confirmarCsvDirectoEnInventario = async () => {
-    if (confirmacionCsvDirectaEnCurso) return;
-    confirmacionCsvDirectaEnCurso = true;
-    const btnConfirmar = $('btn-csv-confirmar-directo');
-    const textoOriginalBtn = btnConfirmar ? btnConfirmar.textContent : '';
-    if (btnConfirmar) {
-        btnConfirmar.disabled = true;
-        btnConfirmar.textContent = 'Confirmando...';
-    }
-
+const confirmarCsvDirectoEnInventario = async () => conCargando($('btn-csv-confirmar-directo'), async () => {
     try {
         const csv = estadoApp.csvParseadoActual;
         if (!csv || csv.items.length === 0) {
@@ -2020,6 +2367,7 @@ const confirmarCsvDirectoEnInventario = async () => {
 
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
+            reproducirSonido(obtenerSonidoParaEvento('importacion.confirmada'));
             mostrarToast(
                 `Precios confirmados sin IA: ${data.compras_creadas?.length || csv.items.length} compras registradas y costos actualizados.`,
                 'exito'
@@ -2039,15 +2387,8 @@ const confirmarCsvDirectoEnInventario = async () => {
     } catch (err) {
         console.error('Error de red al confirmar importación:', err);
         mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
-    } finally {
-        confirmacionCsvDirectaEnCurso = false;
-        const btnActual = $('btn-csv-confirmar-directo');
-        if (btnActual) {
-            btnActual.disabled = false;
-            if (textoOriginalBtn) btnActual.textContent = textoOriginalBtn;
-        }
     }
-};
+});
 
 const consultarDetalleImportacion = async (importacionId, intento = 1) => {
     try {
@@ -2058,7 +2399,7 @@ const consultarDetalleImportacion = async (importacionId, intento = 1) => {
         if (res.ok) {
             if (
                 (datos.estado === 'PENDIENTE' || datos.estado === 'PROCESANDO') &&
-                intento < 20
+                intento < 40
             ) {
                 if (intento === 1) {
                     renderizarPropuestaIAComercial(datos);
@@ -2376,6 +2717,15 @@ const renderizarTablaRecetas = () => {
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    if (!Array.isArray(estadoApp.catalogo) || estadoApp.catalogo.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="col-centro text-muted py-4">No hay productos cargados en la carta.</td>
+            </tr>
+        `;
+        return;
+    }
+
     const esCajero = estadoApp.usuario?.rol === 'CAJERO';
     const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'recetas.editar');
 
@@ -2450,9 +2800,10 @@ const renderizarTablaRecetas = () => {
             mostrarDesgloseReceta(p);
         });
 
-        tr.querySelector('.btn-recalcular-producto')?.addEventListener('click', async (e) => {
+        const btnRecalcular = tr.querySelector('.btn-recalcular-producto');
+        btnRecalcular?.addEventListener('click', async (e) => {
             e.stopPropagation();
-            await recalcularProducto(p.id);
+            await conCargando(btnRecalcular, () => recalcularProducto(p.id));
         });
 
         tr.querySelector('.btn-editar-precio-producto')?.addEventListener('click', (e) => {
@@ -2594,12 +2945,13 @@ const mostrarDesgloseReceta = (producto) => {
             const btnGuardar = tr.querySelector('.btn-guardar-receta-item');
             const inputCant = tr.querySelector('.input-receta-cantidad');
             btnGuardar?.addEventListener('click', async () => {
-                await actualizarCantidadRecetaItem(item.id, inputCant?.value);
+                await conCargando(btnGuardar, () => actualizarCantidadRecetaItem(item.id, inputCant?.value));
             });
         }
         if (puedeEliminar) {
-            tr.querySelector('.btn-quitar-receta-item')?.addEventListener('click', async () => {
-                await eliminarRecetaItem(item.id);
+            const btnQuitar = tr.querySelector('.btn-quitar-receta-item');
+            btnQuitar?.addEventListener('click', async () => {
+                await conCargando(btnQuitar, () => eliminarRecetaItem(item.id));
             });
         }
 
@@ -2699,10 +3051,16 @@ const recalcularTodaLaCarta = async () => {
 // ============================================================
 // MÓDULO 5: REPORTES, TRAZABILIDAD, FINANZAS Y PUNTO DE EQUILIBRIO
 // ============================================================
-const obtenerRangoFechasSeleccionado = () => {
-    const fechaDesde = ($('filtro-fecha-desde')?.value || '').trim();
-    const fechaHasta = ($('filtro-fecha-hasta')?.value || '').trim();
-    return { fechaDesde, fechaHasta };
+// Los campos se escriben como dd/mm/aaaa; el resto del módulo trabaja con aaaa-mm-dd.
+// Con paraValidar, una fecha incompleta se devuelve tal cual para que validarRangoFechas avise.
+const obtenerRangoFechasSeleccionado = ({ paraValidar = false } = {}) => {
+    const leer = (id) => {
+        const texto = ($(id)?.value || '').trim();
+        const iso = fechaTextoAIso(texto);
+        if (iso === null) return paraValidar ? texto : '';
+        return iso;
+    };
+    return { fechaDesde: leer('filtro-fecha-desde'), fechaHasta: leer('filtro-fecha-hasta') };
 };
 
 const formatearFechaCortaEtiqueta = (fechaYmd) => {
@@ -2801,6 +3159,11 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
         estadoApp.idCargaReportes = idCarga;
     }
 
+    const tbodyTraza = $('tabla-trazabilidad-body');
+    if (tbodyTraza) {
+        tbodyTraza.innerHTML = construirFilasCargandoTabla(5, 'Cargando reportes…', 4);
+    }
+
     const queryFechas = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
     const queryMovs = construirQueryRangoFechas(fechaDesde, fechaHasta);
     const headers = { 'Authorization': `Bearer ${estadoApp.tokenJwt}` };
@@ -2858,6 +3221,25 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
                 fechaHasta
             );
         }
+
+        const ventasOffline = obtenerVentasOffline();
+        const resultado = unificarTrazabilidadRegistros({
+            ventas,
+            movimientosStock,
+            comprasFallback,
+            cierresCaja,
+            ventasOffline,
+            fechaDesde,
+            fechaHasta,
+        });
+
+        estadoApp.trazabilidad = {
+            ...estadoApp.trazabilidad,
+            registros: resultado.registros,
+            conteos: resultado.conteos,
+            fechaDesde,
+            fechaHasta,
+        };
     } catch {
         if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
         cierresCaja = filtrarRegistrosPorRangoFechas(
@@ -2866,29 +3248,28 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
             fechaDesde,
             fechaHasta
         );
+        const ventasOffline = obtenerVentasOffline();
+        const resultado = unificarTrazabilidadRegistros({
+            ventas,
+            movimientosStock,
+            comprasFallback,
+            cierresCaja,
+            ventasOffline,
+            fechaDesde,
+            fechaHasta,
+        });
+        estadoApp.trazabilidad = {
+            ...estadoApp.trazabilidad,
+            registros: resultado.registros,
+            conteos: resultado.conteos,
+            fechaDesde,
+            fechaHasta,
+        };
+    } finally {
+        if (esCargaVigente(idCarga, estadoApp.idCargaReportes)) {
+            renderizarTablaTrazabilidad();
+        }
     }
-
-    if (!esCargaVigente(idCarga, estadoApp.idCargaReportes)) return;
-
-    const ventasOffline = obtenerVentasOffline();
-    const resultado = unificarTrazabilidadRegistros({
-        ventas,
-        movimientosStock,
-        comprasFallback,
-        cierresCaja,
-        ventasOffline,
-        fechaDesde,
-        fechaHasta,
-    });
-
-    estadoApp.trazabilidad = {
-        ...estadoApp.trazabilidad,
-        registros: resultado.registros,
-        conteos: resultado.conteos,
-        fechaDesde,
-        fechaHasta,
-    };
-    renderizarTablaTrazabilidad();
 };
 
 export const cargarFinanzas = async () => {
@@ -2941,6 +3322,12 @@ export const cargarFinanzas = async () => {
     };
 
     const cargarRanking = async () => {
+        if ($('ranking-mas-vendidos-lista')) {
+            $('ranking-mas-vendidos-lista').innerHTML = construirEstadoCargandoBloque('Cargando…');
+        }
+        if ($('ranking-sin-rotacion-lista')) {
+            $('ranking-sin-rotacion-lista').innerHTML = construirEstadoCargandoBloque('Cargando…');
+        }
         try {
             const resRanking = await fetchConSesion(
                 `${estadoApp.djangoUrl}/api/ventas/ranking-productos/?${queryRanking}`,
@@ -3476,47 +3863,82 @@ const auditarCierreCajaIA = async () => {
 };
 
 // ============================================================
-// MÓDULO 6: PERSONAL Y GOBERNANZA DEL DUEÑO
+// MÓDULO 6: EQUIPO Y PERMISOS
 // ============================================================
+const ETIQUETAS_ROL = {
+    DUENIO: 'Dueño',
+    ENCARGADO: 'Encargado',
+    CAJERO: 'Cajero',
+};
+
+const actualizarVisibilidadGestionEquipo = () => {
+    const btnNuevo = $('btn-modal-nuevo-empleado');
+    if (btnNuevo) {
+        const { agregarEmpleado } = accionesEquipoVisiblesParaUsuario(estadoApp.usuario);
+        btnNuevo.style.display = agregarEmpleado ? '' : 'none';
+    }
+};
+
 export const cargarPersonal = async () => {
+    const contenedor = $('equipo-tarjetas-grilla');
+    if (contenedor) {
+        contenedor.innerHTML = construirCargandoEquipo();
+    }
     try {
         const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/?limite=100`, {
             headers: {
-                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
             },
         });
         if (res.ok) {
             const data = await res.json();
             estadoApp.usuariosEquipo = Array.isArray(data) ? data : (data.datos || data.results || []);
-            renderizarTarjetasPersonal();
         }
     } catch {
-        // Fallback
+        // Fallback offline
+    } finally {
+        renderizarTarjetasPersonal();
     }
 };
 
 const renderizarTarjetasPersonal = () => {
+    actualizarVisibilidadGestionEquipo();
+
     const contenedor = $('equipo-tarjetas-grilla');
     if (!contenedor) return;
     contenedor.innerHTML = '';
+
+    if (!Array.isArray(estadoApp.usuariosEquipo) || estadoApp.usuariosEquipo.length === 0) {
+        contenedor.innerHTML = '<p class="text-muted py-4">No hay integrantes del equipo para mostrar.</p>';
+        return;
+    }
 
     for (const u of estadoApp.usuariosEquipo) {
         const card = document.createElement('div');
         card.className = 'usuario-tarjeta-comercial';
 
         const rol = (u.rol || 'CAJERO').toUpperCase();
-        let rolEtiqueta = 'Cajero';
-        let rolClase = 'cajero';
-        if (rol === 'DUENIO') {
-            rolEtiqueta = 'Dueño';
-            rolClase = 'duenio';
-        } else if (rol === 'ENCARGADO') {
-            rolEtiqueta = 'Encargado';
-            rolClase = 'encargado';
-        }
+        const rolEtiqueta = ETIQUETAS_ROL[rol] || 'Cajero';
+        const rolClase = rol === 'DUENIO' ? 'duenio' : rol === 'ENCARGADO' ? 'encargado' : 'cajero';
 
         const nombre = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.username || 'Usuario');
+        const acciones = accionesEmpleadoVisiblesParaUsuario(estadoApp.usuario, u);
+
+        const botonesHtml = [];
+        if (acciones.permisos) {
+            botonesHtml.push(
+                `<button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">Permisos</button>`
+            );
+        }
+        if (acciones.darDeBaja) {
+            botonesHtml.push(
+                `<button type="button" class="btn-descartar-comercial btn-toggle-usuario" data-id="${u.id}">Dar de baja</button>`
+            );
+        } else if (acciones.reactivar) {
+            botonesHtml.push(
+                `<button type="button" class="btn-secundario-comercial btn-toggle-usuario" data-id="${u.id}">Reactivar</button>`
+            );
+        }
 
         card.innerHTML = `
             <div class="usuario-tarjeta-cabecera">
@@ -3527,117 +3949,145 @@ const renderizarTarjetasPersonal = () => {
                 </div>
             </div>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <span class="badge-rol ${rolClase}">${rolEtiqueta}</span>
+                <span class="badge-rol ${rolClase}">${escaparHtml(rolEtiqueta)}</span>
                 <span class="${u.is_active ? 'badge-estado-verde' : 'badge-estado-rojo text-peligro'}" style="font-size: 0.82rem;">
                     ${u.is_active ? 'Activo' : 'Inactivo'}
                 </span>
             </div>
-            <div class="usuario-acciones-fila">
-                <button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">
-                    Permisos (30)
-                </button>
-                <button type="button" class="btn-descartar-comercial btn-toggle-usuario" data-id="${u.id}" data-activo="${u.is_active}" data-rol="${rol}">
-                    ${u.is_active ? 'Desactivar' : 'Activar'}
-                </button>
-            </div>
+            ${botonesHtml.length > 0 ? `<div class="usuario-acciones-fila">${botonesHtml.join('')}</div>` : ''}
         `;
 
         card.querySelector('.btn-ver-permisos')?.addEventListener('click', () => {
             mostrarModalPermisos(u);
         });
 
-        card.querySelector('.btn-toggle-usuario')?.addEventListener('click', async () => {
-            await toggleEstadoUsuario(u);
+        const btnToggle = card.querySelector('.btn-toggle-usuario');
+        btnToggle?.addEventListener('click', async () => {
+            if (u.is_active) {
+                abrirModalBajaEmpleado(u);
+            } else {
+                await conCargando(btnToggle, () => toggleEstadoUsuario(u));
+            }
         });
 
         contenedor.appendChild(card);
     }
 };
 
-const toggleEstadoUsuario = async (u) => {
+const abrirModalBajaEmpleado = (u) => {
+    const modal = $('modal-baja-empleado');
+    if (!modal || !u) return;
+
+    estadoApp.empleadoParaBaja = u;
+    const nombre = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.username || 'empleado');
+    if ($('baja-empleado-titulo')) {
+        $('baja-empleado-titulo').textContent = `Dar de baja a ${nombre}`;
+    }
+    if ($('baja-empleado-descripcion')) {
+        $('baja-empleado-descripcion').textContent = `¿Querés dar de baja a @${u.username}? No va a poder entrar al sistema hasta que lo reactives.`;
+    }
+    if ($('input-baja-empleado-motivo')) {
+        $('input-baja-empleado-motivo').value = '';
+    }
+    modal.style.display = 'flex';
+};
+
+const toggleEstadoUsuario = async (u, motivo = '') => {
+    if (!u) return false;
     const accion = u.is_active ? 'desactivar' : 'activar';
     try {
         const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/${accion}/`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ motivo: 'Acción administrativa desde el panel' }),
+            body: JSON.stringify(u.is_active ? { motivo } : {}),
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (res.ok) {
-            mostrarToast(`Usuario ${u.username} ${u.is_active ? 'desactivado' : 'activado'}.`, 'exito');
+            if ($('modal-baja-empleado')) $('modal-baja-empleado').style.display = 'none';
+            estadoApp.empleadoParaBaja = null;
+            mostrarToast(u.is_active ? 'Empleado dado de baja.' : 'Empleado reactivado.', 'exito');
             await cargarPersonal();
-        } else {
-            let detalleMsg = '';
-            if (Array.isArray(data.detalles) && data.detalles.length > 0) {
-                detalleMsg = data.detalles[0];
-            } else if (data.detalles && typeof data.detalles === 'object') {
-                const primeraLista = Object.values(data.detalles)[0];
-                if (Array.isArray(primeraLista) && primeraLista.length > 0) {
-                    detalleMsg = primeraLista[0];
-                }
-            }
-            const errorMsg = detalleMsg || data.mensaje || data.detail || 'Operación bloqueada';
-            mostrarToast(`Regla de Supervivencia del Dueño: ${errorMsg}`, 'peligro');
+            return true;
         }
-    } catch (err) {
-        mostrarToast(`Error de seguridad: ${err.message}`, 'peligro');
+
+        const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+        mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+        return false;
+    } catch {
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+        return false;
     }
+};
+
+const aplicarPlantillaEnCasillasPermisos = (plantilla = {}) => {
+    const contenedor = $('permisos-categorias-grilla');
+    if (!contenedor) return;
+    contenedor.querySelectorAll('input[type="checkbox"][data-permiso]').forEach((cb) => {
+        cb.checked = Boolean(plantilla[cb.dataset.permiso]);
+    });
 };
 
 const mostrarModalPermisos = (u) => {
     const modal = $('modal-permisos');
-    if (!modal) return;
+    if (!modal || !u) return;
 
-    if ($('permisos-usuario-titulo')) $('permisos-usuario-titulo').textContent = `Permisos de @${u.username}`;
-    if ($('permisos-usuario-rol')) $('permisos-usuario-rol').textContent = `Rol asignado: ${u.rol || 'CAJERO'} · 30 permisos auditados`;
+    estadoApp.empleadoEditandoPermisos = u;
+    const rolActual = (u.rol || 'CAJERO').toUpperCase();
+    const rolEtiqueta = ETIQUETAS_ROL[rolActual] || 'Cajero';
+
+    if ($('permisos-usuario-titulo')) {
+        $('permisos-usuario-titulo').textContent = `Permisos de @${u.username}`;
+    }
+    if ($('permisos-usuario-rol')) {
+        $('permisos-usuario-rol').textContent = `Rol actual: ${rolEtiqueta}`;
+    }
+
+    const puedeEditarRol = usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
+    const grupoRol = $('grupo-selector-rol-permisos');
+    const selectRol = $('select-permisos-rol');
+    if (grupoRol) {
+        grupoRol.style.display = puedeEditarRol ? '' : 'none';
+    }
+    if (selectRol) {
+        selectRol.value = ETIQUETAS_ROL[rolActual] ? rolActual : 'CAJERO';
+    }
 
     const contenedor = $('permisos-categorias-grilla');
     if (contenedor) {
-        const permisosUsuario = Array.isArray(u.permisos) ? u.permisos : [];
-        const esDuenio = u.rol === 'DUENIO';
-
-        const categorias = {
-            'Ventas y Facturación': ['ventas.cobrar_ticket', 'ventas.anular_ticket', 'ventas.aplicar_descuento', 'ventas.ver_historial_propio', 'ventas.ver_historial_todos'],
-            'Caja y Arqueo Ciego': ['caja.abrir_turno', 'caja.cerrar_turno', 'caja.ver_efectivo_esperado', 'caja.registrar_movimiento', 'caja.gestionar_turnos_ajenos'],
-            'Inventario de Insumos': ['insumos.ver', 'insumos.crear', 'insumos.editar', 'insumos.eliminar'],
-            'Compras y Proveedores': ['compras.ver', 'compras.registrar'],
-            'Ingeniería de Recetas': ['recetas.ver', 'recetas.crear', 'recetas.editar', 'recetas.eliminar', 'recetas.ver_costos'],
-            'Reportes Ejecutivos': ['reportes.ver_financieros', 'reportes.ver_operativos'],
-            'Inteligencia Artificial': ['ia.importar_listas'],
-            'Personal y Roles': ['personal.ver', 'personal.crear', 'personal.editar', 'personal.ajustar_permisos', 'personal.desactivar'],
-            'Auditoría de Seguridad': ['auditoria.ver_logs'],
-        };
-
+        const permisosIniciales = obtenerPermisosInicialesEmpleado(u);
         contenedor.innerHTML = '';
-        for (const [catNombre, lista] of Object.entries(categorias)) {
-            const divCat = document.createElement('div');
-            divCat.style.background = '#FAF7F2';
-            divCat.style.border = '1px solid var(--color-borde-suave)';
-            divCat.style.borderRadius = 'var(--radio-md)';
-            divCat.style.padding = '1rem';
-            divCat.style.marginBottom = '1rem';
 
-            divCat.innerHTML = `<h4 style="font-size: 0.95rem; font-weight: 800; margin-bottom: 0.65rem;">${catNombre}</h4>`;
+        for (const grupo of GRUPOS_PERMISOS_EQUIPO) {
+            const divCat = document.createElement('div');
+            divCat.className = 'permisos-grupo-card';
+
+            const tituloGrupo = document.createElement('h4');
+            tituloGrupo.textContent = grupo.titulo;
+            divCat.appendChild(tituloGrupo);
 
             const listaUl = document.createElement('ul');
-            listaUl.style.listStyle = 'none';
-            listaUl.style.display = 'flex';
-            listaUl.style.flexDirection = 'column';
-            listaUl.style.gap = '0.35rem';
+            listaUl.className = 'permisos-lista-casillas';
 
-            for (const perm of lista) {
-                const tiene = esDuenio || permisosUsuario.includes(perm);
+            for (const item of grupo.permisos) {
                 const li = document.createElement('li');
-                li.style.fontSize = '0.85rem';
-                li.style.display = 'flex';
-                li.style.alignItems = 'center';
-                li.style.gap = '0.5rem';
-                li.innerHTML = `<span style="display: inline-flex; color: ${tiene ? 'var(--color-exito)' : 'var(--color-peligro)'};">${tiene ? SVG_ICONOS.check : SVG_ICONOS.cruz}</span><code style="font-family: var(--fuente-mono);">${perm}</code>`;
+                const label = document.createElement('label');
+                label.className = 'permiso-casilla-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.dataset.permiso = item.clave;
+                checkbox.checked = Boolean(permisosIniciales[item.clave]);
+
+                const textoSpan = document.createElement('span');
+                textoSpan.textContent = item.etiqueta;
+
+                label.appendChild(checkbox);
+                label.appendChild(textoSpan);
+                li.appendChild(label);
                 listaUl.appendChild(li);
             }
 
@@ -3708,7 +4158,7 @@ const cambiarSeccion = (nombreSeccion) => {
         compras: { titulo: 'Compras & Listas IA', sub: 'Listas de precios de proveedores, en planilla o con ayuda de la IA' },
         recetas: { titulo: 'Ingeniería de Recetas & Rentabilidad', sub: 'Costeo dinámico por insumos, descartables y mano de obra' },
         finanzas: { titulo: 'Reportes, Trazabilidad & Finanzas', sub: 'Trazabilidad por fechas, facturación real, margen bruto y punto de equilibrio' },
-        personal: { titulo: 'Equipo & Permisos', sub: 'Gobernanza de personal y control granular de accesos' },
+        personal: { titulo: 'Equipo & Permisos', sub: 'Sumá personas al equipo y elegí qué puede hacer cada una' },
     };
 
     if (titulos[destino]) {
@@ -3752,11 +4202,11 @@ const inicializarEventosDOM = () => {
         restablecerVisibilidadCredencialesLogin();
     });
 
-    $('form-login')?.addEventListener('submit', (e) => {
+    $('form-login')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = $('input-username')?.value.trim();
         const password = $('input-password')?.value;
-        ejecutarLogin(username, password);
+        await conCargando($('btn-login-submit'), () => ejecutarLogin(username, password));
     });
 
     // 3. Logout
@@ -3770,7 +4220,15 @@ const inicializarEventosDOM = () => {
         });
     });
 
-    // 5. Drawer lateral de monitor
+    // 5. Drawer lateral de monitor y silenciador de sonidos
+    $('btn-toggle-sonidos')?.addEventListener('click', () => {
+        sonidosSilenciados = !sonidosSilenciados;
+        guardarPreferenciaSonidosSilenciados(sonidosSilenciados);
+        actualizarBotonSonidosUI();
+        if (!sonidosSilenciados) {
+            reproducirSonido(obtenerSonidoParaEvento('escaneo'));
+        }
+    });
     $('btn-toggle-monitor')?.addEventListener('click', () => {
         $('panel-monitor-lateral')?.classList.toggle('abierto');
     });
@@ -3850,15 +4308,17 @@ const inicializarEventosDOM = () => {
     });
 
     // 11. Cierre de Caja con Arqueo Ciego
-    $('form-arqueo-ciego')?.addEventListener('submit', (e) => {
+    $('form-arqueo-ciego')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const contado = $('input-efectivo-contado')?.value;
         if (contado !== undefined && contado !== '') {
-            cerrarTurnoCaja(contado);
+            await conCargando($('btn-cerrar-caja-ciego'), () => cerrarTurnoCaja(contado));
         }
     });
 
-    $('btn-refrescar-turnos')?.addEventListener('click', cargarTurnoActivo);
+    $('btn-refrescar-turnos')?.addEventListener('click', () => {
+        conCargando($('btn-refrescar-turnos'), cargarTurnoActivo);
+    });
 
     // 12. Movimiento de Caja Chica
     $('btn-modal-movimiento')?.addEventListener('click', () => {
@@ -3875,31 +4335,34 @@ const inicializarEventosDOM = () => {
             return;
         }
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/movimientos/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    turno_caja: turnoId,
-                    tipo,
-                    monto,
-                    motivo,
-                }),
-            });
-            if (res.ok) {
-                mostrarToast('Movimiento de caja chica registrado con éxito.', 'exito');
-                if ($('modal-movimiento-caja')) $('modal-movimiento-caja').style.display = 'none';
-                $('form-movimiento-caja').reset();
-                cargarTurnoActivo();
-            } else {
-                mostrarToast('Error al registrar movimiento.', 'peligro');
+        const btnSubmit = e.submitter || $('btn-confirmar-movimiento-caja');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/movimientos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        turno_caja: turnoId,
+                        tipo,
+                        monto,
+                        motivo,
+                    }),
+                });
+                if (res.ok) {
+                    mostrarToast('Movimiento de caja chica registrado con éxito.', 'exito');
+                    if ($('modal-movimiento-caja')) $('modal-movimiento-caja').style.display = 'none';
+                    $('form-movimiento-caja').reset();
+                    cargarTurnoActivo();
+                } else {
+                    mostrarToast('Error al registrar movimiento.', 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 13. Apertura de Turno
@@ -3909,28 +4372,32 @@ const inicializarEventosDOM = () => {
     $('form-abrir-turno')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const efectivoInicial = $('input-apertura-fondo').value;
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({ efectivo_inicial: efectivoInicial }),
-            });
-            if (res.ok) {
-                mostrarToast('Turno de caja abierto correctamente.', 'exito');
-                if ($('modal-abrir-turno')) $('modal-abrir-turno').style.display = 'none';
-                cargarTurnoActivo();
-            } else {
-                const data = await res.json().catch(() => null);
-                mostrarToast(mensajeErrorParaUsuario(res.status, data?.mensaje), 'peligro');
-                // Si ya había un turno abierto, se refresca la caja para mostrarlo.
-                if (res.status === 400) cargarTurnoActivo();
+        const btnSubmit = e.submitter || $('btn-confirmar-abrir-turno');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/caja/turnos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({ efectivo_inicial: efectivoInicial }),
+                });
+                if (res.ok) {
+                    reproducirSonido(obtenerSonidoParaEvento('turno.abierto'));
+                    mostrarToast('Turno de caja abierto correctamente.', 'exito');
+                    if ($('modal-abrir-turno')) $('modal-abrir-turno').style.display = 'none';
+                    cargarTurnoActivo();
+                } else {
+                    const data = await res.json().catch(() => null);
+                    mostrarToast(mensajeErrorParaUsuario(res.status, data?.mensaje), 'peligro');
+                    // Si ya había un turno abierto, se refresca la caja para mostrarlo.
+                    if (res.status === 400) cargarTurnoActivo();
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 14. Pestañas de Compras
@@ -3986,12 +4453,27 @@ const inicializarEventosDOM = () => {
         if (archivo) procesarArchivoImportacionSeleccionado(archivo, 'ia');
     });
 
-    $('btn-csv-circuito-ia')?.addEventListener('click', enviarCsvAlCircuitoAprobacion);
+    $('btn-csv-circuito-ia')?.addEventListener('click', () => {
+        conCargando($('btn-csv-circuito-ia'), enviarCsvAlCircuitoAprobacion);
+    });
     $('btn-csv-confirmar-directo')?.addEventListener('click', confirmarCsvDirectoEnInventario);
     $('btn-csv-desde-texto')?.addEventListener('click', previsualizarCsvDesdeTexto);
 
     // 16. Importador IA de Listas
+    $('btn-quitar-foto-ia')?.addEventListener('click', () => {
+        limpiarFotoImportacionActual({ limpiarAviso: true });
+        mostrarToast('Foto quitada. Podés subir otro archivo o pegar texto.', 'info');
+    });
+
+    $('textarea-lista-ia')?.addEventListener('input', () => {
+        if (estadoApp.imagenImportacionActual && $('textarea-lista-ia')?.value.trim()) {
+            limpiarFotoImportacionActual({ limpiarAviso: true });
+        }
+    });
+
     $('btn-ejemplo-proveedor')?.addEventListener('click', () => {
+        limpiarFotoImportacionActual({ limpiarAviso: true });
+        estadoApp.ultimoOrigenArchivo = 'texto';
         if ($('input-proveedor-ia')) $('input-proveedor-ia').value = 'Distribuidora Central de Café';
         if ($('textarea-lista-ia')) {
             $('textarea-lista-ia').value = `Distribuidora Central de Café
@@ -4007,89 +4489,116 @@ Flete y entrega a local: $4500`;
     $('form-importacion-ia')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const proveedorNombre = $('input-proveedor-ia')?.value.trim() || 'Mayorista Café del Litoral';
+        const imagenActual = estadoApp.imagenImportacionActual;
         const textoLista = $('textarea-lista-ia')?.value.trim() || '';
-        if (textoLista.startsWith('%PDF-')) {
+
+        if (!imagenActual && !textoLista) {
+            const aviso = 'Pegá el texto de la lista o subí un archivo o foto para analizar.';
+            mostrarEstadoArchivoPdf(aviso, 'advertencia');
+            mostrarToast(aviso, 'advertencia');
+            $('textarea-lista-ia')?.focus();
+            return;
+        }
+        if (!imagenActual && textoLista.startsWith('%PDF-')) {
             const aviso = 'No se pudo leer el texto del PDF. Probá subiéndolo de nuevo.';
             mostrarEstadoArchivoPdf(aviso, 'advertencia');
             mostrarToast(aviso, 'advertencia');
             return;
         }
-        const evalCsv = evaluarTextoComoCsvDirecto(textoLista);
-        if (evalCsv.compatible) {
-            estadoApp.csvContingenciaFallback = evalCsv.resultado;
-        } else if (
-            !(estadoApp.csvParseadoActual?.items?.length > 0 &&
-            estadoApp.csvParseadoActual.textoParaIa === textoLista)
-        ) {
-            estadoApp.csvContingenciaFallback = null;
-        }
-        const estadoPill = $('estado-importacion-ia');
 
-        if (estadoPill) estadoPill.textContent = 'Analizando con IA...';
-        renderizarPropuestaIAComercial({
-            _id: null,
-            estado: 'PROCESANDO',
-            entrada: { proveedorNombre, textoLista, origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto' },
-            salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
-        });
-
-        try {
-            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    proveedorNombre,
-                    textoLista,
-                    versionPrompt: 'v1',
-                    origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto',
-                }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.status === 202 && data.importacionId) {
-                mostrarToast('Lista recibida. Analizando con IA...', 'info');
-                const datosDetalle = await consultarDetalleImportacion(data.importacionId);
-                const evaluacion = evaluarEstadoImportacionIA(datosDetalle);
-                if (estadoPill) {
-                    estadoPill.textContent = evaluacion.esContingencia
-                        ? MENSAJE_IA_NO_DISPONIBLE
-                        : evaluacion.enProceso
-                          ? 'Analizando con IA...'
-                          : 'Propuesta procesada con IA y lista en el Paso 2.';
+        await conCargando($('btn-analizar-ia'), async () => {
+            if (imagenActual) {
+                estadoApp.csvContingenciaFallback = null;
+            } else {
+                const evalCsv = evaluarTextoComoCsvDirecto(textoLista);
+                if (evalCsv.compatible) {
+                    estadoApp.csvContingenciaFallback = evalCsv.resultado;
+                } else if (
+                    !(estadoApp.csvParseadoActual?.items?.length > 0 &&
+                    estadoApp.csvParseadoActual.textoParaIa === textoLista)
+                ) {
+                    estadoApp.csvContingenciaFallback = null;
                 }
-                if (evaluacion.esContingencia) {
+            }
+            const estadoPill = $('estado-importacion-ia');
+
+            if (estadoPill) estadoPill.textContent = 'Analizando con IA...';
+            renderizarPropuestaIAComercial({
+                _id: null,
+                estado: 'PROCESANDO',
+                entrada: imagenActual
+                    ? { proveedorNombre, origenArchivo: 'imagen' }
+                    : { proveedorNombre, textoLista, origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto' },
+                salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
+            });
+
+            const cuerpoSolicitud = imagenActual
+                ? {
+                      proveedorNombre,
+                      origenArchivo: 'imagen',
+                      imagenBase64: imagenActual.base64,
+                      imagenMime: imagenActual.mime,
+                  }
+                : {
+                      proveedorNombre,
+                      textoLista,
+                      versionPrompt: 'v1',
+                      origenArchivo: estadoApp.ultimoOrigenArchivo || 'texto',
+                  };
+
+            try {
+                const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify(cuerpoSolicitud),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.status === 202 && data.importacionId) {
+                    mostrarToast('Lista recibida. Analizando con IA...', 'info');
+                    const datosDetalle = await consultarDetalleImportacion(data.importacionId);
+                    const evaluacion = evaluarEstadoImportacionIA(datosDetalle);
+                    if (estadoPill) {
+                        estadoPill.textContent = evaluacion.esContingencia
+                            ? MENSAJE_IA_NO_DISPONIBLE
+                            : evaluacion.enProceso
+                              ? 'Analizando con IA...'
+                              : 'Propuesta procesada con IA y lista en el Paso 2.';
+                    }
+                    if (evaluacion.esContingencia) {
+                        mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+                    }
+                } else {
+                    console.warn('Error al analizar lista con IA:', res.status, data);
+                    const motivo = mensajeErrorParaUsuario(res.status, data?.mensaje);
+                    renderizarPropuestaIAComercial({
+                        _id: null,
+                        estado: 'CONTINGENCIA',
+                        contingencia: true,
+                        proveedorIa: 'contingencia',
+                        mensajeContingencia: motivo,
+                        advertencias: data?.detalles ? [String(data.detalles)] : [],
+                        salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
+                    });
+                    if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
                     mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
                 }
-            } else {
-                console.warn('Error al analizar lista con IA:', res.status, data);
-                const motivo = mensajeErrorParaUsuario(res.status, data?.mensaje);
+            } catch (err) {
                 renderizarPropuestaIAComercial({
                     _id: null,
                     estado: 'CONTINGENCIA',
                     contingencia: true,
                     proveedorIa: 'contingencia',
-                    mensajeContingencia: motivo,
-                    advertencias: data?.detalles ? [String(data.detalles)] : [],
+                    mensajeContingencia: err?.message || 'No se pudo conectar con el servicio de IA.',
+                    advertencias: [err?.message || 'Error de red'],
                     salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
                 });
                 if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
                 mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
             }
-        } catch (err) {
-            renderizarPropuestaIAComercial({
-                _id: null,
-                estado: 'CONTINGENCIA',
-                contingencia: true,
-                proveedorIa: 'contingencia',
-                mensajeContingencia: err?.message || 'No se pudo conectar con el servicio de IA.',
-                advertencias: [err?.message || 'Error de red'],
-                salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
-            });
-            if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
-            mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
-        }
+        });
     });
 
     $('btn-aprobar-ia')?.addEventListener('click', async () => {
@@ -4106,41 +4615,44 @@ Flete y entrega a local: $4500`;
         const proveedorNombre = salida.proveedorDetectado || $('input-proveedor-ia')?.value.trim() || 'Proveedor Importado IA';
         const envio = salida.envioDetectado || '0.00';
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    proveedorNombre,
-                    envio,
-                    items: itemsParaAprobar,
-                }),
-            });
-            const data = await res.json();
-            if (res.ok) {
-                const cantCompras = data.comprasCreadas?.length || itemsParaAprobar.length;
-                const cantRecetas = data.productosRecalculados?.length || 0;
+        await conCargando($('btn-aprobar-ia'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/aprobar`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        proveedorNombre,
+                        envio,
+                        items: itemsParaAprobar,
+                    }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    reproducirSonido(obtenerSonidoParaEvento('importacion.confirmada'));
+                    const cantCompras = data.comprasCreadas?.length || itemsParaAprobar.length;
+                    const cantRecetas = data.productosRecalculados?.length || 0;
+                    mostrarToast(
+                        `Propuesta aprobada: ${cantCompras} insumos/compras actualizados y ${cantRecetas} recetas recalculadas.`,
+                        'exito'
+                    );
+                    if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
+                    await cargarInsumos();
+                    await cargarCatalogo();
+                    return;
+                }
+                console.warn('Error al aprobar propuesta IA:', res.status, data);
                 mostrarToast(
-                    `Propuesta aprobada: ${cantCompras} insumos/compras actualizados y ${cantRecetas} recetas recalculadas.`,
-                    'exito'
+                    mensajeErrorParaUsuario(res.status, data?.mensaje),
+                    'peligro'
                 );
-                if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
-                await cargarInsumos();
-                await cargarCatalogo();
-                return;
+            } catch (err) {
+                console.error('Error de red al aprobar propuesta IA:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
-            console.warn('Error al aprobar propuesta IA:', res.status, data);
-            mostrarToast(
-                mensajeErrorParaUsuario(res.status, data?.mensaje),
-                'peligro'
-            );
-        } catch (err) {
-            console.error('Error de red al aprobar propuesta IA:', err);
-            mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
-        }
+        });
     });
 
     $('btn-cerrar-desglose')?.addEventListener('click', () => {
@@ -4155,22 +4667,24 @@ Flete y entrega a local: $4500`;
             estadoApp.importacionActual = null;
             return;
         }
-        try {
-            const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/rechazar`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({ motivo: 'Descartado por operador en revisión' }),
-            });
-            if (res.ok) {
-                mostrarToast('Propuesta de importación descartada.', 'info');
-                if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
+        await conCargando($('btn-rechazar-ia'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.nodeUrl}/api/importaciones/${id}/rechazar`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({ motivo: 'Descartado por operador en revisión' }),
+                });
+                if (res.ok) {
+                    mostrarToast('Propuesta de importación descartada.', 'info');
+                    if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 17. Compra Manual de Insumos
@@ -4186,39 +4700,44 @@ Flete y entrega a local: $4500`;
         const precioTotal = $('input-compra-total').value;
         const envio = $('input-compra-envio').value || '0.00';
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/compras/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    proveedor: Number(proveedor),
-                    insumo: Number(insumo),
-                    cantidad,
-                    unidad,
-                    precio_total: precioTotal,
-                    envio,
-                    iva_incluido: true,
-                }),
-            });
-            if (res.ok) {
-                mostrarToast('Compra registrada y costo base ponderado recalculado.', 'exito');
-                if ($('modal-nueva-compra')) $('modal-nueva-compra').style.display = 'none';
-                $('form-nueva-compra').reset();
-                cargarInsumos();
-                cargarCatalogo();
-            } else {
-                mostrarToast('Error al registrar compra.', 'peligro');
+        const btnSubmit = e.submitter || $('btn-confirmar-nueva-compra');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/compras/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        proveedor: Number(proveedor),
+                        insumo: Number(insumo),
+                        cantidad,
+                        unidad,
+                        precio_total: precioTotal,
+                        envio,
+                        iva_incluido: true,
+                    }),
+                });
+                if (res.ok) {
+                    mostrarToast('Compra registrada y costo base ponderado recalculado.', 'exito');
+                    if ($('modal-nueva-compra')) $('modal-nueva-compra').style.display = 'none';
+                    $('form-nueva-compra').reset();
+                    cargarInsumos();
+                    cargarCatalogo();
+                } else {
+                    mostrarToast('Error al registrar compra.', 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 18. Recalcular toda la carta y Gestión de Productos / Recetas
-    $('btn-recalcular-toda-carta')?.addEventListener('click', recalcularTodaLaCarta);
+    $('btn-recalcular-toda-carta')?.addEventListener('click', () => {
+        conCargando($('btn-recalcular-toda-carta'), recalcularTodaLaCarta);
+    });
 
     $('btn-modal-nuevo-producto')?.addEventListener('click', () => {
         if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.crear')) return;
@@ -4243,33 +4762,36 @@ Flete y entrega a local: $4500`;
             return;
         }
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    nombre,
-                    codigo_barras: codigoBarras || null,
-                    precio_venta: precioVenta,
-                    minutos_mano_obra: minutosManoObra,
-                    costo_hora_mano_obra: costoHoraManoObra,
-                }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-                if ($('modal-nuevo-producto')) $('modal-nuevo-producto').style.display = 'none';
-                $('form-nuevo-producto').reset();
-                mostrarToast(`Producto "${data.nombre || nombre}" agregado a la carta.`, 'exito');
-                await cargarCatalogo();
-            } else {
-                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo crear el producto.'), 'peligro');
+        const btnSubmit = e.submitter || $('btn-confirmar-nuevo-producto');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        nombre,
+                        codigo_barras: codigoBarras || null,
+                        precio_venta: precioVenta,
+                        minutos_mano_obra: minutosManoObra,
+                        costo_hora_mano_obra: costoHoraManoObra,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('modal-nuevo-producto')) $('modal-nuevo-producto').style.display = 'none';
+                    $('form-nuevo-producto').reset();
+                    mostrarToast(`Producto "${data.nombre || nombre}" agregado a la carta.`, 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo crear el producto.'), 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     $('form-editar-precio-producto')?.addEventListener('submit', async (e) => {
@@ -4280,26 +4802,29 @@ Flete y entrega a local: $4500`;
         const precioVenta = $('input-editar-precio-venta')?.value;
         if (!productoId) return;
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({ precio_venta: precioVenta }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-                if ($('modal-editar-precio-producto')) $('modal-editar-precio-producto').style.display = 'none';
-                mostrarToast('Precio de venta actualizado y margen recalculado.', 'exito');
-                await cargarCatalogo();
-            } else {
-                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo actualizar el precio de venta.'), 'peligro');
+        const btnSubmit = e.submitter || $('btn-confirmar-editar-precio');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({ precio_venta: precioVenta }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('modal-editar-precio-producto')) $('modal-editar-precio-producto').style.display = 'none';
+                    mostrarToast('Precio de venta actualizado y margen recalculado.', 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo actualizar el precio de venta.'), 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     $('select-receta-insumo')?.addEventListener('change', actualizarSelectUnidadReceta);
@@ -4318,37 +4843,40 @@ Flete y entrega a local: $4500`;
             return;
         }
 
-        try {
-            const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/recetas-items/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${estadoApp.tokenJwt}`,
-                },
-                body: JSON.stringify({
-                    producto: Number(productoId),
-                    insumo: Number(insumoId),
-                    cantidad,
-                    unidad,
-                }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-                if ($('input-receta-cantidad')) $('input-receta-cantidad').value = '';
-                mostrarToast('Insumo agregado a la receta y costo recalculado.', 'exito');
-                await cargarCatalogo();
-            } else {
-                mostrarToast(extraerMensajeErrorApi(data, 'No se pudo agregar el insumo a la receta.'), 'peligro');
+        const btnSubmit = e.submitter || $('btn-agregar-receta-item');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/recetas-items/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        producto: Number(productoId),
+                        insumo: Number(insumoId),
+                        cantidad,
+                        unidad,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('input-receta-cantidad')) $('input-receta-cantidad').value = '';
+                    mostrarToast('Insumo agregado a la receta y costo recalculado.', 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo agregar el insumo a la receta.'), 'peligro');
+                }
+            } catch (err) {
+                mostrarToast(`Error: ${err.message}`, 'peligro');
             }
-        } catch (err) {
-            mostrarToast(`Error: ${err.message}`, 'peligro');
-        }
+        });
     });
 
     // 19. Simulador de Punto de Equilibrio
-    $('form-punto-equilibrio')?.addEventListener('submit', (e) => {
+    $('form-punto-equilibrio')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        calcularPuntoEquilibrio();
+        await conCargando($('btn-calcular-pe'), () => calcularPuntoEquilibrio());
     });
 
     // 20. Configuración de Servidor y Modo de Conexión
@@ -4388,22 +4916,28 @@ Flete y entrega a local: $4500`;
     });
 
     // 21. Sincronización de ventas offline y reconexión automática
-    $('btn-sincronizar-offline')?.addEventListener('click', sincronizarVentasPendientes);
+    $('btn-sincronizar-offline')?.addEventListener('click', () => {
+        conCargando($('btn-sincronizar-offline'), sincronizarVentasPendientes);
+    });
 
     // 21b. Consultor IA de Stock y Cierre de Caja para el Dueño
-    $('btn-ia-diagnostico-stock')?.addEventListener('click', consultarDiagnosticoStockIA);
-    $('btn-ia-auditar-caja')?.addEventListener('click', auditarCierreCajaIA);
+    $('btn-ia-diagnostico-stock')?.addEventListener('click', () => {
+        conCargando($('btn-ia-diagnostico-stock'), consultarDiagnosticoStockIA);
+    });
+    $('btn-ia-auditar-caja')?.addEventListener('click', () => {
+        conCargando($('btn-ia-auditar-caja'), auditarCierreCajaIA);
+    });
 
     // 21c. Filtro de Fechas y Trazabilidad en Reportes y Finanzas
-    const aplicarFiltroFechasReportes = () => {
-        const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado();
+    const aplicarFiltroFechasReportes = async (boton = $('btn-filtrar-fechas')) => {
+        const { fechaDesde, fechaHasta } = obtenerRangoFechasSeleccionado({ paraValidar: true });
         const validacion = validarRangoFechas(fechaDesde, fechaHasta);
         if (!validacion.valido) {
             mostrarToast(validacion.mensaje, 'advertencia');
             return;
         }
         document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
-        cargarFinanzas();
+        await conCargando(boton, () => cargarFinanzas());
     };
     const manejarEnterFiltroFechas = (evento) => {
         if (evento.key === 'Enter') {
@@ -4411,18 +4945,45 @@ Flete y entrega a local: $4500`;
             aplicarFiltroFechasReportes();
         }
     };
-    $('filtro-fecha-desde')?.addEventListener('keydown', manejarEnterFiltroFechas);
-    $('filtro-fecha-hasta')?.addEventListener('keydown', manejarEnterFiltroFechas);
-    $('btn-filtrar-fechas')?.addEventListener('click', aplicarFiltroFechasReportes);
-    $('btn-limpiar-fechas')?.addEventListener('click', () => {
+    ['filtro-fecha-desde', 'filtro-fecha-hasta'].forEach((id) => {
+        const campo = $(id);
+        if (!campo) return;
+        campo.addEventListener('keydown', manejarEnterFiltroFechas);
+        // Barras automáticas mientras se escribe (no dispara la búsqueda).
+        campo.addEventListener('input', () => {
+            const formateado = formatearEntradaFecha(campo.value);
+            if (formateado !== campo.value) campo.value = formateado;
+        });
+    });
+    // Botón de calendario: abre el selector nativo y copia la fecha elegida al campo.
+    document.querySelectorAll('.btn-calendario-fecha').forEach((btn) => {
+        const campo = $(btn.dataset.para);
+        const calendario = $(`${btn.dataset.para}-calendario`);
+        if (!campo || !calendario) return;
+        btn.addEventListener('click', () => {
+            calendario.value = fechaTextoAIso(campo.value) || '';
+            try {
+                calendario.showPicker();
+            } catch {
+                calendario.focus();
+                calendario.click();
+            }
+        });
+        calendario.addEventListener('change', () => {
+            campo.value = fechaIsoATexto(calendario.value);
+            campo.focus();
+        });
+    });
+    $('btn-filtrar-fechas')?.addEventListener('click', () => aplicarFiltroFechasReportes($('btn-filtrar-fechas')));
+    $('btn-limpiar-fechas')?.addEventListener('click', async () => {
         if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = '';
         if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = '';
         document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
-        cargarFinanzas();
+        await conCargando($('btn-limpiar-fechas'), () => cargarFinanzas());
     });
 
     document.querySelectorAll('.btn-atajo-fecha').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const atajo = btn.dataset.atajo;
             const ahora = new Date();
             let desde = formatearFechaLocalInput(ahora);
@@ -4434,12 +4995,12 @@ Flete y entrega a local: $4500`;
                 desde = formatearFechaLocalInput(new Date(ahora.getFullYear(), ahora.getMonth(), 1));
             }
 
-            if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = desde;
-            if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = hasta;
+            if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = fechaIsoATexto(desde);
+            if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = fechaIsoATexto(hasta);
 
             document.querySelectorAll('.btn-atajo-fecha').forEach((b) => b.classList.remove('activo'));
             btn.classList.add('activo');
-            cargarFinanzas();
+            await conCargando(btn, () => cargarFinanzas());
         });
     });
 
@@ -4472,6 +5033,144 @@ Flete y entrega a local: $4500`;
             if (modal) modal.style.display = 'none';
         });
     });
+
+    // 23. Equipo & Permisos: alta de empleados, cambio de rol, permisos y baja
+    $('btn-modal-nuevo-empleado')?.addEventListener('click', () => {
+        if (!usuarioTienePermiso(estadoApp.usuario, 'personal.crear')) return;
+        $('form-nuevo-empleado')?.reset();
+        if ($('select-nuevo-empleado-rol')) $('select-nuevo-empleado-rol').value = 'CAJERO';
+        actualizarEstadoVisibilidadCampo($('btn-toggle-nuevo-empleado-password'), false);
+        if ($('modal-nuevo-empleado')) $('modal-nuevo-empleado').style.display = 'flex';
+    });
+
+    $('form-nuevo-empleado')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'personal.crear')) return;
+
+        const first_name = ($('input-nuevo-empleado-nombre')?.value || '').trim();
+        const last_name = ($('input-nuevo-empleado-apellido')?.value || '').trim();
+        const username = ($('input-nuevo-empleado-usuario')?.value || '').trim();
+        const password = $('input-nuevo-empleado-password')?.value || '';
+        const email = ($('input-nuevo-empleado-email')?.value || '').trim();
+        const rol = $('select-nuevo-empleado-rol')?.value || 'CAJERO';
+
+        if (!username) {
+            mostrarToast('Ingresá un nombre de usuario.', 'advertencia');
+            return;
+        }
+        if (password.length < 4) {
+            mostrarToast('La contraseña tiene que tener al menos 4 caracteres.', 'advertencia');
+            return;
+        }
+
+        await conCargando($('btn-submit-nuevo-empleado'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        first_name,
+                        last_name,
+                        email,
+                        rol,
+                        permisos: {},
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('modal-nuevo-empleado')) $('modal-nuevo-empleado').style.display = 'none';
+                    $('form-nuevo-empleado')?.reset();
+                    actualizarEstadoVisibilidadCampo($('btn-toggle-nuevo-empleado-password'), false);
+                    mostrarToast('Empleado agregado.', 'exito');
+                    await cargarPersonal();
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    $('select-permisos-rol')?.addEventListener('change', (e) => {
+        aplicarPlantillaEnCasillasPermisos(obtenerPlantillaRol(e.target.value));
+    });
+
+    $('form-permisos-empleado')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const u = estadoApp.empleadoEditandoPermisos;
+        if (!u || !usuarioTienePermiso(estadoApp.usuario, 'personal.ajustar_permisos')) return;
+
+        const clavesMarcadas = Array.from(
+            document.querySelectorAll('#permisos-categorias-grilla input[type="checkbox"][data-permiso]:checked')
+        ).map((cb) => cb.dataset.permiso);
+        const permisosDict = construirDictPermisosDesdeSeleccion(clavesMarcadas);
+
+        const puedeEditarRol = usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
+        const rolOriginal = (u.rol || 'CAJERO').toUpperCase();
+        const nuevoRol = ($('select-permisos-rol')?.value || rolOriginal).toUpperCase();
+        const cambioRol = puedeEditarRol && nuevoRol !== rolOriginal;
+
+        await conCargando($('btn-guardar-permisos'), async () => {
+            let rolActualizado = false;
+            try {
+                if (cambioRol) {
+                    const resRol = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ rol: nuevoRol }),
+                    });
+                    const dataRol = await resRol.json().catch(() => ({}));
+                    if (!resRol.ok) {
+                        const msgApi = extraerMensajeErrorApi(dataRol, dataRol?.mensaje || '');
+                        mostrarToast(mensajeErrorParaUsuario(resRol.status, msgApi), 'peligro');
+                        return;
+                    }
+                    rolActualizado = true;
+                    u.rol = nuevoRol;
+                }
+
+                const resPerm = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/ajustar-permisos/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ permisos: permisosDict }),
+                });
+                const dataPerm = await resPerm.json().catch(() => ({}));
+                if (resPerm.ok) {
+                    if ($('modal-permisos')) $('modal-permisos').style.display = 'none';
+                    estadoApp.empleadoEditandoPermisos = null;
+                    mostrarToast('Permisos guardados.', 'exito');
+                    await cargarPersonal();
+                } else {
+                    const msgApi = extraerMensajeErrorApi(dataPerm, dataPerm?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(resPerm.status, msgApi), 'peligro');
+                    if (rolActualizado) {
+                        await cargarPersonal();
+                    }
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    $('form-baja-empleado')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const u = estadoApp.empleadoParaBaja;
+        if (!u) return;
+
+        const motivo = ($('input-baja-empleado-motivo')?.value || '').trim();
+        await conCargando($('btn-confirmar-baja-empleado'), () => toggleEstadoUsuario(u, motivo));
+    });
 };
 
 const registrarServiceWorkerPwa = () => {
@@ -4484,6 +5183,8 @@ const registrarServiceWorkerPwa = () => {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    registrarDesbloqueoAudio();
+    actualizarBotonSonidosUI();
     registrarServiceWorkerPwa();
     actualizarUIUsuario();
     renderizarCatalogoPOS();

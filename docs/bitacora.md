@@ -22,6 +22,72 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-17
+Tarea: Extracción de precios con IA desde foto de lista de proveedor (Web, Node y ai-service)
+Rama: feature/mejoras-profesor
+Cambios realizados:
+- **ai-service (`app/`):**
+  - Se agregó `GROQ_VISION_MODEL` en `config.py`, `.env.example` y `ai-service/.env.example` (valor por defecto `meta-llama/llama-4-scout-17b-16e-instruct`, documentando que puede cambiar según disponibilidad).
+  - Se actualizó `SolicitudExtraccionPrecios` (`schemas/extraccion.py`) para aceptar `imagen_base64` + `imagen_mime` (`image/jpeg`, `image/png`, `image/webp`, hasta 7 MB de base64 / 5 MB binarios) haciendo `texto_lista` opcional si viene imagen y exigiendo al menos uno.
+  - En `proveedor_ia.py` y `extraccion.py` se implementó `generar_json_con_imagen`: Gemini envía `inline_data` y Groq envía `image_url` en data URL con `GROQ_VISION_MODEL`, reutilizando el mismo prompt (con una nota de foto adjunta) y validación Pydantic. Si falta clave o el proveedor (ej. Ollama) no soporta visión, se devuelve contingencia honesta sin inventar ítems.
+- **backend-node (`app.js`, `src/`):**
+  - Se elevó el límite de `express.json` a `8mb` únicamente en `/api/importaciones` y `/importaciones`, conservando el límite estándar para el resto de la API.
+  - En `importacionIA.routes.js`: `textoLista` pasa a ser obligatorio solo si no viene foto; cuando llega `origenArchivo: 'imagen'` (o campos de imagen) se exige `imagenBase64` válido (≤ 7 MB) e `imagenMime` en `image/jpeg|image/png|image/webp` con mensajes simples de vos.
+  - En `ImportacionIA.js`, `importacionIA.controller.js` e `importacionIA.service.js`: se admite `origenArchivo: 'imagen'` sin guardar la imagen en MongoDB (solo `imagenHash` SHA-256, `imagenTamanoBytes` e `imagenMime` para trazabilidad).
+  - En `ai.client.js`: `extraerPreciosIA` reenvía `imagen_base64` e `imagen_mime` con timeout ampliado a 25000 ms para imágenes.
+- **Web (`web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`):**
+  - Se aceptan `.jpg`, `.jpeg`, `.png`, `.webp` en `#input-archivo-csv`, `#zona-drop-csv` y `#archivo-lista-ia`, actualizando textos visibles para mencionar "foto".
+  - Se agregaron en `logicaPwa.js` validadores puros de tipo/tamaño (`esArchivoImagenImportacion`, `validarArchivoImagenImportacion`, `validarArchivoImportacionGeneral`), cálculo proporcional de reescalado (`calcularDimensionesReescaladoImagen`, lado mayor 1600 px) y `extraerBase64DeDataUrl`.
+  - En `app.js`, antes de enviar, la foto se reescala en `<canvas>` (lado mayor 1600 px, JPEG calidad 0.85, fondo blanco para PNG/WEBP), se muestra miniatura + `"Foto lista para analizar con IA"` y se envía `{ proveedorNombre, origenArchivo: 'imagen', imagenBase64, imagenMime: 'image/jpeg' }` sin `textoLista` usando `fetchConSesion`.
+- **Tests:**
+  - `ai-service`: 85 tests en `pytest` (esquemas de imagen/tamaño/MIME, payloads HTTP simulados de Gemini/Groq y contingencia honesta sin clave o sin visión).
+  - `backend-node` + `web`: 25 suites / 211 tests en Jest (`aiClient.unit.test.js`, `importacionIA.integration.test.js`, `logicaPwa.unit.test.js`) y `eslint .` limpio.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/` (`<canvas>`) → `backend-node` (`POST /api/importaciones` con límite JSON `8mb` y `origenArchivo: 'imagen'`) → `ai-service` (`POST /v1/extraer-precios` con `imagen_base64`/`imagen_mime`) → Gemini (`inline_data`) / Groq (`GROQ_VISION_MODEL`, `image_url`).
+Problemas y decisiones técnicas:
+- Se agregó `generar_json_con_imagen` en `ProveedorIA` en lugar de alterar la firma de `generar_json` para no romper adaptadores/tests existentes ni el módulo `resumen.py`; proveedores sin soporte heredan un rechazo controlado que dispara la contingencia honesta.
+- En el navegador se rellena fondo blanco en `<canvas>` antes de exportar a JPEG para que las capturas PNG con transparencia no se vuelvan negras y pierdan legibilidad.
+Archivos tocados:
+- `.env.example`, `ai-service/.env.example`, `ai-service/app/config.py`, `ai-service/app/routers/ia.py`, `ai-service/app/schemas/extraccion.py`, `ai-service/app/services/extraccion.py`, `ai-service/app/services/proveedor_ia.py`
+- `ai-service/app/tests/unit/test_unit_schemas.py`, `ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`, `ai-service/app/tests/api/test_api_endpoints.py`
+- `backend-node/app.js`, `backend-node/src/routes/importacionIA.routes.js`, `backend-node/src/controllers/importacionIA.controller.js`, `backend-node/src/services/importacionIA.service.js`, `backend-node/src/models/ImportacionIA.js`, `backend-node/src/clients/ai.client.js`
+- `backend-node/tests/unit/aiClient.unit.test.js`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/importacionIA.integration.test.js`
+- `web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`
+- `docs/CONNECTIONS.md`, `docs/ARCHITECTURE.md`, `docs/integracion.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test`
+- `cd backend-node && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+---
+Fecha: 2026-11-17
+Tarea: Alta de empleados, baja/reactivación, cambio de rol y edición de permisos desde Equipo & Permisos
+Rama: feature/mejoras-profesor
+Cambios realizados:
+- **Lógica pura en `web/js/logicaPwa.js`:**
+  - Se definieron `GRUPOS_PERMISOS_EQUIPO` (9 áreas, 30 permisos con etiquetas simples de vos sin claves internas), `PERMISOS_CATALOGO_EQUIPO` y `ROLES_PLANTILLAS` (en espejo con `backend-django/apps/usuarios/constantes.py`).
+  - Se agregaron `obtenerPlantillaRol`, `construirDictPermisosDesdeSeleccion`, `obtenerPermisosInicialesEmpleado`, `accionesEquipoVisiblesParaUsuario` y `accionesEmpleadoVisiblesParaUsuario` (bloqueando la autobaja en la propia tarjeta).
+  - Se ajustó `extraerMensajeErrorApi` para rescatar `detalles.mensaje` cuando Django responde con errores de dominio (como la regla de supervivencia del último dueño).
+- **Interfaz y flujo web (`web/index.html`, `web/css/estilos.css`, `web/js/app.js`):**
+  - Botón "+ Agregar empleado" (solo con `personal.crear`) y modal `#modal-nuevo-empleado` con ojito de contraseña reutilizando `.btn-toggle-visibilidad` (`POST /api/usuarios/`).
+  - Modal `#modal-permisos` editable con selector de rol (solo con `personal.editar`) que precarga la plantilla del rol al cambiar, casillas agrupadas por área (`PATCH` si cambia el rol + `POST ajustar-permisos` con el diccionario completo de 30 claves).
+  - Modal `#modal-baja-empleado` con confirmación y motivo opcional para "Dar de baja", y botón "Reactivar" según `is_active` (solo con `personal.desactivar`, ocultos en la tarjeta del usuario logueado).
+  - Todos los pedidos usan `fetchConSesion`, errores con `mensajeErrorParaUsuario` y textos simples de vos (incluyendo el aviso "Siempre queda un dueño activo").
+- **Tests (`backend-node/tests/`):**
+  - Se agregaron pruebas unitarias en `logicaPwa.unit.test.js` y verificaciones HTML en `clientePwa.integration.test.js`.
+Archivos tocados:
+- `web/index.html`, `web/css/estilos.css`, `web/js/app.js`, `web/js/logicaPwa.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test`
+- `cd backend-node && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+---
+Fecha: 2026-11-17
 Tarea: Trato de vos en la interfaz web y mensajes de validación de Node en lenguaje simple
 Rama: feature/reportes-filtro-fechas
 Cambios realizados:
@@ -1674,4 +1740,44 @@ Archivos tocados:
 Cómo probarlo:
 - `cd backend-node && npm test && npm run lint` (195 tests en verde).
 - En el navegador (Playwright, con tokens generados por `manage.py shell`): con un access vencido y un refresh válido hubo 1 solo 401 y 1 sola renovación, los reportes cargaron y la barra dijo "Conectado"; con un refresh inválido volvió al login con un único aviso; "Salir" revocó el refresh (la renovación posterior con ese refresh da 401).
+---
+
+
+
+Fecha: 2026-11-17
+Tarea: Ajustes para la presentación: ticket, marca, avisos de la IA y filtro de fechas
+Rama: feature/ajustes-presentacion
+Qué se hizo y por qué:
+- Ticket: muestra solo el local ("SAPORI CAFÉ", "Cafetería de especialidad"); se sacó "& POS", el código de barras dibujado (no era escaneable y confundía con un QR de pago) y la leyenda "emitido por Sapori Stock" (ahora "No válido como factura").
+- Barra lateral: se sacó el subtítulo "Specialty Coffee POS".
+- Avisos de la IA: el panel de contingencia ya no lista errores técnicos ("fetch failed", "Aviso técnico: …"); quedan en los logs de Node. El "Motivo" se oculta si repite el título.
+- Filtro de fechas de Reportes: los campos son de texto con el molde "dd/mm/aaaa"; se escribe desde cero y las barras se agregan solas (`formatearEntradaFecha`); `fechaTextoAIso` / `fechaIsoATexto` convierten al formato interno aaaa-mm-dd, así que el resto del módulo no cambió. Un botón abre el calendario nativo. Una fecha incompleta o inexistente avisa al filtrar (antes, una fecha a medio tipear traía todo el historial).
+- Diagnóstico de la IA (sin cambio de código): el ai-service no estaba corriendo en la PC ("fetch failed") y no hay `GROQ_API_KEY` ni `GEMINI_API_KEY` configuradas, así que la IA queda en contingencia hasta cargar una clave en `.env`.
+Archivos tocados:
+- `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`, `web/css/estilos.css`
+- `backend-node/tests/unit/logicaPwa.unit.test.js` (3 tests)
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (198 tests en verde).
+- Reportes: tipear 10102026 → "10/10/2026"; Filtrar aplica el rango; "17/10" avisa que no es válida.
+---
+
+
+
+Fecha: 2026-11-17
+Tarea: Sonidos en acciones importantes y loaders mientras se espera al servidor (solo web)
+Rama: feature/mejoras-profesor
+Qué se hizo y por qué:
+- Sonidos sintéticos con Web Audio API (`OscillatorNode` + `GainNode` con envolvente suave para evitar chasquidos y volumen bajo), sin archivos externos ni librerías. El `AudioContext` se crea recién en la primera interacción del usuario (`pointerdown`/`keydown`/`click`) para cumplir con la política de reproducción automática del navegador.
+- Definición pura de notas (`SONIDOS`: `cobro`, `escaneo`, `error`, `caja`, `aviso`), lectura/escritura segura de preferencia de silencio en `localStorage` (`leerPreferenciaSonidosSilenciados`, `guardarPreferenciaSonidosSilenciados`) y mapeo de eventos (`obtenerSonidoParaEvento`) en `web/js/logicaPwa.js`. Conectados en cobro exitoso (online y sin internet), agregado al carrito, toasts de tipo `peligro`, apertura/cierre de turno, confirmación de precios de importación (CSV directo e IA) y alertas en vivo por Socket.IO (`stock.bajo` y `costo.actualizado` con `alertaMargenBajo`), sin sonar en toasts informativos.
+- Botón `#btn-toggle-sonidos` en la barra superior (`web/index.html`) con icono de parlante, `aria-label` dinámico ("Silenciar sonidos" / "Activar sonidos") y `aria-pressed`, activado por defecto.
+- Helper `conCargando(boton, accionAsync)` en `web/js/app.js`: deshabilita el botón, evita doble clic, agrega `.btn-cargando` (spinner CSS puro), `aria-busy="true"` y texto accesible `.sr-only`, restaurando siempre en `finally`. Aplicado a Ingresar, Cobrar y Emitir Ticket, Abrir/Cerrar turno, Movimiento de caja, Filtrar en Reportes, Punto de equilibrio, Consultor IA (insumos y auditoría de caja), Compras (Analizar con IA, Confirmar precios, Aprobar/Descartar IA, Compra manual), Recetas/Carta (nuevo producto, editar precio, guardar/quitar ítem, recalcular) y Equipo (agregar empleado, guardar permisos, dar de baja / reactivar).
+- Indicadores de carga ("Cargando…" con spinner y filas/tarjetas esqueleto en CSS puro) en carta del POS, tabla de Recetas, tabla de Reportes y tarjetas de Equipo, limpiados siempre en `finally` al terminar o fallar, respetando `@media (prefers-reduced-motion: reduce)`.
+Archivos tocados:
+- `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`, `web/css/estilos.css`
+- `backend-node/tests/unit/logicaPwa.unit.test.js` (3 tests unitarios para sonidos, preferencia con errores de storage y mapeo de eventos)
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (25 suites, 207 tests en verde).
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 ---

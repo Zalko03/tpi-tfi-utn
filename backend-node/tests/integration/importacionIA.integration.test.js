@@ -704,4 +704,102 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
             'Cacao Amargo',
         ]);
     });
+
+    it('acepta POST /api/importaciones con imagen válida (>100KB), no guarda la imagen en MongoDB y rechaza entradas inválidas', async () => {
+        const resSinDatos = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({ proveedorNombre: 'Sin datos' });
+        expect(resSinDatos.status).toBe(400);
+        expect(resSinDatos.body).toHaveProperty('mensaje', 'Datos de entrada inválidos');
+
+        const resMimeInvalido = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                origenArchivo: 'imagen',
+                imagenBase64: Buffer.from('gif-simulado').toString('base64'),
+                imagenMime: 'image/gif',
+            });
+        expect(resMimeInvalido.status).toBe(400);
+        expect(resMimeInvalido.body.detalles).toContain('Elegí una foto JPG, PNG o WEBP.');
+
+        const resMuyGrande = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                origenArchivo: 'imagen',
+                imagenBase64: 'A'.repeat(7 * 1024 * 1024 + 4),
+                imagenMime: 'image/jpeg',
+            });
+        expect(resMuyGrande.status).toBe(400);
+        expect(resMuyGrande.body.detalles).toContain('La foto es demasiado pesada. Máximo 5 MB.');
+
+        // Payload > 100 KB (prueba que el límite JSON ampliado funciona en /api/importaciones)
+        const imagenMedianaB64 = Buffer.alloc(160 * 1024, 0x42).toString('base64');
+        const resOk = await request(app)
+            .post('/api/importaciones')
+            .set('Authorization', `Bearer ${tokenDuenio}`)
+            .send({
+                proveedorNombre: 'Mayorista Con Foto',
+                origenArchivo: 'imagen',
+                imagenBase64: imagenMedianaB64,
+                imagenMime: 'image/jpeg',
+            });
+
+        expect(resOk.status).toBe(202);
+        expect(resOk.body).toHaveProperty('importacionId');
+
+        const docMongo = await ImportacionIA.findById(resOk.body.importacionId).lean();
+        expect(docMongo.entrada.origenArchivo).toBe('imagen');
+        expect(docMongo.entrada.textoLista).toBeNull();
+        expect(docMongo.entrada.imagenMime).toBe('image/jpeg');
+        expect(docMongo.entrada.imagenTamanoBytes).toBe(160 * 1024);
+        expect(docMongo.entrada.imagenHash).toMatch(/^[a-f0-9]{64}$/);
+        expect(JSON.stringify(docMongo)).not.toContain(imagenMedianaB64);
+
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                proveedor_detectado: 'Mayorista Con Foto',
+                envio_detectado: '0.00',
+                moneda: 'ARS',
+                items: [
+                    {
+                        nombre_insumo: 'Leche entera',
+                        cantidad: '12',
+                        unidad: 'l',
+                        precio_total: '16200.00',
+                    },
+                ],
+                advertencias: [],
+                version_prompt: 'v1',
+                proveedor_ia: 'groq',
+                latencia_ms: 820,
+                contingencia: false,
+            }),
+        });
+
+        await procesarImportacionEnSegundoPlano(resOk.body.importacionId, {
+            proveedorNombre: 'Mayorista Con Foto',
+            versionPrompt: 'v1',
+            origenArchivo: 'imagen',
+            imagenBase64: imagenMedianaB64,
+            imagenMime: 'image/jpeg',
+        });
+
+        const cuerpoEnviado = JSON.parse(global.fetch.mock.calls[0][1].body);
+        expect(cuerpoEnviado.imagen_base64).toBe(imagenMedianaB64);
+        expect(cuerpoEnviado.imagen_mime).toBe('image/jpeg');
+        expect(cuerpoEnviado.origen_archivo).toBe('imagen');
+
+        const det = await request(app)
+            .get(`/api/importaciones/${resOk.body.importacionId}`)
+            .set('Authorization', `Bearer ${tokenDuenio}`);
+        expect(det.status).toBe(200);
+        expect(det.body.estado).toBe('LISTA');
+        expect(det.body.salida.items).toHaveLength(1);
+        expect(det.body.salida.items[0].nombreInsumo).toBe('Leche entera');
+    });
 });

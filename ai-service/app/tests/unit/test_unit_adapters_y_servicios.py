@@ -1,6 +1,7 @@
 """Tests unitarios aislados de adaptadores (Gemini/Ollama) y servicios con contingencia."""
 
 import asyncio
+import base64
 import json
 from decimal import Decimal
 from typing import Any
@@ -250,6 +251,127 @@ class TestUnitAdapters:
         assert json_llamada["response_format"] == {"type": "json_object"}
         assert json_llamada["messages"][0] == {"role": "system", "content": "SISTEMA_GROQ"}
         assert json_llamada["messages"][1] == {"role": "user", "content": "USUARIO_GROQ"}
+
+    async def test_gemini_adapter_envia_imagen_como_inline_data(self):
+        adaptador = GeminiAdapter(
+            api_key="clave-ficticia-test",
+            modelo="gemini-1.5-flash",
+            base_url="https://api.ejemplo.test/v1beta",
+        )
+        respuesta_http_mock = MagicMock()
+        respuesta_http_mock.raise_for_status = MagicMock()
+        respuesta_http_mock.json.return_value = {
+            "candidates": [{"content": {"parts": [{"text": '{"moneda": "ARS", "items": []}'}]}}]
+        }
+
+        cliente_mock = AsyncMock()
+        cliente_mock.post.return_value = respuesta_http_mock
+        cliente_mock.__aenter__.return_value = cliente_mock
+        cliente_mock.__aexit__.return_value = None
+
+        img_b64 = base64.b64encode(b"\xff\xd8\xff\xe0foto").decode("ascii")
+        with patch("httpx.AsyncClient", return_value=cliente_mock):
+            resultado = await adaptador.generar_json_con_imagen(
+                instrucciones_sistema="INSTRUCCION_FOTO",
+                datos_usuario='{"proveedor_informado": "Litoral"}',
+                imagen_base64=img_b64,
+                imagen_mime="image/jpeg",
+                timeout=5.0,
+            )
+
+        assert resultado == {"moneda": "ARS", "items": []}
+        json_llamada = cliente_mock.post.call_args.kwargs["json"]
+        partes_user = json_llamada["contents"][0]["parts"]
+        assert partes_user[0] == {"text": '{"proveedor_informado": "Litoral"}'}
+        assert partes_user[1] == {
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": img_b64,
+            }
+        }
+
+    async def test_groq_adapter_envia_imagen_como_image_url_con_modelo_vision(self, monkeypatch):
+        monkeypatch.setenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+        adaptador = GroqAdapter(
+            api_key="gsk-clave-ficticia-groq",
+            base_url="https://api.groq.com/openai/v1",
+            fallback_demo=False,
+        )
+        respuesta_http_mock = MagicMock()
+        respuesta_http_mock.raise_for_status = MagicMock()
+        respuesta_http_mock.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": '{"moneda": "ARS", "items": []}',
+                    }
+                }
+            ]
+        }
+        cliente_mock = AsyncMock()
+        cliente_mock.post.return_value = respuesta_http_mock
+        cliente_mock.__aenter__.return_value = cliente_mock
+        cliente_mock.__aexit__.return_value = None
+
+        img_b64 = base64.b64encode(b"png-simulado").decode("ascii")
+        with patch("httpx.AsyncClient", return_value=cliente_mock):
+            resultado = await adaptador.generar_json_con_imagen(
+                instrucciones_sistema="INSTRUCCION_FOTO",
+                datos_usuario='{"proveedor_informado": "Norte"}',
+                imagen_base64=img_b64,
+                imagen_mime="image/png",
+                timeout=5.0,
+            )
+
+        assert resultado == {"moneda": "ARS", "items": []}
+        json_llamada = cliente_mock.post.call_args.kwargs["json"]
+        assert json_llamada["model"] == "meta-llama/llama-4-scout-17b-16e-instruct"
+        assert json_llamada["messages"][0] == {"role": "system", "content": "INSTRUCCION_FOTO"}
+        contenido_user = json_llamada["messages"][1]["content"]
+        assert contenido_user[0] == {"type": "text", "text": '{"proveedor_informado": "Norte"}'}
+        assert contenido_user[1] == {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+        }
+
+    async def test_extraccion_con_imagen_devuelve_contingencia_honesta_sin_clave(self, monkeypatch):
+        monkeypatch.setenv("AI_MAX_RETRIES", "0")
+        img_b64 = base64.b64encode(b"\xff\xd8\xff\xe0foto").decode("ascii")
+        solicitud = SolicitudExtraccionPrecios(
+            imagen_base64=img_b64,
+            imagen_mime="image/jpeg",
+            origen_archivo="imagen",
+            proveedor_nombre="Proveedor Foto",
+        )
+
+        # Groq sin clave no debe inventar ítems heurísticos
+        res_groq = await extraer_precios_de_lista(
+            solicitud,
+            adaptador=GroqAdapter(api_key="", fallback_demo=True),
+        )
+        assert res_groq.contingencia is True
+        assert res_groq.items == []
+        assert res_groq.proveedor_ia == "contingencia"
+        assert any("GROQ_API_KEY" in adv for adv in res_groq.advertencias)
+
+        # Gemini sin clave entra en contingencia honesta
+        res_gemini = await extraer_precios_de_lista(
+            solicitud,
+            adaptador=GeminiAdapter(api_key=""),
+        )
+        assert res_gemini.contingencia is True
+        assert res_gemini.items == []
+        assert any("GEMINI_API_KEY" in adv for adv in res_gemini.advertencias)
+
+        # Proveedor sin soporte de imágenes (Ollama) entra en contingencia honesta
+        res_ollama = await extraer_precios_de_lista(
+            solicitud,
+            adaptador=OllamaAdapter(),
+        )
+        assert res_ollama.contingencia is True
+        assert res_ollama.items == []
+        assert any("no puede leer imágenes" in adv for adv in res_ollama.advertencias)
 
     def test_fabrica_obtener_proveedor_ia_selecciona_correctamente(self):
         assert isinstance(obtener_proveedor_ia("groq"), GroqAdapter)

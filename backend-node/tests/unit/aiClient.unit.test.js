@@ -151,6 +151,58 @@ describe('Unit Tests - Cliente HTTP hacia ai-service (ai.client.js)', () => {
             expect(resultado.latenciaMs).toBe(420);
         });
 
+        it('reenvía imagen_base64 e imagen_mime sin texto_lista cuando llega una foto', async () => {
+            const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    proveedor_detectado: 'Foto Mayorista',
+                    envio_detectado: '0.00',
+                    moneda: 'ARS',
+                    items: [
+                        {
+                            nombre_insumo: 'Café molido',
+                            cantidad: '1',
+                            unidad: 'kg',
+                            precio_total: '21000.00',
+                        },
+                    ],
+                    advertencias: [],
+                    version_prompt: 'v1',
+                    proveedor_ia: 'groq',
+                    latencia_ms: 910,
+                    contingencia: false,
+                }),
+            });
+
+            const imgB64 = Buffer.from('jpeg-simulado').toString('base64');
+            const resultado = await extraerPreciosIA({
+                proveedorNombre: 'Foto Mayorista',
+                versionPrompt: 'v1',
+                origenArchivo: 'imagen',
+                imagenBase64: imgB64,
+                imagenMime: 'image/jpeg',
+            });
+
+            expect(resultado.contingencia).toBe(false);
+            expect(resultado.items).toHaveLength(1);
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+
+            const [urlLlamada, opciones] = global.fetch.mock.calls[0];
+            expect(urlLlamada).toContain('/v1/extraer-precios');
+            const cuerpoEnviado = JSON.parse(opciones.body);
+            expect(cuerpoEnviado).toEqual({
+                proveedor_nombre: 'Foto Mayorista',
+                version_prompt: 'v1',
+                origen_archivo: 'imagen',
+                imagen_base64: imgB64,
+                imagen_mime: 'image/jpeg',
+            });
+            expect(cuerpoEnviado).not.toHaveProperty('texto_lista');
+            expect(timeoutSpy).toHaveBeenCalledWith(25000);
+        });
+
         it('retorna objeto de contingencia cuando ai-service falla o no está disponible', async () => {
             global.fetch = jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED'));
 

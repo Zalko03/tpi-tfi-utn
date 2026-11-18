@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { extraerPreciosIA } from '../clients/ai.client.js';
 import { confirmarImportacionComprasDjango } from '../clients/django.client.js';
 import * as importacionRepo from '../repositories/importacionIA.repository.js';
@@ -11,7 +12,14 @@ import { guardarSnapshot } from './snapshotCosteo.service.js';
  */
 export const procesarImportacionEnSegundoPlano = async (
     importacionId,
-    { textoLista, proveedorNombre = null, versionPrompt = 'v1', origenArchivo = 'texto' }
+    {
+        textoLista = null,
+        proveedorNombre = null,
+        versionPrompt = 'v1',
+        origenArchivo = 'texto',
+        imagenBase64 = null,
+        imagenMime = null,
+    }
 ) => {
     try {
         await importacionRepo.actualizarImportacionPorId(importacionId, {
@@ -23,6 +31,8 @@ export const procesarImportacionEnSegundoPlano = async (
             proveedorNombre,
             versionPrompt,
             origenArchivo,
+            imagenBase64,
+            imagenMime,
         });
 
         const esContingencia =
@@ -104,26 +114,49 @@ export const procesarImportacionEnSegundoPlano = async (
  */
 export const iniciarImportacionPrecios = async ({
     usuarioId,
-    textoLista,
+    textoLista = null,
     proveedorNombre = null,
     versionPrompt = 'v1',
     origenArchivo = 'texto',
+    imagenBase64 = null,
+    imagenMime = null,
 }) => {
     const textoLimpio = typeof textoLista === 'string' ? textoLista.trim() : '';
-    if (!usuarioId || !textoLimpio) {
-        const error = new Error('Faltan los datos de tu usuario o la lista de precios.');
+    const imagenLimpia = typeof imagenBase64 === 'string' ? imagenBase64.trim() : '';
+    const tieneImagen = imagenLimpia.length > 0;
+
+    if (!usuarioId || (!textoLimpio && !tieneImagen)) {
+        const error = new Error('Faltan los datos de tu usuario, la lista de precios o la foto.');
         error.statusCode = 400;
         throw error;
     }
 
-    const origenLimpio = ['texto', 'csv', 'pdf'].includes(String(origenArchivo || '').toLowerCase())
+    const origenesValidos = ['texto', 'csv', 'pdf', 'imagen'];
+    let origenLimpio = origenesValidos.includes(String(origenArchivo || '').toLowerCase())
         ? String(origenArchivo).toLowerCase()
         : 'texto';
+    if (tieneImagen && origenLimpio !== 'imagen') {
+        origenLimpio = 'imagen';
+    }
 
+    let imagenHash = null;
+    let imagenTamanoBytes = null;
+    let imagenMimeLimpio = null;
+    if (tieneImagen) {
+        const bufferImagen = Buffer.from(imagenLimpia, 'base64');
+        imagenHash = crypto.createHash('sha256').update(bufferImagen).digest('hex');
+        imagenTamanoBytes = bufferImagen.length;
+        imagenMimeLimpio = imagenMime ? String(imagenMime).trim().toLowerCase() : 'image/jpeg';
+    }
+
+    // Nunca persistimos los bytes de la imagen en MongoDB; solo hash, tamaño y MIME para trazabilidad
     const datosEntrada = {
-        textoLista: textoLimpio,
+        textoLista: textoLimpio || null,
         proveedorNombre: proveedorNombre ? String(proveedorNombre).trim() : null,
         origenArchivo: origenLimpio,
+        imagenHash,
+        imagenTamanoBytes,
+        imagenMime: imagenMimeLimpio,
     };
     const versionLimpia = versionPrompt ? String(versionPrompt).trim() : 'v1';
 
@@ -141,6 +174,8 @@ export const iniciarImportacionPrecios = async ({
             proveedorNombre: datosEntrada.proveedorNombre,
             versionPrompt: versionLimpia,
             origenArchivo: origenLimpio,
+            imagenBase64: tieneImagen ? imagenLimpia : null,
+            imagenMime: imagenMimeLimpio,
         }).catch(() => {
             // El error ya es capturado y persistido dentro de procesarImportacionEnSegundoPlano
         });
