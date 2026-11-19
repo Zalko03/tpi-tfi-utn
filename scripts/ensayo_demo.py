@@ -9,6 +9,7 @@ reportes de los últimos 7 días y carta digital pública.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
@@ -93,21 +94,28 @@ class ClienteApi:
             else:
                 self.peticiones_node_anon += 1
 
-        req = urllib.request.Request(
-            url=url,
-            data=data_bytes,
-            headers=cabeceras,
-            method=metodo.upper(),
-        )
         try:
+            req = urllib.request.Request(
+                url=url,
+                data=data_bytes,
+                headers=cabeceras,
+                method=metodo.upper(),
+            )
             with urllib.request.urlopen(req, timeout=self.timeout_segundos) as resp:
                 estado = resp.status
                 texto = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             estado = exc.code
-            texto = exc.read().decode("utf-8", errors="replace")
+            try:
+                texto = exc.read().decode("utf-8", errors="replace")
+            except (TimeoutError, http.client.HTTPException, OSError):
+                texto = ""
         except urllib.error.URLError as exc:
             raise ErrorPasoEnsayo(f"No se pudo conectar con {url}: {exc.reason}") from exc
+        except (TimeoutError, http.client.HTTPException, OSError, ValueError) as exc:
+            raise ErrorPasoEnsayo(
+                f"Error de transporte o tiempo de espera en {metodo.upper()} {url}: {exc}"
+            ) from exc
 
         if estado not in estados_esperados:
             resumen = _extraer_mensaje_error(texto)
@@ -137,6 +145,42 @@ def _a_decimal(valor: object, nombre_campo: str) -> Decimal:
         raise ErrorPasoEnsayo(
             f"El campo '{nombre_campo}' no tiene un formato numérico válido."
         ) from exc
+
+
+def _validar_url_http(valor: str | None, nombre_variable: str, por_defecto: str) -> str:
+    """Valida que la URL base use esquema http/https y tenga un host válido."""
+    if valor is None or valor == "":
+        return por_defecto
+
+    candidata = valor.strip()
+    try:
+        partes = urllib.parse.urlsplit(candidata)
+        puerto = partes.port
+    except ValueError as exc:
+        raise ErrorPasoEnsayo(
+            f"{nombre_variable} inválida ('{valor}'): URL malformada ({exc})."
+        ) from exc
+
+    if partes.scheme not in {"http", "https"} or not bool(partes.netloc) or not partes.hostname:
+        raise ErrorPasoEnsayo(
+            f"{nombre_variable} inválida ('{valor}'): debe usar http:// o https:// con un host válido."
+        )
+    if puerto is not None and puerto <= 0:
+        raise ErrorPasoEnsayo(f"{nombre_variable} inválida ('{valor}'): puerto inválido.")
+    return candidata.rstrip("/")
+
+
+def _validar_politica_node(valor: str | None) -> str:
+    """Valida que VERIFICAR_NODE sea explícitamente 'auto', '1' o '0'."""
+    if valor is None or valor == "":
+        return "auto"
+
+    politica = valor.strip().lower()
+    if politica not in {"auto", "1", "0"}:
+        raise ErrorPasoEnsayo(
+            f"VERIFICAR_NODE inválido ('{valor}'): valores permitidos: auto, 1 o 0."
+        )
+    return politica
 
 
 def _obtener_credenciales() -> tuple[str, str]:
@@ -317,7 +361,7 @@ def _paso_cobrar_venta(
     turno_id: int,
     prod_id: int,
     prod_nombre: str,
-) -> tuple[int, str]:
+) -> tuple[int, Decimal, str]:
     """Paso 4: Cobrar una venta en el turno abierto usando id_operacion único."""
     _, venta = cliente.peticion_json(
         "POST",
@@ -338,7 +382,7 @@ def _paso_cobrar_venta(
     if total <= Decimal("0"):
         raise ErrorPasoEnsayo("La venta cobrada devolvió total <= 0.")
     venta_id = int(venta["id"])
-    return venta_id, f"Venta #{venta_id} cobrada (1x {prod_nombre}, total ${total})"
+    return venta_id, total, f"Venta #{venta_id} cobrada (1x {prod_nombre}, total ${total})"
 
 
 def _paso_anular_otra_venta(
@@ -349,13 +393,13 @@ def _paso_anular_otra_venta(
     turno_id: int,
     prod_id: int,
 ) -> str:
-    """Paso 5: Registrar una segunda venta de prueba y anularla con permiso de dueño."""
+    """Paso 5: Registrar una segunda venta de prueba en efectivo y anularla con permiso de dueño."""
     _, venta_temp = cliente.peticion_json(
         "POST",
         f"{django_url}/api/ventas/",
         cuerpo={
             "turno_caja": turno_id,
-            "medio_pago": "TARJETA",
+            "medio_pago": "EFECTIVO",
             "origen": "propio",
             "id_operacion": str(uuid.uuid4()),
             "items": [{"producto_id": prod_id, "cantidad": "1"}],
@@ -383,6 +427,7 @@ def _paso_cerrar_turno(
     token_cajero: str,
     token_duenio: str,
     turno_id: int,
+    total_venta_emitida: Decimal,
 ) -> str:
     """Paso 6: Cerrar el turno como cajero (arqueo ciego) y validar auditoría como dueño."""
     _, cierre = cliente.peticion_json(
@@ -412,9 +457,49 @@ def _paso_cerrar_turno(
             "El dueño no recibió efectivo_esperado/diferencia al auditar el cierre."
         )
 
+    efectivo_inicial = _a_decimal(turno_duenio.get("efectivo_inicial"), "efectivo_inicial")
+    ventas_efectivo = _a_decimal(turno_duenio.get("ventas_efectivo_total"), "ventas_efectivo_total")
+    efectivo_esperado = _a_decimal(turno_duenio.get("efectivo_esperado"), "efectivo_esperado")
+    efectivo_contado = _a_decimal(turno_duenio.get("efectivo_contado"), "efectivo_contado")
+    diferencia = _a_decimal(turno_duenio.get("diferencia"), "diferencia")
+
+    movimientos = turno_duenio.get("movimientos") or []
+    entradas = sum(
+        (
+            _a_decimal(m.get("monto"), "movimiento.monto")
+            for m in movimientos
+            if m.get("tipo") == "ENTRADA"
+        ),
+        Decimal("0.00"),
+    )
+    salidas = sum(
+        (
+            _a_decimal(m.get("monto"), "movimiento.monto")
+            for m in movimientos
+            if m.get("tipo") == "SALIDA"
+        ),
+        Decimal("0.00"),
+    )
+    esperado_calculado = efectivo_inicial + ventas_efectivo + entradas - salidas
+    if efectivo_esperado != esperado_calculado:
+        raise ErrorPasoEnsayo(
+            f"Inconsistencia en efectivo_esperado del turno #{turno_id}: "
+            f"reportado ${efectivo_esperado}, calculado ${esperado_calculado}."
+        )
+    if diferencia != efectivo_contado - efectivo_esperado:
+        raise ErrorPasoEnsayo(
+            f"Inconsistencia en diferencia de caja del turno #{turno_id}: "
+            f"reportado ${diferencia}, esperado ${efectivo_contado - efectivo_esperado}."
+        )
+    if total_venta_emitida > Decimal("0") and ventas_efectivo < total_venta_emitida:
+        raise ErrorPasoEnsayo(
+            f"Las ventas en efectivo del turno #{turno_id} (${ventas_efectivo}) "
+            f"son menores a la venta emitida (${total_venta_emitida})."
+        )
+
     return (
         f"Turno #{turno_id} cerrado (arqueo ciego OK; esperado gerencia "
-        f"${turno_duenio.get('efectivo_esperado')}, dif ${turno_duenio.get('diferencia')})"
+        f"${efectivo_esperado}, dif ${diferencia})"
     )
 
 
@@ -422,6 +507,7 @@ def _paso_reportes_ultimos_7_dias(
     cliente: ClienteApi,
     django_url: str,
     token_duenio: str,
+    total_venta_emitida: Decimal,
 ) -> str:
     """Paso 7: Consultar reportes financieros, ranking, trazabilidad y punto de equilibrio."""
     hoy = date.today()
@@ -445,6 +531,10 @@ def _paso_reportes_ultimos_7_dias(
         raise ErrorPasoEnsayo(
             "El reporte ganancia-diaria de últimos 7 días no devolvió ventas emitidas."
         )
+    if total_venta_emitida > Decimal("0") and ingresos < total_venta_emitida:
+        raise ErrorPasoEnsayo(
+            f"El neto de ganancia-diaria (${ingresos}) es menor a la venta emitida (${total_venta_emitida})."
+        )
 
     _, ranking = cliente.peticion_json(
         "GET",
@@ -461,8 +551,17 @@ def _paso_reportes_ultimos_7_dias(
         token=token_duenio,
         estados_esperados=(200,),
     )
-    if not (por_prod.get("datos") or []):
+    filas_prod = por_prod.get("datos") or []
+    if not filas_prod:
         raise ErrorPasoEnsayo("El reporte por producto devolvió lista vacía.")
+    suma_por_producto = sum(
+        (_a_decimal(fila.get("ingresos_totales"), "ingresos_totales") for fila in filas_prod),
+        Decimal("0.00"),
+    )
+    if abs(suma_por_producto - ingresos) > Decimal("0.01"):
+        raise ErrorPasoEnsayo(
+            f"Inconsistencia entre ganancia-diaria (${ingresos}) y suma por producto (${suma_por_producto})."
+        )
 
     _, movs = cliente.peticion_json(
         "GET",
@@ -561,11 +660,24 @@ def ejecutar_ensayo(
     modo_node: str | None = None,
 ) -> int:
     """Ejecuta el flujo completo e imprime el resumen con ✅ / ❌ por paso."""
-    django_base = (django_url or os.environ.get("DJANGO_URL") or "http://localhost:8000").rstrip(
-        "/"
-    )
-    node_base = (node_url or os.environ.get("NODE_URL") or "http://localhost:3000").rstrip("/")
-    politica_node = (modo_node or os.environ.get("VERIFICAR_NODE") or "auto").strip().lower()
+    try:
+        django_base = _validar_url_http(
+            django_url if django_url is not None else os.environ.get("DJANGO_URL"),
+            "DJANGO_URL",
+            "http://localhost:8000",
+        )
+        node_base = _validar_url_http(
+            node_url if node_url is not None else os.environ.get("NODE_URL"),
+            "NODE_URL",
+            "http://localhost:3000",
+        )
+        politica_node = _validar_politica_node(
+            modo_node if modo_node is not None else os.environ.get("VERIFICAR_NODE")
+        )
+        clave_duenio, clave_cajero = _obtener_credenciales()
+    except ErrorPasoEnsayo as exc:
+        print(f"❌ Configuración inválida: {exc}")
+        return 1
 
     print("=================================================================")
     print("  Sapori Stock — Ensayo automático del flujo demo (T10)")
@@ -578,12 +690,6 @@ def ejecutar_ensayo(
 
     cliente = ClienteApi()
     resultados: list[ResultadoPaso] = []
-
-    try:
-        clave_duenio, clave_cajero = _obtener_credenciales()
-    except ErrorPasoEnsayo as exc:
-        print(f"❌ Configuración inválida: {exc}")
-        return 1
 
     verificar_node = False
     if politica_node == "1":
@@ -602,6 +708,7 @@ def ejecutar_ensayo(
     turno_id = 0
     prod_pos_id = 0
     prod_pos_nombre = ""
+    total_venta_emitida = Decimal("0.00")
 
     def correr_paso(numero: int, nombre: str, fn) -> bool:
         try:
@@ -637,11 +744,11 @@ def ejecutar_ensayo(
         if correr_paso(3, "Abrir turno del cajero (o reutilizar abierto)", _step3):
             # 4. Cobrar una venta
             def _step4() -> str:
-                nonlocal prod_pos_id, prod_pos_nombre
+                nonlocal prod_pos_id, prod_pos_nombre, total_venta_emitida
                 prod_pos_id, prod_pos_nombre = _elegir_producto_pos(
                     cliente, django_base, token_cajero
                 )
-                _, msg = _paso_cobrar_venta(
+                _, total_venta_emitida, msg = _paso_cobrar_venta(
                     cliente,
                     django_base,
                     token_cajero,
@@ -671,7 +778,12 @@ def ejecutar_ensayo(
                 6,
                 "Cerrar el turno (arqueo ciego + auditoría dueño)",
                 lambda: _paso_cerrar_turno(
-                    cliente, django_base, token_cajero, token_duenio, turno_id
+                    cliente,
+                    django_base,
+                    token_cajero,
+                    token_duenio,
+                    turno_id,
+                    total_venta_emitida,
                 ),
             )
 
@@ -679,7 +791,9 @@ def ejecutar_ensayo(
         correr_paso(
             7,
             "Reportes últimos 7 días (ganancia, ranking, movimientos, PE)",
-            lambda: _paso_reportes_ultimos_7_dias(cliente, django_base, token_duenio),
+            lambda: _paso_reportes_ultimos_7_dias(
+                cliente, django_base, token_duenio, total_venta_emitida
+            ),
         )
 
     # 8. Carta pública (se intenta incluso si falló algún paso autenticado)
