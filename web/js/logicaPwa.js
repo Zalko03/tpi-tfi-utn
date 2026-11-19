@@ -3314,4 +3314,140 @@ export const generarSvgQrCarta = (url, opciones = {}) => {
     );
 };
 
+// ============================================================
+// MAPA DE UBICACIÓN EN LA CARTA PÚBLICA (OpenStreetMap)
+// ============================================================
+const parsearCoordenadaMapa = (valor, minimo, maximo) => {
+    if (
+        valor === null ||
+        valor === undefined ||
+        typeof valor === 'boolean' ||
+        typeof valor === 'object'
+    ) {
+        return null;
+    }
+    if (typeof valor === 'string' && valor.trim() === '') {
+        return null;
+    }
+    const numero = Number(valor);
+    if (!Number.isFinite(numero) || numero < minimo || numero > maximo) {
+        return null;
+    }
+    return numero;
+};
+
+/**
+ * Construye las URLs de OpenStreetMap (iframe embebido con bbox/marker y enlace externo)
+ * a partir de las coordenadas configuradas. Si faltan o son inválidas, devuelve null.
+ */
+export const construirUrlsMapaOpenStreetMap = (ubicacion, opciones = {}) => {
+    if (!ubicacion || typeof ubicacion !== 'object') {
+        return null;
+    }
+
+    const latitud = parsearCoordenadaMapa(ubicacion.latitud ?? ubicacion.lat, -90, 90);
+    const longitud = parsearCoordenadaMapa(
+        ubicacion.longitud ?? ubicacion.lon ?? ubicacion.lng,
+        -180,
+        180
+    );
+
+    if (latitud === null || longitud === null) {
+        return null;
+    }
+
+    const deltaBruto = Number(opciones.delta ?? 0.004);
+    const delta =
+        Number.isFinite(deltaBruto) && deltaBruto > 0 && deltaBruto <= 1 ? deltaBruto : 0.004;
+
+    const minLat = Math.max(-90, latitud - delta).toFixed(6);
+    const maxLat = Math.min(90, latitud + delta).toFixed(6);
+    const minLon = Math.max(-180, longitud - delta).toFixed(6);
+    const maxLon = Math.min(180, longitud + delta).toFixed(6);
+    const latStr = latitud.toFixed(6);
+    const lonStr = longitud.toFixed(6);
+
+    const zoomBruto = Number(opciones.zoom ?? 17);
+    const zoom = Number.isInteger(zoomBruto) && zoomBruto >= 1 && zoomBruto <= 19 ? zoomBruto : 17;
+
+    const direccion =
+        typeof ubicacion.direccion === 'string' ? ubicacion.direccion.trim() : '';
+
+    return {
+        urlEmbed: `https://www.openstreetmap.org/export/embed.html?bbox=${minLon},${minLat},${maxLon},${maxLat}&layer=mapnik&marker=${latStr},${lonStr}`,
+        urlMapa: `https://www.openstreetmap.org/?mlat=${latStr}&mlon=${lonStr}#map=${zoom}/${latStr}/${lonStr}`,
+        direccion,
+        latitud,
+        longitud,
+    };
+};
+
+/**
+ * Resuelve la configuración de ubicación del local desde la configuración global de la web.
+ * Devuelve null si no hay coordenadas configuradas.
+ */
+export const resolverUbicacionCartaPublica = (configGlobal) => {
+    if (!configGlobal || typeof configGlobal !== 'object') {
+        return null;
+    }
+    const ubicacion = configGlobal.ubicacionLocal ?? configGlobal.ubicacion ?? null;
+    const mapa = construirUrlsMapaOpenStreetMap(ubicacion);
+    if (!mapa) {
+        return null;
+    }
+    return {
+        visible: true,
+        ...mapa,
+    };
+};
+
+/**
+ * Muestra u oculta la sección "Dónde estamos" en la carta pública según la configuración.
+ * Si no hay coordenadas válidas, mantiene la sección oculta y no asigna src al iframe.
+ */
+export const renderizarUbicacionCarta = (elementos = {}, configGlobal = null) => {
+    const { seccion, direccionEl, iframe, enlace } = elementos || {};
+    const ubicacion = resolverUbicacionCartaPublica(configGlobal);
+
+    if (!ubicacion) {
+        if (seccion) {
+            seccion.hidden = true;
+        }
+        if (iframe) {
+            if (typeof iframe.removeAttribute === 'function') {
+                iframe.removeAttribute('src');
+            } else {
+                iframe.src = '';
+            }
+        }
+        if (enlace) {
+            if (typeof enlace.removeAttribute === 'function') {
+                enlace.removeAttribute('href');
+            } else {
+                enlace.href = '';
+            }
+        }
+        if (direccionEl) {
+            direccionEl.textContent = '';
+            direccionEl.hidden = true;
+        }
+        return false;
+    }
+
+    if (direccionEl) {
+        direccionEl.textContent = ubicacion.direccion;
+        direccionEl.hidden = !ubicacion.direccion;
+    }
+    if (iframe) {
+        iframe.src = ubicacion.urlEmbed;
+    }
+    if (enlace) {
+        enlace.href = ubicacion.urlMapa;
+    }
+    if (seccion) {
+        seccion.hidden = false;
+    }
+    return true;
+};
+
 
