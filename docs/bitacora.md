@@ -22,6 +22,28 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-19
+Tarea: T8 (corrección post-auditoría) — Consistencia de ubicación, privacidad de iframe, a11y, test real de SW y CONNECTIONS.md
+Rama: feat/mapa-carta-publica
+Cambios realizados:
+- **Documentación de conexiones (`docs/CONNECTIONS.md`):** Se actualizó la referencia de caché del Service Worker a `cafe-gestion-pwa-v4` y se agregó la fila de conexión cliente `web/carta.html` → `https://www.openstreetmap.org` (iframe embebido, solo cliente, sin credenciales/claves), detallando la directiva CSP `frame-src https://www.openstreetmap.org` en `backend-node/app.js`.
+- **Seguridad y accesibilidad en `web/carta.html`:** Se reemplazó `referrerpolicy="no-referrer-when-downgrade"` por `referrerpolicy="strict-origin-when-cross-origin"` en `#carta-ubicacion-iframe` y se añadió `<span class="sr-only"> (se abre en una pestaña nueva)</span>` en `#carta-ubicacion-link` reutilizando `.sr-only` de `web/css/estilos.css`.
+- **Coherencia de ubicación ficticia (`web/js/config.js`):** Se actualizó `direccion` a `'Av. 25 de Mayo 100 (frente a Plaza 25 de Mayo), Resistencia, Chaco'` para alinear la dirección ficticia con las coordenadas ficticias de Plaza 25 de Mayo (`-27.4514, -58.9867`).
+- **Service Worker testeable (`web/sw.js`) y tests (`backend-node/tests/`):** Se extrajo la lógica de exclusión de `web/sw.js` a la función pura `debeIgnorarPeticionSw(url, destino, origen)` con guarda sobre `self.addEventListener` y exportación CommonJS condicional; se reemplazaron las aserciones de texto plano en `clientePwa.integration.test.js` y se sumaron pruebas unitarias en `logicaPwa.unit.test.js` cubriendo recurso propio, origen externo, destino `'iframe'` y `openstreetmap.org`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/carta.html` (`web/js/carta.js`) → `https://www.openstreetmap.org` (solo cliente, `frame-src` en `backend-node/app.js`, exclusión en `web/sw.js` `cafe-gestion-pwa-v4`).
+Problemas y decisiones técnicas:
+- Se mantuvo `web/sw.js` compatible simultáneamente con el contexto Service Worker del navegador y con `createRequire` / `vm` en Node/Jest sin introducir pasos de build.
+Archivos tocados:
+- `docs/CONNECTIONS.md`, `docs/bitacora.md`
+- `web/carta.html`, `web/js/config.js`, `web/sw.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`, `backend-node/tests/unit/logicaPwa.unit.test.js`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js web/js/logicaPwa.js web/js/carta.js web/js/config.js web/sw.js`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+
+---
+Fecha: 2026-11-19
 Tarea: T8 — Mapa embebido de OpenStreetMap en la carta pública (HU15)
 Rama: feat/mapa-carta-publica
 Cambios realizados:
