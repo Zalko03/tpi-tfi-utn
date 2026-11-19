@@ -21,6 +21,31 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-19
+Tarea: T8 — Mapa embebido de OpenStreetMap en la carta pública (HU15)
+Rama: feat/mapa-carta-publica
+Cambios realizados:
+- **Configuración externa (`web/js/config.js`):** Se creó la configuración web pública (`window.__SAPORI_CONFIG__.ubicacionLocal`) con dirección inventada en Resistencia, Chaco (`Av. San Martín 1420, Resistencia, Chaco`) y coordenadas, sin fijarlas en el código de la carta ni en el HTML.
+- **Lógica pura del mapa (`web/js/logicaPwa.js`):** Se agregaron `construirUrlsMapaOpenStreetMap`, `resolverUbicacionCartaPublica` y `renderizarUbicacionCarta` para armar la URL de `https://www.openstreetmap.org/export/embed.html` (`bbox` y `marker`) y el enlace externo, ocultando la sección `#carta-donde-estamos` sin asignar `src` al iframe ni generar errores cuando faltan coordenadas válidas.
+- **Vista pública, estilos, CSP y Service Worker (`web/carta.html`, `web/js/carta.js`, `web/css/estilos.css`, `backend-node/app.js`, `web/sw.js`):** Se sumó la sección "Dónde estamos" con el iframe y enlace "Abrir en el mapa" debajo de la lista de productos (adaptada a 375 px de ancho y preservando el contraste corregido en `1bdead4`), se habilitó `frameSrc: ['https://www.openstreetmap.org']` en Helmet CSP y se excluyeron iframes y peticiones externas/OpenStreetMap de la caché de `sw.js` (`cafe-gestion-pwa-v4`, precacheando `config.js`).
+- **Tests (`backend-node/tests/unit/logicaPwa.unit.test.js`, `tests/integration/clientePwa.integration.test.js`, `tests/integration/seguridadHardening.integration.test.js`):** Se cubrió el armado de URLs de OpenStreetMap, el ocultamiento sin coordenadas, el servicio de `config.js` y `carta.html`, la exclusión en `sw.js` y la directiva `frame-src` en CSP.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/carta.html` (iframe embebido) → `https://www.openstreetmap.org/export/embed.html` (solo cliente, sin API keys).
+Problemas y decisiones técnicas:
+- Se utilizó `window.__SAPORI_CONFIG__.ubicacionLocal` en `web/js/config.js` (script local `'self'` compatible con CSP) para desacoplar dirección y coordenadas del código de la carta sin agregar endpoints ni librerías externas.
+Archivos tocados:
+- `web/js/config.js`, `web/js/logicaPwa.js`, `web/js/carta.js`, `web/carta.html`, `web/css/estilos.css`, `web/sw.js`
+- `backend-node/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`, `backend-node/tests/integration/seguridadHardening.integration.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `backend-django/.venv/bin/pytest backend-django/ -q`
+- `ai-service/.venv/bin/pytest ai-service/ -q`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/js/config.js && node --check web/sw.js`
+
+---
 Fecha: 2026-11-18
 Tarea: T6 — Consolidación de presentación, evidencias visuales (IA y QR), script de capturas y guion de video
 Rama: feat/presentacion-evidencias
