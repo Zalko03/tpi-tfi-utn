@@ -22,6 +22,29 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-19
+Tarea: T9 — Matriz de historias de usuario y README para la entrega (solo documentación)
+Rama: docs/matriz-hu-readme
+Cambios realizados:
+- **Matriz de Historias de Usuario (`docs/MATRIZ_HU.md`):** Se relevó y verificó en el código fuente y suites de pruebas cada una de las 15 HU definidas en `docs/PROPUESTA.md` y `docs/PLAN_IMPLEMENTACION.md` (`HU1`–`HU15`), registrando prioridad MoSCoW, estado real (`11 Hechas`, `2 Parciales`: `HU8` y `HU14`, `2 No hechas`: `HU9` y `HU12`), ubicación exacta en código y tests que las cubren. Se dejó explícito que `HU12` (stock) no está hecha (`Insumo` no tiene stock y `/api/insumos/movimientos/` es consumo teórico), que `HU8` es parcial (`POST /api/ventas/` no emite `venta.registrada` automáticamente hacia Node), que `HU9` no está hecha, que `HU14` es parcial (`costear_con_iva` sin `condicion_fiscal`) y que `HU15` está completa incluyendo el mapa OpenStreetMap (T8).
+- **README de raíz (`README.md`):** Se actualizó la guía de puesta en marcha para Docker Compose y desarrollo local sin Docker (generación de claves JWT RS256, `USE_SQLITE=True`, comandos de arranque por servicio, tabla de variables de `.env.example` sin secretos reales, carga de datos demo y escenario `--video` de T7, usuarios demo sin contraseñas remitiendo a `.env.example`, declaración de uso de IA y cifras reales verificadas: 465 tests Django + 223 Node + 87 ai-service = 775 tests).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna (solo documentación).
+Problemas y decisiones técnicas:
+- Se auditaron los servicios, serializers y endpoints antes de clasificar cada HU para no marcar historias como "Hecha" por su nombre; no se modificó código ni se leyó `.env`.
+Archivos tocados:
+- `docs/MATRIZ_HU.md`
+- `README.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/js/config.js && node --check web/sw.js`
+---
+
+---
+Fecha: 2026-11-19
 Tarea: T8 (corrección post-auditoría) — Consistencia de ubicación, privacidad de iframe, a11y, test real de SW y CONNECTIONS.md
 Rama: feat/mapa-carta-publica
 Cambios realizados:
