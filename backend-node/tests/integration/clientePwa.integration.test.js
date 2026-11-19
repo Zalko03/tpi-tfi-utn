@@ -1,3 +1,4 @@
+import vm from 'vm';
 import request from 'supertest';
 import app from '../../app.js';
 
@@ -73,7 +74,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(resAppCarta.text).toContain('carta-donde-estamos');
         expect(resAppCarta.text).toContain('Dónde estamos');
         expect(resAppCarta.text).toContain('Abrir en el mapa');
+        expect(resAppCarta.text).toContain('(se abre en una pestaña nueva)');
         expect(resAppCarta.text).toContain('carta-ubicacion-iframe');
+        expect(resAppCarta.text).toContain('referrerpolicy="strict-origin-when-cross-origin"');
         expect(resAppCarta.text).toContain('js/config.js');
         expect(resAppCarta.text).toContain('js/carta.js');
         expect(resAppCarta.text).not.toContain('input-token-jwt');
@@ -113,12 +116,44 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         ]);
 
         expect(resSw.status).toBe(200);
-        expect(resSw.text).toContain('cafe-gestion-pwa-v4');
+        const moduloSw = { exports: {} };
+        vm.runInNewContext(resSw.text, { URL, module: moduloSw, exports: moduloSw.exports });
+        const { debeIgnorarPeticionSw, NOMBRE_CACHE } = moduloSw.exports;
+
+        expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v4');
+        expect(typeof debeIgnorarPeticionSw).toBe('function');
+        expect(
+            debeIgnorarPeticionSw(
+                'https://cafe.local/app/carta.html',
+                'document',
+                'https://cafe.local'
+            )
+        ).toBe(false);
+        expect(
+            debeIgnorarPeticionSw(
+                'https://cdn-externo.example/lib.js',
+                'script',
+                'https://cafe.local'
+            )
+        ).toBe(true);
+        expect(
+            debeIgnorarPeticionSw(
+                'https://cafe.local/embed.html',
+                'iframe',
+                'https://cafe.local'
+            )
+        ).toBe(true);
+        expect(
+            debeIgnorarPeticionSw(
+                'https://www.openstreetmap.org/export/embed.html?layer=mapnik',
+                'document',
+                'https://cafe.local'
+            )
+        ).toBe(true);
+
         expect(resSw.text).toContain('/app/carta.html');
         expect(resSw.text).toContain('/app/js/config.js');
         expect(resSw.text).toContain('/app/js/carta.js');
-        expect(resSw.text).toContain("evento.request.destination === 'iframe'");
-        expect(resSw.text).toContain('openstreetmap.org');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.worker.min.js');
         expect(resSw.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');

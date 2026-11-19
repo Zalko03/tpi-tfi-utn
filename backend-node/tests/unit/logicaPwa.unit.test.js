@@ -2367,11 +2367,61 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(mostrado).toBe(true);
             expect(elementos.seccion.hidden).toBe(false);
             expect(elementos.direccionEl.hidden).toBe(false);
+            expect(elementos.direccionEl.textContent).toContain('Plaza 25 de Mayo');
             expect(elementos.direccionEl.textContent).toContain('Resistencia, Chaco');
             expect(elementos.iframe.src).toMatch(
                 /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html\?bbox=.*&layer=mapnik&marker=/
             );
             expect(elementos.enlace.href).toMatch(/^https:\/\/www\.openstreetmap\.org\/\?mlat=/);
+        });
+
+        it('debeIgnorarPeticionSw en web/sw.js ignora otros orígenes, destino iframe y openstreetmap.org sin ignorar recursos propios', () => {
+            const requireCjs = createRequire(import.meta.url);
+            const { debeIgnorarPeticionSw, NOMBRE_CACHE } = requireCjs('../../../web/sw.js');
+
+            expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v4');
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://sapori.local/app/carta.html',
+                    'document',
+                    'https://sapori.local'
+                )
+            ).toBe(false);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans',
+                    'style',
+                    'https://sapori.local'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://sapori.local/mapa-interno.html',
+                    'iframe',
+                    'https://sapori.local'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    new URL('https://www.openstreetmap.org/export/embed.html?bbox=1,2,3,4'),
+                    '',
+                    'https://www.openstreetmap.org'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://openstreetmap.org/',
+                    'document',
+                    'https://openstreetmap.org'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://fakeopenstreetmap.org/app.js',
+                    'script',
+                    'https://fakeopenstreetmap.org'
+                )
+            ).toBe(false);
         });
     });
 });
