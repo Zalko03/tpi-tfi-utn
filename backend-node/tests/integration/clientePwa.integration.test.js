@@ -58,10 +58,11 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
     });
 
     it('sirve la página pública carta.html sin autenticación en /app/carta.html y /carta.html', async () => {
-        const [resAppCarta, resRaizCarta, resCartaJs] = await Promise.all([
+        const [resAppCarta, resRaizCarta, resCartaJs, resConfigJs] = await Promise.all([
             request(app).get('/app/carta.html'),
             request(app).get('/carta.html'),
             request(app).get('/app/js/carta.js'),
+            request(app).get('/app/js/config.js'),
         ]);
 
         expect(resAppCarta.status).toBe(200);
@@ -69,15 +70,25 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(resAppCarta.text).toContain('Carta Digital');
         expect(resAppCarta.text).toContain('carta-buscador');
         expect(resAppCarta.text).toContain('carta-lista-productos');
+        expect(resAppCarta.text).toContain('carta-donde-estamos');
+        expect(resAppCarta.text).toContain('Dónde estamos');
+        expect(resAppCarta.text).toContain('Abrir en el mapa');
+        expect(resAppCarta.text).toContain('carta-ubicacion-iframe');
+        expect(resAppCarta.text).toContain('js/config.js');
         expect(resAppCarta.text).toContain('js/carta.js');
         expect(resAppCarta.text).not.toContain('input-token-jwt');
 
         expect(resRaizCarta.status).toBe(200);
         expect(resRaizCarta.headers['content-type']).toMatch(/text\/html/);
         expect(resRaizCarta.text).toContain('Carta Digital');
+        expect(resRaizCarta.text).toContain('carta-donde-estamos');
 
         expect(resCartaJs.status).toBe(200);
         expect(resCartaJs.text).toContain('/api/carta-publica/');
+        expect(resCartaJs.text).toContain('renderizarUbicacionCarta');
+
+        expect(resConfigJs.status).toBe(200);
+        expect(resConfigJs.text).toContain('ubicacionLocal');
     });
 
     it('sirve el Service Worker (sw.js), la hoja de estilos y los módulos JS del cliente PWA', async () => {
@@ -106,6 +117,8 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(resSw.text).toContain('/app/carta.html');
         expect(resSw.text).toContain('/app/js/config.js');
         expect(resSw.text).toContain('/app/js/carta.js');
+        expect(resSw.text).toContain("evento.request.destination === 'iframe'");
+        expect(resSw.text).toContain('openstreetmap.org');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.worker.min.js');
         expect(resSw.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');

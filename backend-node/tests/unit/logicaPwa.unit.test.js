@@ -16,6 +16,7 @@ import {
     calcularResumenCarrito,
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
+    construirUrlsMapaOpenStreetMap,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -78,6 +79,8 @@ import {
     procesarColaVentasOffline,
     puedeGestionarQrCarta,
     reconstruirLineasDeItemsPdf,
+    renderizarUbicacionCarta,
+    resolverUbicacionCartaPublica,
     ROLES_PLANTILLAS,
     seccionesVisiblesParaUsuario,
     siguienteIdCarga,
@@ -2237,6 +2240,138 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(svg).toContain('<rect width="100%" height="100%"');
             expect(svg).toContain('<path d="M');
             expect(svg).toContain('</svg>');
+        });
+    });
+
+    describe('Mapa de ubicación OpenStreetMap en carta pública (T8)', () => {
+        it('construirUrlsMapaOpenStreetMap arma URL embebida con bbox/marker y enlace externo válido', () => {
+            const resultado = construirUrlsMapaOpenStreetMap(
+                {
+                    direccion: '  Av. San Martín 1420, Resistencia, Chaco  ',
+                    latitud: -27.4514,
+                    longitud: -58.9867,
+                },
+                { delta: 0.005, zoom: 17 }
+            );
+
+            expect(resultado).not.toBeNull();
+            expect(resultado.direccion).toBe('Av. San Martín 1420, Resistencia, Chaco');
+            expect(resultado.latitud).toBe(-27.4514);
+            expect(resultado.longitud).toBe(-58.9867);
+
+            const embedUrl = new URL(resultado.urlEmbed);
+            expect(embedUrl.origin).toBe('https://www.openstreetmap.org');
+            expect(embedUrl.pathname).toBe('/export/embed.html');
+            expect(embedUrl.searchParams.get('layer')).toBe('mapnik');
+            expect(embedUrl.searchParams.get('bbox')).toBe(
+                '-58.991700,-27.456400,-58.981700,-27.446400'
+            );
+            expect(embedUrl.searchParams.get('marker')).toBe('-27.451400,-58.986700');
+
+            expect(resultado.urlMapa).toBe(
+                'https://www.openstreetmap.org/?mlat=-27.451400&mlon=-58.986700#map=17/-27.451400/-58.986700'
+            );
+        });
+
+        it('construirUrlsMapaOpenStreetMap y resolverUbicacionCartaPublica devuelven null sin coordenadas válidas', () => {
+            expect(construirUrlsMapaOpenStreetMap(null)).toBeNull();
+            expect(construirUrlsMapaOpenStreetMap({})).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({
+                    direccion: 'Av. San Martín 1420',
+                    latitud: null,
+                    longitud: -58.9867,
+                })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({
+                    latitud: '',
+                    longitud: '',
+                })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({
+                    latitud: -91,
+                    longitud: -58.9867,
+                })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({
+                    latitud: -27.4514,
+                    longitud: 181,
+                })
+            ).toBeNull();
+
+            expect(resolverUbicacionCartaPublica(null)).toBeNull();
+            expect(resolverUbicacionCartaPublica({})).toBeNull();
+            expect(
+                resolverUbicacionCartaPublica({
+                    ubicacionLocal: { direccion: 'Solo dirección sin coords' },
+                })
+            ).toBeNull();
+        });
+
+        it('renderizarUbicacionCarta mantiene oculta la sección sin coordenadas y no asigna src al iframe', () => {
+            const atributosRemovidosIframe = [];
+            const atributosRemovidosEnlace = [];
+            const elementos = {
+                seccion: { hidden: false },
+                direccionEl: { textContent: 'Vieja dirección', hidden: false },
+                iframe: {
+                    src: 'https://www.openstreetmap.org/previo',
+                    removeAttribute: (nombre) => {
+                        atributosRemovidosIframe.push(nombre);
+                        delete elementos.iframe.src;
+                    },
+                },
+                enlace: {
+                    href: 'https://www.openstreetmap.org/previo',
+                    removeAttribute: (nombre) => {
+                        atributosRemovidosEnlace.push(nombre);
+                        delete elementos.enlace.href;
+                    },
+                },
+            };
+
+            const mostrado = renderizarUbicacionCarta(elementos, {
+                ubicacionLocal: { direccion: 'Sin mapa', latitud: null, longitud: null },
+            });
+
+            expect(mostrado).toBe(false);
+            expect(elementos.seccion.hidden).toBe(true);
+            expect(elementos.direccionEl.textContent).toBe('');
+            expect(elementos.direccionEl.hidden).toBe(true);
+            expect(atributosRemovidosIframe).toEqual(['src']);
+            expect(atributosRemovidosEnlace).toEqual(['href']);
+            expect(elementos.iframe.src).toBeUndefined();
+        });
+
+        it('renderizarUbicacionCarta muestra la sección cuando hay configuración en web/js/config.js', () => {
+            const __filename = fileURLToPath(import.meta.url);
+            const __dirname = path.dirname(__filename);
+            const rutaConfig = path.resolve(__dirname, '../../../web/js/config.js');
+            const codigoConfig = fs.readFileSync(rutaConfig, 'utf8');
+
+            const contexto = { window: {} };
+            vm.runInNewContext(codigoConfig, contexto);
+
+            const elementos = {
+                seccion: { hidden: true },
+                direccionEl: { textContent: '', hidden: true },
+                iframe: { src: '' },
+                enlace: { href: '' },
+            };
+
+            const mostrado = renderizarUbicacionCarta(elementos, contexto.window.__SAPORI_CONFIG__);
+
+            expect(mostrado).toBe(true);
+            expect(elementos.seccion.hidden).toBe(false);
+            expect(elementos.direccionEl.hidden).toBe(false);
+            expect(elementos.direccionEl.textContent).toContain('Resistencia, Chaco');
+            expect(elementos.iframe.src).toMatch(
+                /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html\?bbox=.*&layer=mapnik&marker=/
+            );
+            expect(elementos.enlace.href).toMatch(/^https:\/\/www\.openstreetmap\.org\/\?mlat=/);
         });
     });
 });
