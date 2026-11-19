@@ -77,11 +77,45 @@
             <ul id="carta-lista-productos" class="carta-publica-lista" aria-label="Listado de productos y precios"></ul>
         </main>
 
+        <section
+            id="carta-donde-estamos"
+            class="carta-publica-ubicacion"
+            aria-labelledby="carta-ubicacion-titulo"
+            hidden
+        >
+            <div class="carta-publica-ubicacion-header">
+                <div class="carta-publica-ubicacion-datos">
+                    <h2 id="carta-ubicacion-titulo" class="carta-publica-ubicacion-titulo">
+                        Dónde estamos
+                    </h2>
+                    <p id="carta-ubicacion-direccion" class="carta-publica-ubicacion-direccion"></p>
+                </div>
+                <a
+                    id="carta-ubicacion-link"
+                    class="btn-secundario-comercial carta-publica-ubicacion-enlace"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Abrir en el mapa
+                </a>
+            </div>
+            <div class="carta-publica-mapa-marco">
+                <iframe
+                    id="carta-ubicacion-iframe"
+                    class="carta-publica-mapa-iframe"
+                    title="Mapa con la ubicación de Sapori Café"
+                    loading="lazy"
+                    referrerpolicy="no-referrer-when-downgrade"
+                ></iframe>
+            </div>
+        </section>
+
         <footer class="carta-publica-footer">
             <p>Hacé tu pedido en el mostrador · Precios expresados en pesos argentinos (ARS).</p>
         </footer>
     </div>
 
+    <script src="js/config.js"></script>
     <script type="module" src="js/carta.js"></script>
 </body>
 </html>

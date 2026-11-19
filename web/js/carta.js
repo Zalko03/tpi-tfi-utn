@@ -1,3 +1,5 @@
+import { renderizarUbicacionCarta } from './logicaPwa.js';
+
 const $ = (id) => document.getElementById(id);
 
 const estadoCarta = {
@@ -222,6 +224,18 @@ const cargarCartaPublica = async () => {
     }
 };
 
+const inicializarMapaUbicacion = () => {
+    renderizarUbicacionCarta(
+        {
+            seccion: $('carta-donde-estamos'),
+            direccionEl: $('carta-ubicacion-direccion'),
+            iframe: $('carta-ubicacion-iframe'),
+            enlace: $('carta-ubicacion-link'),
+        },
+        typeof window !== 'undefined' ? window.__SAPORI_CONFIG__ : null
+    );
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     $('carta-buscador')?.addEventListener('input', (evento) => {
         estadoCarta.filtro = evento.target.value || '';
@@ -233,5 +247,6 @@ document.addEventListener('DOMContentLoaded', () => {
     $('btn-actualizar-carta')?.addEventListener('click', cargarCartaPublica);
     $('btn-reintentar-carta')?.addEventListener('click', cargarCartaPublica);
 
+    inicializarMapaUbicacion();
     cargarCartaPublica();
 });

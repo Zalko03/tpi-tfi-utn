@@ -3679,6 +3679,70 @@ textarea:focus {
     font-variant-numeric: tabular-nums;
 }
 
+.carta-publica-ubicacion {
+    background: var(--color-blanco);
+    border: 1px solid var(--color-borde-suave);
+    border-radius: var(--radio-lg);
+    padding: 1.1rem 1.15rem;
+    box-shadow: var(--sombra-card);
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.carta-publica-ubicacion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.carta-publica-ubicacion-datos {
+    min-width: 0;
+    flex: 1 1 200px;
+}
+
+.carta-publica-ubicacion-titulo {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--texto-color);
+    line-height: 1.3;
+}
+
+.carta-publica-ubicacion-direccion {
+    font-size: 0.92rem;
+    color: var(--texto-secundario);
+    margin-top: 0.25rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.carta-publica-ubicacion-enlace {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 40px;
+}
+
+.carta-publica-mapa-marco {
+    width: 100%;
+    border-radius: var(--radio-md);
+    overflow: hidden;
+    border: 1px solid var(--color-borde-suave);
+    background: var(--color-canvas);
+}
+
+.carta-publica-mapa-iframe {
+    display: block;
+    width: 100%;
+    height: 260px;
+    border: 0;
+}
+
 .carta-publica-footer {
     text-align: center;
     font-size: 0.8rem;
@@ -3689,6 +3753,19 @@ textarea:focus {
 @media (max-width: 480px) {
     .carta-publica-controles {
         flex-direction: column;
+    }
+
+    .carta-publica-ubicacion-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .carta-publica-ubicacion-enlace {
+        width: 100%;
+    }
+
+    .carta-publica-mapa-iframe {
+        height: 220px;
     }
 
     .qr-carta-url-fila {

@@ -35,6 +35,7 @@ app.use(
                 scriptSrc: ["'self'"],
                 styleSrc: ["'self'", "'unsafe-inline'"],
                 imgSrc: ["'self'", 'data:'],
+                frameSrc: ['https://www.openstreetmap.org'],
                 connectSrc: [
                     "'self'",
                     'http://localhost:8000',

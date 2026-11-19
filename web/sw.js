@@ -1,4 +1,4 @@
-const NOMBRE_CACHE = 'cafe-gestion-pwa-v3';
+const NOMBRE_CACHE = 'cafe-gestion-pwa-v4';
 const RECURSOS_CASCARA = [
     '/app/',
     '/app/index.html',
@@ -7,6 +7,7 @@ const RECURSOS_CASCARA = [
     '/app/css/estilos.css',
     '/app/js/logicaPwa.js',
     '/app/js/app.js',
+    '/app/js/config.js',
     '/app/js/carta.js',
     '/app/vendor/pdfjs/pdf.min.js',
     '/app/vendor/pdfjs/pdf.worker.min.js',
@@ -19,6 +20,7 @@ const RECURSOS_CASCARA = [
     '/css/estilos.css',
     '/js/logicaPwa.js',
     '/js/app.js',
+    '/js/config.js',
     '/js/carta.js',
     '/vendor/pdfjs/pdf.min.js',
     '/vendor/pdfjs/pdf.worker.min.js',
@@ -54,6 +56,15 @@ self.addEventListener('activate', (evento) => {
 
 self.addEventListener('fetch', (evento) => {
     const url = new URL(evento.request.url);
+
+    // Nunca interceptar ni cachear iframes ni peticiones externas (ej. mapa de OpenStreetMap)
+    if (
+        url.origin !== self.location.origin ||
+        evento.request.destination === 'iframe' ||
+        url.hostname.endsWith('openstreetmap.org')
+    ) {
+        return;
+    }
 
     // Las peticiones a APIs o WebSockets nunca se sirven desde caché estática
     if (

@@ -102,8 +102,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         ]);
 
         expect(resSw.status).toBe(200);
-        expect(resSw.text).toContain('cafe-gestion-pwa-v3');
+        expect(resSw.text).toContain('cafe-gestion-pwa-v4');
         expect(resSw.text).toContain('/app/carta.html');
+        expect(resSw.text).toContain('/app/js/config.js');
         expect(resSw.text).toContain('/app/js/carta.js');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.worker.min.js');
