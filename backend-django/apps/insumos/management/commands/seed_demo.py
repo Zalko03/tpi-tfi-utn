@@ -250,7 +250,7 @@ def _asegurar_productos_y_recetas(
     insumos_dict: dict[str, Insumo],
     incluir_margen_bajo: bool = False,
 ) -> dict[str, Producto]:
-    """Crea o actualiza el catálogo de productos con sus recetas y recalcula costos y márgenes."""
+    """Crea el catálogo de productos con sus recetas sin sobrescribir productos existentes."""
     definiciones_productos = [
         {
             "nombre": "Café Espresso",
@@ -399,10 +399,17 @@ def _asegurar_productos_y_recetas(
 
     productos_dict = {}
     for p_data in definiciones_productos:
-        prod, _ = Producto.objects.get_or_create(
+        codigo_default = p_data["codigo_barras"]
+        if (
+            not Producto.objects.filter(nombre=p_data["nombre"]).exists()
+            and Producto.objects.filter(codigo_barras=codigo_default).exists()
+        ):
+            codigo_default = None
+
+        prod, creado = Producto.objects.get_or_create(
             nombre=p_data["nombre"],
             defaults={
-                "codigo_barras": p_data["codigo_barras"],
+                "codigo_barras": codigo_default,
                 "precio_venta": p_data["precio_venta"],
                 "minutos_mano_obra": p_data["minutos_mo"],
                 "costo_hora_mano_obra": p_data["costo_hora_mo"],
@@ -410,28 +417,43 @@ def _asegurar_productos_y_recetas(
                 "estado_activo": True,
             },
         )
-        prod.codigo_barras = p_data["codigo_barras"]
-        prod.precio_venta = p_data["precio_venta"]
-        prod.minutos_mano_obra = p_data["minutos_mo"]
-        prod.costo_hora_mano_obra = p_data["costo_hora_mo"]
-        prod.descartables = p_data["descartables"]
-        prod.estado_activo = True
-        prod.save()
 
-        for ins, cantidad, unidad in p_data["receta"]:
-            RecetaItem.objects.update_or_create(
-                producto=prod,
-                insumo=ins,
-                defaults={"cantidad": cantidad, "unidad": unidad},
-            )
+        if creado or not prod.receta_items.exists():
+            for ins, cantidad, unidad in p_data["receta"]:
+                RecetaItem.objects.get_or_create(
+                    producto=prod,
+                    insumo=ins,
+                    defaults={"cantidad": cantidad, "unidad": unidad},
+                )
         actualizar_costo_y_margen_producto(prod)
         productos_dict[p_data["nombre"]] = prod
 
     return productos_dict
 
 
-def _asegurar_turno_abierto_y_movimientos(cajero_user: User, ahora) -> TurnoCaja:
+def _validar_sin_turno_abierto_viejo(cajero_user: User, ahora) -> None:
+    """Frena si cajero_demo tiene un turno ABIERTO de un día anterior al actual."""
+    hoy_local = timezone.localtime(ahora).date()
+    turnos_abiertos = TurnoCaja.objects.filter(usuario=cajero_user, estado="ABIERTO").order_by(
+        "apertura", "id"
+    )
+    for turno in turnos_abiertos:
+        apertura_local = timezone.localtime(turno.apertura).date()
+        if apertura_local < hoy_local:
+            fecha_str = timezone.localtime(turno.apertura).strftime("%d/%m/%Y %H:%M")
+            raise CommandError(
+                f"Hay un turno abierto viejo de cajero_demo (Turno #{turno.id}, abierto el {fecha_str}). "
+                "Cerralo antes de ejecutar seed_demo --video para no superponer turnos ni mezclar ventas de días anteriores."
+            )
+
+
+def _asegurar_turno_abierto_y_movimientos(
+    cajero_user: User,
+    ahora,
+    actualizar_fechas: bool = False,
+) -> TurnoCaja:
     """Obtiene o crea el turno abierto de cajero_demo con sus movimientos de caja chica."""
+    apertura_hoy = _fecha_hoy_pasada(ahora, 45)
     turno = (
         TurnoCaja.objects.filter(usuario=cajero_user, estado="ABIERTO")
         .order_by("-apertura", "-id")
@@ -441,9 +463,12 @@ def _asegurar_turno_abierto_y_movimientos(cajero_user: User, ahora) -> TurnoCaja
         turno = TurnoCaja.objects.create(
             usuario=cajero_user,
             efectivo_inicial=Decimal("10000.00"),
-            apertura=_fecha_hoy_pasada(ahora, 45),
+            apertura=apertura_hoy,
             estado="ABIERTO",
         )
+    elif actualizar_fechas and turno.apertura != apertura_hoy:
+        turno.apertura = apertura_hoy
+        turno.save(update_fields=["apertura"])
 
     movimientos_data = [
         (
@@ -466,15 +491,66 @@ def _asegurar_turno_abierto_y_movimientos(cajero_user: User, ahora) -> TurnoCaja
         ),
     ]
     for tipo, monto, motivo, fecha_mov in movimientos_data:
-        MovimientoCaja.objects.get_or_create(
-            turno_caja=turno,
-            tipo=tipo,
-            monto=monto,
-            motivo=motivo,
-            defaults={"fecha": fecha_mov},
-        )
+        if actualizar_fechas:
+            MovimientoCaja.objects.update_or_create(
+                turno_caja=turno,
+                tipo=tipo,
+                monto=monto,
+                motivo=motivo,
+                defaults={"fecha": fecha_mov},
+            )
+        else:
+            MovimientoCaja.objects.get_or_create(
+                turno_caja=turno,
+                tipo=tipo,
+                monto=monto,
+                motivo=motivo,
+                defaults={"fecha": fecha_mov},
+            )
 
     return turno
+
+
+def _asegurar_venta_video(
+    *,
+    clave: str,
+    items: list[dict],
+    medio_pago: str,
+    turno_caja: TurnoCaja | None,
+    fecha_venta,
+    actualizar_medio_pago: bool = False,
+) -> Venta:
+    """
+    Crea una venta idempotente por id_operacion o reacomoda su fecha, turno y medio de pago
+    cuando se vuelve a ejecutar seed_demo --video en otra fecha.
+    """
+    id_op = _uuid_seed_video(clave)
+    venta_existente = Venta.objects.filter(id_operacion=id_op).first()
+    if venta_existente is None:
+        return registrar_venta(
+            items_data=items,
+            medio_pago=medio_pago,
+            turno_caja=turno_caja,
+            fecha=fecha_venta,
+            id_operacion=id_op,
+        )
+
+    campos_actualizar = []
+    if venta_existente.fecha != fecha_venta:
+        venta_existente.fecha = fecha_venta
+        campos_actualizar.append("fecha")
+    turno_id_objetivo = turno_caja.id if turno_caja is not None else None
+    if venta_existente.turno_caja_id != turno_id_objetivo:
+        venta_existente.turno_caja = turno_caja
+        campos_actualizar.append("turno_caja")
+    if actualizar_medio_pago and venta_existente.medio_pago != medio_pago:
+        venta_existente.medio_pago = medio_pago
+        campos_actualizar.append("medio_pago")
+
+    if campos_actualizar:
+        venta_existente.save(update_fields=campos_actualizar)
+
+    return venta_existente
 
 
 def _asegurar_turno_cerrado_video(
@@ -489,7 +565,7 @@ def _asegurar_turno_cerrado_video(
 ) -> TurnoCaja:
     """
     Crea de manera idempotente un turno cerrado histórico con sus movimientos de caja chica
-    y ventas emitidas dentro de la ventana del turno.
+    y ventas emitidas dentro de la ventana del turno, o reacomoda sus fechas si ya existía.
     """
     motivo_identificador = movimientos[0][2]
     existente = (
@@ -502,6 +578,29 @@ def _asegurar_turno_cerrado_video(
         .first()
     )
     if existente is not None:
+        if existente.apertura != apertura or existente.cierre != cierre:
+            existente.apertura = apertura
+            existente.cierre = cierre
+            existente.save(update_fields=["apertura", "cierre"])
+
+        for tipo, monto, motivo, fecha_mov in movimientos:
+            MovimientoCaja.objects.update_or_create(
+                turno_caja=existente,
+                tipo=tipo,
+                monto=monto,
+                motivo=motivo,
+                defaults={"fecha": fecha_mov},
+            )
+
+        for clave_venta, items, medio_pago, fecha_venta in ventas_spec:
+            _asegurar_venta_video(
+                clave=clave_venta,
+                items=items,
+                medio_pago=medio_pago,
+                turno_caja=existente,
+                fecha_venta=fecha_venta,
+            )
+
         return existente
 
     turno = TurnoCaja.objects.create(
@@ -521,12 +620,12 @@ def _asegurar_turno_cerrado_video(
         )
 
     for clave_venta, items, medio_pago, fecha_venta in ventas_spec:
-        registrar_venta(
-            items_data=items,
+        _asegurar_venta_video(
+            clave=clave_venta,
+            items=items,
             medio_pago=medio_pago,
             turno_caja=turno,
-            fecha=fecha_venta,
-            id_operacion=_uuid_seed_video(clave_venta),
+            fecha_venta=fecha_venta,
         )
 
     esperado = turno.calcular_efectivo_esperado()
@@ -746,13 +845,14 @@ def _poblar_escenario_video(
         ajuste_arqueo=Decimal("-200.00"),
     )
 
-    # 3. Ventas históricas distribuidas en el resto de los últimos 14 días.
+    # 3. Ventas históricas distribuidas en el resto de los últimos 14 días (solo medios digitales para
+    # no dejar cobros en EFECTIVO fuera de arqueo con turno_caja=None).
     # Cold Brew con Almendras se vende solo hace 10 días para figurar "sin rotación" en los últimos 7 días.
     ventas_historicas_14d = [
         (
             "d13-v1",
             _fecha_historica_local(ahora, 13, 11, 20),
-            "EFECTIVO",
+            "TARJETA",
             [item("Café Espresso", "3"), item("Chipá Tradicional (Porción x4)", "2")],
         ),
         (
@@ -770,7 +870,7 @@ def _poblar_escenario_video(
         (
             "d09-v1",
             _fecha_historica_local(ahora, 9, 13, 30),
-            "EFECTIVO",
+            "TARJETA",
             [
                 item("Flat White Especial", "2"),
                 item("Tostado Jamón y Queso en Pan de Masa Madre", "1"),
@@ -785,7 +885,7 @@ def _poblar_escenario_video(
         (
             "d07-v1",
             _fecha_historica_local(ahora, 7, 10, 15),
-            "EFECTIVO",
+            "TRANSFERENCIA",
             [item("Café Latte", "2"), item("Café Espresso", "2")],
         ),
         (
@@ -797,7 +897,7 @@ def _poblar_escenario_video(
         (
             "d05-v1",
             _fecha_historica_local(ahora, 5, 14, 20),
-            "EFECTIVO",
+            "TARJETA",
             [item("Flat White Especial", "2"), item("Cookie Doble Chocolate 70%", "2")],
         ),
         (
@@ -812,7 +912,7 @@ def _poblar_escenario_video(
         (
             "d02-v1",
             _fecha_historica_local(ahora, 2, 10, 30),
-            "EFECTIVO",
+            "TRANSFERENCIA",
             [item("Café Espresso", "4"), item("Chipá Tradicional (Porción x4)", "2")],
         ),
         (
@@ -824,15 +924,18 @@ def _poblar_escenario_video(
     ]
 
     for clave, fecha_v, medio_pago, items in ventas_historicas_14d:
-        registrar_venta(
-            items_data=items,
+        _asegurar_venta_video(
+            clave=clave,
+            items=items,
             medio_pago=medio_pago,
             turno_caja=None,
-            fecha=fecha_v,
-            id_operacion=_uuid_seed_video(clave),
+            fecha_venta=fecha_v,
+            actualizar_medio_pago=True,
         )
 
-    # 4. Ventas de hoy en el turno abierto de cajero_demo (idempotentes por id_operacion)
+    # 4. Ventas de hoy en el turno abierto vigente de cajero_demo (idempotentes por id_operacion).
+    # Si un ensayo previo cerró el turno anterior y hoy se creó uno nuevo, _asegurar_venta_video
+    # re-vincula estas ventas al turno abierto vigente y reacomoda sus fechas.
     ventas_hoy = [
         (
             "hoy-v1",
@@ -855,22 +958,23 @@ def _poblar_escenario_video(
     ]
 
     for clave, fecha_v, medio_pago, items in ventas_hoy:
-        registrar_venta(
-            items_data=items,
+        _asegurar_venta_video(
+            clave=clave,
+            items=items,
             medio_pago=medio_pago,
             turno_caja=turno_abierto,
-            fecha=fecha_v,
-            id_operacion=_uuid_seed_video(clave),
+            fecha_venta=fecha_v,
         )
 
     # 5. Venta anulada de demostración (si no existe o no está anulada aún)
-    venta_a_anular = registrar_venta(
-        items_data=[item("Filtrado Geisha Origen Único", "1"), item("Café Espresso", "1")],
+    venta_a_anular = _asegurar_venta_video(
+        clave="hoy-anulada",
+        items=[item("Filtrado Geisha Origen Único", "1"), item("Café Espresso", "1")],
         medio_pago="EFECTIVO",
         turno_caja=turno_abierto,
-        fecha=_fecha_hoy_pasada(ahora, 5),
-        id_operacion=_uuid_seed_video("hoy-anulada"),
+        fecha_venta=_fecha_hoy_pasada(ahora, 5),
     )
+    fecha_anulacion = _fecha_hoy_pasada(ahora, 4)
     if venta_a_anular.estado != "ANULADA":
         anular_venta(
             venta=venta_a_anular,
@@ -878,6 +982,10 @@ def _poblar_escenario_video(
             motivo="Error de carga en mostrador - pedido duplicado",
             permiso_verificado=True,
         )
+        venta_a_anular.refresh_from_db()
+    if venta_a_anular.anulada_en != fecha_anulacion:
+        venta_a_anular.anulada_en = fecha_anulacion
+        venta_a_anular.save(update_fields=["anulada_en"])
 
 
 class Command(BaseCommand):
@@ -927,17 +1035,36 @@ class Command(BaseCommand):
                 )
             )
 
+        ahora = timezone.now()
         usuarios_instancias = _asegurar_usuarios_demo(self.stdout, self.style, password_demo)
+        cajero_user = usuarios_instancias[ROL_CAJERO]
+        duenio_user = usuarios_instancias[ROL_DUENIO]
+
+        if modo_video:
+            _validar_sin_turno_abierto_viejo(cajero_user, ahora)
+
         insumos_dict = _asegurar_insumos_y_compras()
         productos_dict = _asegurar_productos_y_recetas(
             insumos_dict,
             incluir_margen_bajo=modo_video,
         )
 
-        ahora = timezone.now()
-        cajero_user = usuarios_instancias[ROL_CAJERO]
-        duenio_user = usuarios_instancias[ROL_DUENIO]
-        turno = _asegurar_turno_abierto_y_movimientos(cajero_user, ahora)
+        if modo_video:
+            brownie = productos_dict.get("Brownie Intenso Chocolate 70%")
+            if brownie is not None and brownie.margen_bruto >= Decimal("0.30"):
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"Advertencia: '{brownie.nombre}' quedó con margen "
+                        f"{(brownie.margen_bruto * Decimal('100')).quantize(Decimal('0.01'))}% (>= 30%) "
+                        "por precios previos en la base."
+                    )
+                )
+
+        turno = _asegurar_turno_abierto_y_movimientos(
+            cajero_user,
+            ahora,
+            actualizar_fechas=modo_video,
+        )
 
         if modo_video:
             _poblar_escenario_video(
