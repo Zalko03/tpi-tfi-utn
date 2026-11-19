@@ -1977,15 +1977,21 @@ Cómo probarlo:
 ---
 
 Fecha: 2026-11-19
-Tarea: T7 — Datos de demo para grabar el video (`seed_demo --video`)
+Tarea: T7 — Datos de demo para grabar el video (`seed_demo --video`) + correcciones post-auditoría
 Rama: chore/datos-demo-video
 Qué se hizo y por qué:
 - Se amplió `backend-django/apps/insumos/management/commands/seed_demo.py` con el flag `--video`, manteniendo compatibilidad e idempotencia total (re-ejecutarlo no duplica registros, no borra usuarios ni cambia contraseñas existentes; todos los montos y cantidades usan `Decimal`).
-- En modo `--video`: asegura 11 productos activos con receta completa (insumos, mano de obra y descartables), incluyendo `Brownie Intenso Chocolate 70%` con margen crítico (~19,86% < 30%) para disparar la alerta de margen bajo; crea 2 turnos cerrados (`CERRADO`, uno exacto y otro con -$200) y 1 turno abierto (`ABIERTO`) para `cajero_demo` con movimientos de caja chica; distribuye ventas idempotentes (vía `id_operacion` UUID v5 determinístico) en los últimos 14 días para poblar "Últimos 7 días", ranking (con un ítem sin rotación en los últimos 7 días) y punto de equilibrio; y registra 1 venta anulada (`ANULADA`) mediante `anular_venta`.
+- En modo `--video`: asegura 11 productos activos con receta completa (insumos, mano de obra y descartables) mediante `get_or_create` con `defaults` sin sobrescribir `precio_venta` ni `codigo_barras` de productos ya existentes; valida explícitamente que `Brownie Intenso Chocolate 70%` quede con margen crítico (`< 0.30`, ~19,86%) y emite `WARNING` si precios previos en la base superan ese umbral; crea 2 turnos cerrados (`CERRADO`, uno exacto y otro con -$200) y 1 turno abierto (`ABIERTO`) para `cajero_demo` con movimientos de caja chica; distribuye ventas idempotentes (vía `id_operacion` UUID v5 determinístico) en los últimos 14 días usando únicamente medios digitales (`TARJETA`/`TRANSFERENCIA`) en las ventas históricas sin turno (`turno_caja=None`) para no dejar cobros en `EFECTIVO` fuera de arqueo; y registra 1 venta anulada (`ANULADA`) mediante `anular_venta`.
+- Validación y re-ejecución en otro día:
+  - Si `cajero_demo` ya tiene un turno `ABIERTO` de un día anterior al actual, `--video` frena inmediatamente con `CommandError` indicando que debe cerrarse antes para no superponer turnos ni mezclar ventas.
+  - Al volver a ejecutar `seed_demo --video` otro día (una vez cerrado el turno previo), reacomoda las fechas relativas (`fecha`, `apertura`, `cierre`, fechas de movimientos y `anulada_en`) al `ahora` actual sin duplicar registros, y re-vincula las ventas de hoy y la anulada al turno abierto vigente de hoy.
+  - Nota operativa: evitar correr `seed_demo --video` entre las `00:00` y `00:45` hora local porque `_fecha_hoy_pasada` acota las marcas al inicio del día (`00:00`) y las operaciones de hoy quedarían superpuestas a la medianoche.
 - Respaldo obligatorio antes de ejecutar el comando sobre la base local:
-  - `cp backend-django/db.sqlite3 ~/orq/backups/db.sqlite3.antes-seed-video`
-- Comando exacto para poblar la base con datos de demo/video:
-  - `cd backend-django && .venv/bin/python manage.py seed_demo --video`
+  - `mkdir -p ~/orq/backups && cp backend-django/db.sqlite3 ~/orq/backups/db.sqlite3.antes-seed-video`
+- Comando exacto para poblar la base con datos de demo/video (asegurando `DEBUG=True` vía `DJANGO_DEBUG=True` y contraseña explícita):
+  - `cd backend-django && DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<clave_demo>" .venv/bin/python manage.py seed_demo --video`
+Problemas y decisiones técnicas (incidente primera corrida de T7):
+- Durante la primera corrida de T7 (previa a la ronda post-auditoría), `backend-django/db.sqlite3` recibió los datos de `seed_demo --video` sin borrar usuarios ni modificar contraseñas existentes; el respaldo previo disponible en `~/orq/backups/` data del 17/11. Se deja asentado para que Evilkitty decida si restaurar el backup del 17/11 o conservar la base actual (re-ejecutando luego el comando corregido para actualizar fechas y convertir las ventas históricas sin turno a medios digitales).
 Archivos tocados:
 - `backend-django/apps/insumos/management/commands/seed_demo.py`
 - `backend-django/apps/insumos/tests/unit/test_unit_seed_demo.py`
@@ -1995,4 +2001,5 @@ Cómo probarlo:
 - `cd ai-service && .venv/bin/python -m pytest -q`
 - `cd backend-node && npm test && npm run lint`
 - `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+- `node --check web/js/app.js web/js/logicaPwa.js`
 ---
