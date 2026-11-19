@@ -2089,3 +2089,31 @@ Cómo probarlo:
 - `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
 - `node --check web/js/app.js web/js/logicaPwa.js`
 ---
+
+Fecha: 2026-11-19
+Tarea: T10 — Ensayo automático E2E del flujo de demostración
+Rama: test/e2e-flujo-demo
+Qué se hizo y por qué:
+- Se crearon `scripts/ensayo_demo.sh` y `scripts/ensayo_demo.py` (stdlib Python, sin dependencias nuevas ni Playwright porque no está instalado en el proyecto) para recorrer por API los 8 pasos del guion de presentación (`docs/PRESENTACION_Y_EVIDENCIAS.md` y T6) contra servidores locales ya levantados sobre una base de prueba poblada con `seed_demo --video` (T7), sin tocar `backend-django/db.sqlite3`.
+- Contraseñas solo por variables de entorno (`SEED_DEMO_PASSWORD` o `DEMO_DUENIO_PASSWORD` + `DEMO_CAJERO_PASSWORD`), nunca escritas en código. Respeta límites de Node (`1` petición autenticada a `/api/snapshots-costeo/` sobre `600/15m` y `2` estáticas/salud en `/health` y `/carta.html` fuera del limitador sobre `100/15m`) y de Django (`2` logins sobre `10/min`).
+- Re-ejecución segura: reutiliza turno abierto si existe o abre uno nuevo (`POST /api/turnos/`), cobra una venta con `id_operacion` UUID v4 fresco, registra y anula una segunda venta de prueba para no romper ventas históricas, cierra el turno verificando arqueo ciego y consulta reportes "últimos 7 días" y la carta pública anónima. Cada corrida deja 1 venta `EMITIDA`, 1 `ANULADA` y el turno cerrado en la base de prueba.
+- Se agregaron tests E2E automatizados en `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py` usando `live_server` sobre base de test aislada (incluyendo doble corrida consecutiva y casos negativos).
+Cómo correrlo:
+- Con servidores locales levantados sobre base de prueba post-T7 (recomendado en puertos de prueba, no contra la base real):
+  `DJANGO_URL="http://127.0.0.1:18000" NODE_URL="http://127.0.0.1:13000" VERIFICAR_NODE=1 SEED_DEMO_PASSWORD="<clave_demo>" ./scripts/ensayo_demo.sh`
+  (por defecto usa `DJANGO_URL=http://localhost:8000`, `NODE_URL=http://localhost:3000`, `VERIFICAR_NODE=auto`).
+Qué tiene que aparecer si sale bien:
+- Resumen con `✅` en los 8 pasos (`✅ Paso 1` a `✅ Paso 8`: login `duenio_demo`/`cajero_demo`, costeo de producto + snapshots Node, turno abierto/reutilizado, cobro POS, anulación, cierre con arqueo ciego + auditoría gerencia, reportes últimos 7 días y carta pública anónima + Node `/health` y `/carta.html`) y cierre final:
+  `✅ Ensayo completo OK (8/8 pasos superados).` (código de salida `0`).
+Archivos tocados:
+- `scripts/ensayo_demo.sh`
+- `scripts/ensayo_demo.py`
+- `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `.venv/bin/ruff check backend-django/ ai-service/ scripts/ensayo_demo.py && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/ensayo_demo.py`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
