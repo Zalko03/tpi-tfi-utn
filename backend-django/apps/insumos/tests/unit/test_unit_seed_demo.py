@@ -1,7 +1,8 @@
 """Tests unitarios para verificar la idempotencia segura de seed_demo y su modo --video."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
+from io import StringIO
 
 import pytest
 from django.contrib.auth.models import User
@@ -110,11 +111,13 @@ class TestUnitSeedDemo:
         assert User.objects.filter(username="barista_extra").exists()
 
         productos = list(Producto.objects.filter(estado_activo=True))
-        assert len(productos) >= 10
+        assert len(productos) == 11
         assert all(p.receta_items.exists() for p in productos)
         assert all(p.minutos_mano_obra > Decimal("0") for p in productos)
         assert any(p.descartables > Decimal("0") for p in productos)
-        assert any(p.margen_bruto < Decimal("0.30") for p in productos)
+
+        brownie = Producto.objects.get(nombre="Brownie Intenso Chocolate 70%")
+        assert brownie.margen_bruto < Decimal("0.30")
 
         turnos_cerrados = TurnoCaja.objects.filter(
             usuario__username="cajero_demo", estado="CERRADO"
@@ -122,12 +125,17 @@ class TestUnitSeedDemo:
         turnos_abiertos = TurnoCaja.objects.filter(
             usuario__username="cajero_demo", estado="ABIERTO"
         )
+        assert TurnoCaja.objects.count() == 3
         assert turnos_cerrados.count() == 2
         assert turnos_abiertos.count() == 1
         assert all(t.movimientos.exists() for t in turnos_cerrados)
         assert turnos_abiertos.first().movimientos.exists()
 
+        assert Venta.objects.filter(estado="EMITIDA").count() == 20
         assert Venta.objects.filter(estado="ANULADA").count() == 1
+        assert Venta.objects.count() == 21
+        assert not Venta.objects.filter(medio_pago="EFECTIVO", turno_caja__isnull=True).exists()
+
         venta_anulada = Venta.objects.get(estado="ANULADA")
         assert venta_anulada.anulada_por == duenio_previo
         assert venta_anulada.motivo_anulacion != ""
@@ -224,3 +232,177 @@ class TestUnitSeedDemo:
         assert TurnoCaja.objects.filter(usuario=cajero, estado="ABIERTO").count() == 1
         assert TurnoCaja.objects.filter(usuario=cajero, estado="CERRADO").count() == 2
         assert Venta.objects.filter(estado="ANULADA").count() == 1
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_video_falla_si_hay_turno_abierto_viejo_de_cajero_demo(self, monkeypatch):
+        """
+        Si cajero_demo tiene un turno ABIERTO de un día anterior, --video debe frenar
+        inmediatamente con CommandError sin crear turnos superpuestos.
+        """
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        cajero = User.objects.create_user(username="cajero_demo", password="x")
+        turno_viejo = TurnoCaja.objects.create(
+            usuario=cajero,
+            efectivo_inicial=Decimal("5000.00"),
+            apertura=timezone.now() - timedelta(days=3),
+            estado="ABIERTO",
+        )
+
+        with pytest.raises(CommandError, match="turno abierto viejo"):
+            call_command("seed_demo", video=True)
+
+        turnos_abiertos = TurnoCaja.objects.filter(usuario=cajero, estado="ABIERTO")
+        assert turnos_abiertos.count() == 1
+        assert turnos_abiertos.first().id == turno_viejo.id
+        assert TurnoCaja.objects.filter(usuario=cajero, estado="CERRADO").count() == 0
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_video_reacomoda_fechas_al_correr_cinco_dias_despues(self, monkeypatch):
+        """
+        Al correr seed_demo --video un día, cerrar ese turno abierto de ensayo y volver a
+        correrlo 5 días después, no duplica productos ni ventas, reacomoda todas las fechas
+        relativas al nuevo día y vincula las ventas de hoy y la anulada al nuevo turno abierto.
+        """
+        from apps.insumos.management.commands.seed_demo import _uuid_seed_video
+
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        tz_actual = timezone.get_current_timezone()
+        dia_1 = timezone.make_aware(datetime(2026, 11, 19, 14, 0, 0), tz_actual)
+        dia_2 = dia_1 + timedelta(days=5)
+        fecha_simulada = {"actual": dia_1}
+
+        monkeypatch.setattr(timezone, "now", lambda: fecha_simulada["actual"])
+
+        call_command("seed_demo", video=True)
+
+        conteos_base = (
+            Producto.objects.count(),
+            Insumo.objects.count(),
+            Compra.objects.count(),
+            Venta.objects.filter(estado="EMITIDA").count(),
+            Venta.objects.filter(estado="ANULADA").count(),
+            VentaItem.objects.count(),
+        )
+        assert conteos_base[0] == 11
+        assert conteos_base[3] == 20
+        assert conteos_base[4] == 1
+
+        # Se cierra el turno abierto del ensayo del día 1 antes de volver a correr el día 6
+        cajero = User.objects.get(username="cajero_demo")
+        turno_ensayo = TurnoCaja.objects.get(usuario=cajero, estado="ABIERTO")
+        turno_ensayo.estado = "CERRADO"
+        turno_ensayo.cierre = dia_1 + timedelta(hours=2)
+        turno_ensayo.save(update_fields=["estado", "cierre"])
+
+        fecha_simulada["actual"] = dia_2
+        call_command("seed_demo", video=True)
+
+        assert (
+            Producto.objects.count(),
+            Insumo.objects.count(),
+            Compra.objects.count(),
+            Venta.objects.filter(estado="EMITIDA").count(),
+            Venta.objects.filter(estado="ANULADA").count(),
+            VentaItem.objects.count(),
+        ) == conteos_base
+        assert not Venta.objects.filter(medio_pago="EFECTIVO", turno_caja__isnull=True).exists()
+
+        turnos_abiertos = TurnoCaja.objects.filter(usuario=cajero, estado="ABIERTO")
+        assert turnos_abiertos.count() == 1
+        turno_hoy = turnos_abiertos.first()
+        assert turno_hoy.id != turno_ensayo.id
+        assert timezone.localtime(turno_hoy.apertura).date() == dia_2.date()
+        assert turno_hoy.movimientos.count() == 3
+        assert all(
+            timezone.localtime(m.fecha).date() == dia_2.date() for m in turno_hoy.movimientos.all()
+        )
+        assert turno_hoy.efectivo_esperado == turno_hoy.calcular_efectivo_esperado()
+
+        # Los 2 turnos cerrados demo no se duplican (quedan los 2 demo + 1 de ensayo cerrado)
+        assert TurnoCaja.objects.filter(usuario=cajero, estado="CERRADO").count() == 3
+        turno_demo_1 = (
+            TurnoCaja.objects.filter(
+                usuario=cajero,
+                estado="CERRADO",
+                movimientos__motivo="Fondo de cambio inicial - Turno mañana",
+            )
+            .distinct()
+            .get()
+        )
+        turno_demo_2 = (
+            TurnoCaja.objects.filter(
+                usuario=cajero,
+                estado="CERRADO",
+                movimientos__motivo="Refuerzo de efectivo para fin de semana",
+            )
+            .distinct()
+            .get()
+        )
+        assert (
+            timezone.localtime(turno_demo_1.apertura).date() == (dia_2 - timedelta(days=11)).date()
+        )
+        assert timezone.localtime(turno_demo_1.cierre).date() == (dia_2 - timedelta(days=11)).date()
+        assert (
+            timezone.localtime(turno_demo_2.apertura).date() == (dia_2 - timedelta(days=4)).date()
+        )
+        assert timezone.localtime(turno_demo_2.cierre).date() == (dia_2 - timedelta(days=4)).date()
+        assert all(
+            timezone.localtime(m.fecha).date() == (dia_2 - timedelta(days=4)).date()
+            for m in turno_demo_2.movimientos.all()
+        )
+
+        # Las ventas de hoy y la anulada quedan en el nuevo turno abierto y con fecha de dia_2
+        for clave_hoy in ("hoy-v1", "hoy-v2", "hoy-v3", "hoy-anulada"):
+            venta = Venta.objects.get(id_operacion=_uuid_seed_video(clave_hoy))
+            assert venta.turno_caja_id == turno_hoy.id
+            assert timezone.localtime(venta.fecha).date() == dia_2.date()
+
+        venta_anulada = Venta.objects.get(id_operacion=_uuid_seed_video("hoy-anulada"))
+        assert venta_anulada.estado == "ANULADA"
+        assert timezone.localtime(venta_anulada.anulada_en).date() == dia_2.date()
+
+        # Las ventas históricas se reacomodan respecto a dia_2 para poblar "Hoy" y "Últimos 7 días"
+        inicio_hoy_2 = timezone.localtime(dia_2).replace(hour=0, minute=0, second=0, microsecond=0)
+        hace_7_dias_2 = inicio_hoy_2 - timedelta(days=6)
+        resumen_hoy_2 = obtener_ganancia_diaria(fecha_inicio=inicio_hoy_2, fecha_fin=dia_2)
+        resumen_7d_2 = obtener_ganancia_diaria(fecha_inicio=hace_7_dias_2, fecha_fin=dia_2)
+        assert resumen_hoy_2["cantidad_tickets"] == 3
+        assert resumen_7d_2["cantidad_tickets"] > 3
+        assert Decimal(resumen_7d_2["ingresos_totales"]) > Decimal("0")
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_video_no_sobrescribe_productos_existentes_y_advierte_margen_brownie(
+        self, monkeypatch
+    ):
+        """
+        Si un producto del escenario --video ya existía en la base, no sobrescribe su precio_venta
+        ni codigo_barras; si el Brownie queda con margen >= 30%, emite advertencia por stdout.
+        """
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        latte_previo = Producto.objects.create(
+            nombre="Café Latte",
+            codigo_barras="7799999000001",
+            precio_venta=Decimal("5100.00"),
+            estado_activo=True,
+        )
+        brownie_previo = Producto.objects.create(
+            nombre="Brownie Intenso Chocolate 70%",
+            codigo_barras="7799999000002",
+            precio_venta=Decimal("9000.00"),
+            minutos_mano_obra=Decimal("3.00"),
+            costo_hora_mano_obra=Decimal("2500.00"),
+            descartables=Decimal("45.00"),
+            estado_activo=True,
+        )
+
+        salida = StringIO()
+        call_command("seed_demo", video=True, stdout=salida)
+
+        latte_previo.refresh_from_db()
+        brownie_previo.refresh_from_db()
+        assert latte_previo.precio_venta == Decimal("5100.00")
+        assert latte_previo.codigo_barras == "7799999000001"
+        assert brownie_previo.precio_venta == Decimal("9000.00")
+        assert brownie_previo.codigo_barras == "7799999000002"
+        assert brownie_previo.margen_bruto >= Decimal("0.30")
+        assert "Brownie Intenso Chocolate 70%" in salida.getvalue()
