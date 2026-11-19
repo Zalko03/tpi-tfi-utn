@@ -22,6 +22,22 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-19
+Tarea: T9 (ronda de corrección post-auditoría) — Ajustes de fidelidad en `README.md` (solo documentación)
+Rama: docs/matriz-hu-readme
+Cambios realizados:
+- **Claves RS256 en Docker (`README.md`):** Se documentó el comportamiento real verificado en `docker-compose.yml`, `backend-django/Dockerfile` y `backend-node/Dockerfile`: generar `backend-django/config/keys/{private,public}.pem` antes de construir embebe las claves en `/app/config/keys/` en Django (`COPY . /app`, sin volúmenes ni variables `DJANGO_JWT_*` en Compose), mientras que `backend-node/Dockerfile` no copia `config/` y `docker-compose.yml` no monta ni inyecta `JWT_PUBLIC_KEY`.
+- **Salud de Node y `carta.html` en Docker (`README.md`):** Se quitaron `http://localhost/health/` y `http://localhost/health/profundo/` de las URLs expuestas en Docker (en `web/nginx.conf` caen en `index.html`; se verifica con `docker compose ps` / `docker compose exec backend-node ...` y en local en `:3000/health`). Se documentó que `web/Dockerfile` no copia `carta.html`, remitiendo a `http://localhost:3000/carta.html` en modo local.
+- **Variables `SEED_DEMO_*` y redacción de usuarios demo (`README.md`):** Se sacaron `SEED_DEMO_PASSWORD` y `SEED_DEMO_ALLOW_PRODUCTION` de la tabla de `.env.example` (pasadas a nota breve en §3 y §4), se usó `SEED_DEMO_PASSWORD="<tu-clave-demo>"` en los comandos de ejemplo y se corrigió `"3 usuarios demo por rol"` a `"3 usuarios demo (1 por rol)"`.
+Archivos tocados:
+- `README.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Revisión manual de `README.md` contra `docker-compose.yml`, `web/nginx.conf`, `web/Dockerfile`, `backend-django/Dockerfile`, `backend-node/Dockerfile`, `.env.example` y `seed_demo.py`.
+- `git diff --stat` y `git status`
+---
+
+---
+Fecha: 2026-11-19
 Tarea: T9 — Matriz de historias de usuario y README para la entrega (solo documentación)
 Rama: docs/matriz-hu-readme
 Cambios realizados:

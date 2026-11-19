@@ -38,14 +38,16 @@ cp .env.example .env
 ```
 Editá `.env` con tus claves locales (por ejemplo `DJANGO_SECRET_KEY`, `POSTGRES_PASSWORD`, y `GROQ_API_KEY` o `GEMINI_API_KEY` si vas a usar IA en la nube; sin API key el sistema opera en modo contingencia).
 
-### Paso 2 — Generar el par de claves JWT RS256
-`backend-django` firma los tokens con su clave privada y `backend-node` los verifica con la clave pública:
-```bash
-mkdir -p backend-django/config/keys backend-node/config/keys
-openssl genrsa -out backend-django/config/keys/private.pem 2048
-openssl rsa -in backend-django/config/keys/private.pem -pubout -out backend-django/config/keys/public.pem
-cp backend-django/config/keys/public.pem backend-node/config/keys/public.pem
-```
+### Paso 2 — Claves JWT RS256 (comportamiento actual en Docker)
+`backend-django` firma los tokens con su clave privada RS256 (`config/keys/private.pem`) y `backend-node` valida con la clave pública. Según `docker-compose.yml`, `backend-django/Dockerfile` y `backend-node/Dockerfile`:
+
+- **En `backend-django`:** `docker-compose.yml` no monta volúmenes ni define `DJANGO_JWT_PRIVATE_KEY*` / `DJANGO_JWT_PUBLIC_KEY*`, pero `backend-django/Dockerfile` copia todo el contexto (`COPY . /app`, incluyendo `config/keys/` si existe en el host). Generá el par de claves **antes** de `docker compose up -d --build` para que quede embebido en `/app/config/keys/` dentro de la imagen (si no existe al construir, Django genera un par RSA efímero en memoria por worker):
+  ```bash
+  mkdir -p backend-django/config/keys
+  openssl genrsa -out backend-django/config/keys/private.pem 2048
+  openssl rsa -in backend-django/config/keys/private.pem -pubout -out backend-django/config/keys/public.pem
+  ```
+- **En `backend-node`:** `backend-node/Dockerfile` solo copia `package.json`, `server.js`, `app.js` y `src/` (no copia `config/keys/`), y `docker-compose.yml` no monta `public.pem` ni pasa `JWT_PUBLIC_KEY` / `JWT_PUBLIC_KEY_PATH`. Por esta limitación del Compose actual, el contenedor `backend-node` arranca sin clave pública RS256 (la validación JWT contra Node en Docker requiere montar `public.pem` o inyectar `JWT_PUBLIC_KEY` mediante un override local de Compose).
 
 ### Paso 3 — Construir y levantar los servicios
 ```bash
@@ -56,16 +58,20 @@ O directamente con Docker Compose:
 docker compose up -d --build
 ```
 
-### Paso 4 — URLs de acceso (Docker)
+### Paso 4 — URLs de acceso y verificación (Docker)
 - **PWA / POS:** [http://localhost](http://localhost)
-- **Carta Digital Pública (QR):** [http://localhost/carta.html](http://localhost/carta.html) (también en `/app/carta.html`)
+- **Carta Digital Pública (`carta.html`):** En Docker existe una limitación actual en `web/Dockerfile` (no copia `carta.html` al contenedor Nginx, por lo que `http://localhost/carta.html` cae en `index.html`). Para abrir la carta pública utilizá el modo local ([http://localhost:3000/carta.html](http://localhost:3000/carta.html)).
 - **Salud Nginx:** [http://localhost/healthz](http://localhost/healthz)
 - **Salud Django:** [http://localhost/api/health/](http://localhost/api/health/) y [http://localhost/api/health/profundo/](http://localhost/api/health/profundo/)
-- **Salud Node:** [http://localhost/health/](http://localhost/health/) y [http://localhost/health/profundo/](http://localhost/health/profundo/)
+- **Salud Node:** `web/nginx.conf` no proxea `/health` ni `/health/profundo` hacia `backend-node` (si se consultan en `:80` caen en `index.html`). En Docker se verifica con `docker compose ps` o internamente en el contenedor:
+  ```bash
+  docker compose exec backend-node node -e "fetch('http://localhost:3000/health').then(r=>r.text()).then(console.log)"
+  ```
+  En modo local sí están expuestos en `http://localhost:3000/health` y `http://localhost:3000/health/profundo`.
 
-Para cargar datos de demo dentro del contenedor de Django (solo en entorno de prueba/demo):
+Para cargar datos de demo dentro del contenedor de Django (solo en entorno de prueba/demo, pasando `SEED_DEMO_PASSWORD` al invocar el comando):
 ```bash
-docker compose exec -e SEED_DEMO_PASSWORD="<ver .env.example>" backend-django \
+docker compose exec -e SEED_DEMO_PASSWORD="<tu-clave-demo>" backend-django \
   python manage.py seed_demo --video --force-production
 ```
 
@@ -129,13 +135,14 @@ El repositorio incluye la plantilla [`.env.example`](.env.example) (y [`ai-servi
 | **Node / Express** | `NODE_ENV`, `NODE_PORT`, `NODE_TRUST_PROXY_SALTOS` *(opc.)*, `MONGO_URI`, `DJANGO_BASE_URL`, `AI_SERVICE_URL` | Entorno Node (`development` en `:3000`), saltos de proxy confiables, URI de MongoDB (`mongodb://localhost:27017/cafe_gestion`), URL interna de Django (`http://localhost:8000/api`) y de `ai-service` (`http://localhost:8001`) |
 | **AI Service** | `AI_SERVICE_PORT`, `AI_PROVIDER`, `AI_PROMPT_VERSION`, `AI_TIMEOUT_SECONDS`, `AI_MAX_RETRIES`, `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_VISION_MODEL`, `GROQ_BASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | Puerto (`8001`), adaptador activo (`groq`, `gemini` u `ollama`), prompt (`v1`), timeouts/reintentos (`25.0` s / `2`) y credenciales/modelos de cada proveedor |
 | **Docker** | `COMPOSE_PROJECT_NAME` *(opc.)* | Nombre opcional del proyecto en Docker Compose (`cafe-gestion`) |
-| **Demo (`seed_demo`)** | `SEED_DEMO_PASSWORD` *(entorno al ejecutar el comando)*, `SEED_DEMO_ALLOW_PRODUCTION` *(opc.)* | Contraseña inicial para crear los usuarios demo con `manage.py seed_demo` (ver `.env.example` / entorno local; nunca se hardcodea en el código) |
+
+> **Nota sobre variables de demo (`seed_demo`):** `SEED_DEMO_PASSWORD` y `SEED_DEMO_ALLOW_PRODUCTION` no forman parte de `.env.example` ni de `ai-service/.env.example`; se pasan como variables de entorno puntuales al invocar `manage.py seed_demo` (nunca se hardcodean en el código).
 
 ---
 
 ## 4. Datos de Demostración (T7) y Usuarios Demo
 
-El comando `seed_demo` (`backend-django/apps/insumos/management/commands/seed_demo.py`) está bloqueado si `DJANGO_DEBUG=False` (salvo `--force-production`) y es **idempotente**: no borra datos ni sobrescribe contraseñas de usuarios existentes.
+El comando `seed_demo` (`backend-django/apps/insumos/management/commands/seed_demo.py`) está bloqueado si `DJANGO_DEBUG=False` (salvo `--force-production` o `SEED_DEMO_ALLOW_PRODUCTION=true`) y es **idempotente**: no borra datos ni sobrescribe contraseñas de usuarios existentes.
 
 Si usás SQLite local, conviene respaldar la base antes de poblarla:
 ```bash
@@ -144,29 +151,30 @@ cp backend-django/db.sqlite3 backups/db.sqlite3.antes-seed
 ```
 
 ### Modo estándar (catálogo base + turno abierto del día)
+Pasá la contraseña deseada en `SEED_DEMO_PASSWORD` al invocar el comando (si se omite, los usuarios nuevos se crean sin contraseña usable):
 ```bash
 cd backend-django
-DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<ver .env.example>" .venv/bin/python manage.py seed_demo
+DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<tu-clave-demo>" .venv/bin/python manage.py seed_demo
 ```
 
 ### Modo `--video` (escenario completo de demostración y reportes — T7)
 Genera o actualiza de forma idempotente:
-- 3 usuarios demo por rol, 5 proveedores, 12 insumos y 11 productos activos con receta completa (incluyendo `Brownie Intenso Chocolate 70%` con margen crítico `< 30 %`).
+- 3 usuarios demo (1 por rol), 5 proveedores, 12 insumos y 11 productos activos con receta completa (incluyendo `Brownie Intenso Chocolate 70%` con margen crítico `< 30 %`).
 - 2 turnos cerrados históricos (uno con arqueo exacto y otro con diferencia `-$200,00`), 1 turno abierto actual con movimientos de caja chica, ventas distribuidas en los últimos 14 días y 1 venta anulada (`ANULADA`).
 - Si `cajero_demo` tiene un turno `ABIERTO` de un día anterior, frena con `CommandError` para evitar superponer turnos entre jornadas.
 
 ```bash
 cd backend-django
-DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<ver .env.example>" .venv/bin/python manage.py seed_demo --video
+DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<tu-clave-demo>" .venv/bin/python manage.py seed_demo --video
 ```
 
 ### Usuarios Demo
 
 | Usuario | Rol plantilla | Contraseña | Alcance en la demo |
 |---|---|---|---|
-| `duenio_demo` | `DUENIO` | Ver `.env.example` *(definida vía `SEED_DEMO_PASSWORD`)* | Acceso completo: costeo, importación IA, reportes financieros, equipo/permisos y auditoría |
-| `encargado_demo` | `ENCARGADO` | Ver `.env.example` *(definida vía `SEED_DEMO_PASSWORD`)* | Insumos, compras, recetas, QR de carta pública, turnos/movimientos de caja y anulación |
-| `cajero_demo` | `CAJERO` | Ver `.env.example` *(definida vía `SEED_DEMO_PASSWORD`)* | POS, ventas y apertura/cierre de su propio turno con arqueo ciego estricto |
+| `duenio_demo` | `DUENIO` | Definida vía `SEED_DEMO_PASSWORD` al invocar `seed_demo` | Acceso completo: costeo, importación IA, reportes financieros, equipo/permisos y auditoría |
+| `encargado_demo` | `ENCARGADO` | Definida vía `SEED_DEMO_PASSWORD` al invocar `seed_demo` | Insumos, compras, recetas, QR de carta pública, turnos/movimientos de caja y anulación |
+| `cajero_demo` | `CAJERO` | Definida vía `SEED_DEMO_PASSWORD` al invocar `seed_demo` | POS, ventas y apertura/cierre de su propio turno con arqueo ciego estricto |
 
 ---
 
