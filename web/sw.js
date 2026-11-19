@@ -28,82 +28,119 @@ const RECURSOS_CASCARA = [
     '/vendor/mammoth/mammoth.browser.min.js',
 ];
 
-self.addEventListener('install', (evento) => {
-    evento.waitUntil(
-        caches
-            .open(NOMBRE_CACHE)
-            .then(async (cache) => {
-                await Promise.allSettled(RECURSOS_CASCARA.map((url) => cache.add(url)));
-            })
-            .then(() => self.skipWaiting())
-    );
-});
+/**
+ * Determina si una petición debe ser ignorada por el Service Worker (no interceptar ni cachear).
+ * Se ignoran peticiones de otros orígenes, destinos 'iframe' y URLs de OpenStreetMap.
+ */
+function debeIgnorarPeticionSw(url, destino = '', origen = '') {
+    if (!url) {
+        return true;
+    }
 
-self.addEventListener('activate', (evento) => {
-    evento.waitUntil(
-        caches
-            .keys()
-            .then((claves) =>
-                Promise.all(
-                    claves
-                        .filter((clave) => clave !== NOMBRE_CACHE)
-                        .map((claveAntigua) => caches.delete(claveAntigua))
+    let urlObj;
+    try {
+        urlObj = url instanceof URL ? url : new URL(String(url), origen || undefined);
+    } catch {
+        return true;
+    }
+
+    const origenNormalizado = typeof origen === 'string' ? origen : '';
+    const hostname = urlObj.hostname.toLowerCase();
+
+    if (origenNormalizado && urlObj.origin !== origenNormalizado) {
+        return true;
+    }
+
+    if (destino === 'iframe') {
+        return true;
+    }
+
+    if (hostname === 'openstreetmap.org' || hostname.endsWith('.openstreetmap.org')) {
+        return true;
+    }
+
+    return false;
+}
+
+if (typeof self !== 'undefined' && typeof self.addEventListener === 'function') {
+    self.addEventListener('install', (evento) => {
+        evento.waitUntil(
+            caches
+                .open(NOMBRE_CACHE)
+                .then(async (cache) => {
+                    await Promise.allSettled(RECURSOS_CASCARA.map((url) => cache.add(url)));
+                })
+                .then(() => self.skipWaiting())
+        );
+    });
+
+    self.addEventListener('activate', (evento) => {
+        evento.waitUntil(
+            caches
+                .keys()
+                .then((claves) =>
+                    Promise.all(
+                        claves
+                            .filter((clave) => clave !== NOMBRE_CACHE)
+                            .map((claveAntigua) => caches.delete(claveAntigua))
+                    )
                 )
-            )
-            .then(() => self.clients.claim())
-    );
-});
+                .then(() => self.clients.claim())
+        );
+    });
 
-self.addEventListener('fetch', (evento) => {
-    const url = new URL(evento.request.url);
+    self.addEventListener('fetch', (evento) => {
+        const url = new URL(evento.request.url);
+        const origenPropio = self.location ? self.location.origin : '';
 
-    // Nunca interceptar ni cachear iframes ni peticiones externas (ej. mapa de OpenStreetMap)
-    if (
-        url.origin !== self.location.origin ||
-        evento.request.destination === 'iframe' ||
-        url.hostname.endsWith('openstreetmap.org')
-    ) {
-        return;
-    }
+        // Nunca interceptar ni cachear iframes ni peticiones externas (ej. mapa de OpenStreetMap)
+        if (debeIgnorarPeticionSw(url, evento.request.destination, origenPropio)) {
+            return;
+        }
 
-    // Las peticiones a APIs o WebSockets nunca se sirven desde caché estática
-    if (
-        evento.request.method !== 'GET' ||
-        url.pathname.startsWith('/api/') ||
-        url.pathname.startsWith('/importaciones') ||
-        url.pathname.startsWith('/socket.io/') ||
-        url.pathname.startsWith('/health')
-    ) {
-        return;
-    }
+        // Las peticiones a APIs o WebSockets nunca se sirven desde caché estática
+        if (
+            evento.request.method !== 'GET' ||
+            url.pathname.startsWith('/api/') ||
+            url.pathname.startsWith('/importaciones') ||
+            url.pathname.startsWith('/socket.io/') ||
+            url.pathname.startsWith('/health')
+        ) {
+            return;
+        }
 
-    // Estrategia Network-First con fallback a caché para recursos de la interfaz PWA
-    evento.respondWith(
-        fetch(evento.request)
-            .then((respuestaRed) => {
-                if (respuestaRed && respuestaRed.status === 200) {
-                    const copia = respuestaRed.clone();
-                    caches.open(NOMBRE_CACHE).then((cache) => cache.put(evento.request, copia));
-                }
-                return respuestaRed;
-            })
-            .catch(async () => {
-                const directa = await caches.match(evento.request);
-                if (directa) return directa;
+        // Estrategia Network-First con fallback a caché para recursos de la interfaz PWA
+        evento.respondWith(
+            fetch(evento.request)
+                .then((respuestaRed) => {
+                    if (respuestaRed && respuestaRed.status === 200) {
+                        const copia = respuestaRed.clone();
+                        caches.open(NOMBRE_CACHE).then((cache) => cache.put(evento.request, copia));
+                    }
+                    return respuestaRed;
+                })
+                .catch(async () => {
+                    const directa = await caches.match(evento.request);
+                    if (directa) return directa;
 
-                if (evento.request.mode === 'navigate') {
-                    if (url.pathname.endsWith('/carta.html')) {
+                    if (evento.request.mode === 'navigate') {
+                        if (url.pathname.endsWith('/carta.html')) {
+                            return (
+                                (await caches.match('/app/carta.html')) ||
+                                (await caches.match('/carta.html'))
+                            );
+                        }
                         return (
-                            (await caches.match('/app/carta.html')) ||
-                            (await caches.match('/carta.html'))
+                            (await caches.match('/app/index.html')) ||
+                            (await caches.match('/index.html'))
                         );
                     }
-                    return (
-                        (await caches.match('/app/index.html')) ||
-                        (await caches.match('/index.html'))
-                    );
-                }
-                return directa;
-            })
-    );
-});
+                    return directa;
+                })
+        );
+    });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { debeIgnorarPeticionSw, NOMBRE_CACHE };
+}
