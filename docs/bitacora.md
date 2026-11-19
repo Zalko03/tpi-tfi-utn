@@ -2117,3 +2117,25 @@ Cómo probarlo:
 - `.venv/bin/ruff check backend-django/ ai-service/ scripts/ensayo_demo.py && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/ensayo_demo.py`
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 ---
+
+Fecha: 2026-11-19
+Tarea: T10 — Correcciones post-auditoría del ensayo E2E del flujo demo
+Rama: test/e2e-flujo-demo
+Qué se hizo y por qué:
+- Validación estricta de configuración en `scripts/ensayo_demo.py`: `_validar_url_http` valida `DJANGO_URL` y `NODE_URL` con `urllib.parse.urlsplit` exigiendo `scheme in {"http", "https"}`, `netloc`/host válido y puerto válido (rechaza `file://`, `ftp://`, URLs sin host o malformadas); `_validar_politica_node` exige que `VERIFICAR_NODE` esté en `{"auto", "1", "0"}` sin caer silenciosamente en `"0"`. Ante cualquier valor inválido imprime `❌ Configuración inválida: ...` y retorna `1` sin traceback.
+- Resiliencia de transporte en `ClienteApi.peticion_texto`: captura `(TimeoutError, http.client.HTTPException, OSError, ValueError)` además de `HTTPError`/`URLError` y lanza `ErrorPasoEnsayo` para reportar el paso con `❌` en lugar de abortar con traceback.
+- Aserciones numéricas E2E en `scripts/ensayo_demo.py` y `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py`:
+  - Paso 5 registra la venta de prueba a anular en `EFECTIVO` para ejercitar su exclusión del arqueo; Paso 6 contrasta `efectivo_esperado`, `diferencia` y `ventas_efectivo_total` del turno cerrado (manteniendo idempotencia si el turno reutilizado trae movimientos/ventas previas); Paso 7 verifica `ganancia-diaria > 0`, `>= total_venta_emitida` y consistencia con la suma de `reporte-por-producto`.
+  - En `test_ensayo_demo_completo_y_doble_corrida_contra_live_server` se verifica que `efectivo_esperado` del último turno cerrado coincida exactamente con `efectivo_inicial + venta_emitida.total` (excluyendo la venta anulada) y que `obtener_ganancia_diaria` en los últimos 7 días sea `> 0` y coincida con el neto y cantidad de ventas `EMITIDA`.
+  - Se agregaron tests unitarios rápidos en `TestValidacionesEnsayoDemo` para URLs inválidas, `VERIFICAR_NODE` inválido y captura de timeouts/errores de transporte.
+Archivos tocados:
+- `scripts/ensayo_demo.py`
+- `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `.venv/bin/ruff check backend-django/ ai-service/ scripts/ensayo_demo.py && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/ensayo_demo.py`
+- `bash -n scripts/ensayo_demo.sh`
+---
