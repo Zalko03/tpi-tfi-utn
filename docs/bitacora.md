@@ -1975,3 +1975,24 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint`
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 ---
+
+Fecha: 2026-11-19
+Tarea: T7 — Datos de demo para grabar el video (`seed_demo --video`)
+Rama: chore/datos-demo-video
+Qué se hizo y por qué:
+- Se amplió `backend-django/apps/insumos/management/commands/seed_demo.py` con el flag `--video`, manteniendo compatibilidad e idempotencia total (re-ejecutarlo no duplica registros, no borra usuarios ni cambia contraseñas existentes; todos los montos y cantidades usan `Decimal`).
+- En modo `--video`: asegura 11 productos activos con receta completa (insumos, mano de obra y descartables), incluyendo `Brownie Intenso Chocolate 70%` con margen crítico (~19,86% < 30%) para disparar la alerta de margen bajo; crea 2 turnos cerrados (`CERRADO`, uno exacto y otro con -$200) y 1 turno abierto (`ABIERTO`) para `cajero_demo` con movimientos de caja chica; distribuye ventas idempotentes (vía `id_operacion` UUID v5 determinístico) en los últimos 14 días para poblar "Últimos 7 días", ranking (con un ítem sin rotación en los últimos 7 días) y punto de equilibrio; y registra 1 venta anulada (`ANULADA`) mediante `anular_venta`.
+- Respaldo obligatorio antes de ejecutar el comando sobre la base local:
+  - `cp backend-django/db.sqlite3 ~/orq/backups/db.sqlite3.antes-seed-video`
+- Comando exacto para poblar la base con datos de demo/video:
+  - `cd backend-django && .venv/bin/python manage.py seed_demo --video`
+Archivos tocados:
+- `backend-django/apps/insumos/management/commands/seed_demo.py`
+- `backend-django/apps/insumos/tests/unit/test_unit_seed_demo.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+---
