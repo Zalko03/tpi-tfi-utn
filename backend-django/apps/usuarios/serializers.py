@@ -136,6 +136,16 @@ class DesactivarUsuarioSerializer(serializers.Serializer):
     motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
+class DemoAccesoSerializer(serializers.Serializer):
+    perfil = serializers.ChoiceField(
+        choices=("duenio", "encargado", "cajero"),
+        error_messages={
+            "required": "Indicá un perfil de demostración válido.",
+            "invalid_choice": "El perfil de demostración indicado no es válido.",
+        },
+    )
+
+
 class RegistroAuditoriaSerializer(serializers.ModelSerializer):
     usuario_modificado_username = serializers.CharField(
         source="usuario_modificado.username", read_only=True

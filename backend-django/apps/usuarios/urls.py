@@ -6,6 +6,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from apps.usuarios.views import (
+    DemoAccesoView,
     LoginView,
     LogoutView,
     RefreshView,
@@ -22,6 +23,7 @@ auth_patterns = [
     path("token/refresh/", RefreshView.as_view(), name="token_refresh"),
     path("token/blacklist/", LogoutView.as_view(), name="token_blacklist"),
     path("logout/", LogoutView.as_view(), name="logout"),
+    path("demo/", DemoAccesoView.as_view(), name="auth_demo"),
 ]
 
 urlpatterns = [

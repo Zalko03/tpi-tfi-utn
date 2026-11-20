@@ -6,6 +6,7 @@ La lógica de negocio reside estrictamente en services.py (convenciones-python.m
 from django.contrib.auth import get_user_model
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -19,6 +20,7 @@ from apps.usuarios.models import RegistroAuditoria
 from apps.usuarios.permissions import TienePermiso
 from apps.usuarios.serializers import (
     AjustarPermisosSerializer,
+    DemoAccesoSerializer,
     DesactivarUsuarioSerializer,
     RegistroAuditoriaSerializer,
     UsuarioActualizarSerializer,
@@ -92,6 +94,38 @@ class LogoutView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+class DemoAccesoView(APIView):
+    """
+    Acceso rápido sin contraseña para demostración local (GET/POST /api/auth/demo/).
+    Solo responde disponible y emite tokens si DEMO_ACCESO_RAPIDO=True y DEBUG=True.
+    """
+
+    permission_classes = (AllowAny,)
+
+    def get_throttles(self):
+        if self.request.method == "POST":
+            return [LoginRateThrottle()]
+        return super().get_throttles()
+
+    def get(self, request):
+        return Response(
+            {"disponible": services.demo_acceso_rapido_habilitado()},
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request):
+        if not services.demo_acceso_rapido_habilitado():
+            raise NotFound()
+
+        serializer = DemoAccesoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        datos = services.autenticar_demo_rapido(
+            perfil=serializer.validated_data["perfil"],
+        )
+        return Response(datos, status=status.HTTP_200_OK)
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):

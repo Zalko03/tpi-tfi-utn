@@ -33,6 +33,21 @@ def _obtener_rol_y_permisos_token(user: Any) -> tuple[str, list[str]]:
     return ROL_CAJERO, []
 
 
+def construir_datos_usuario_login(user: Any) -> Dict[str, Any]:
+    """Construye el diccionario `usuario` devuelto en las respuestas de autenticación."""
+    rol, permisos = _obtener_rol_y_permisos_token(user)
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email or "",
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "is_superuser": user.is_superuser,
+        "rol": rol,
+        "permisos": permisos,
+    }
+
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Emite pares de tokens JWT firmados con RS256 conteniendo claims
@@ -64,18 +79,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise AuthenticationFailed("Tu cuenta fue desactivada.")
 
-        rol, permisos = _obtener_rol_y_permisos_token(user)
-
-        data["usuario"] = {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email or "",
-            "first_name": user.first_name or "",
-            "last_name": user.last_name or "",
-            "is_superuser": user.is_superuser,
-            "rol": rol,
-            "permisos": permisos,
-        }
+        data["usuario"] = construir_datos_usuario_login(user)
         return data
 
 
