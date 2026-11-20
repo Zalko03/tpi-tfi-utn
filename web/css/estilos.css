@@ -21,6 +21,7 @@
     --color-borde-suave: #E8E2D8;
     --color-borde-hover: #D6CCC0;
     --color-borde-fuerte: #B8ABA0;
+    --color-borde-control: #8F8278;
 
     /* Acento Primario: Terracota Tostado / Caramelo Artesanal */
     --color-ambar: #A3481F;
@@ -119,6 +120,21 @@ body {
     outline-offset: 2px;
 }
 
+.btn-cta-primario:focus-visible,
+.btn-primario-comercial:focus-visible,
+.btn-cobrar-cta:focus-visible,
+.btn-nueva-venta:focus-visible {
+    outline: 2px solid #1A120E;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px #FAF5F0;
+}
+
+.sidebar-comercial :focus-visible,
+.login-branding-panel :focus-visible {
+    outline: 2px solid #FAF5F0;
+    outline-offset: 2px;
+}
+
 /* Jerarquía Tipográfica Editorial y Rítmica */
 h1, h2, h3, h4, h5, h6 {
     font-family: var(--fuente-principal);
@@ -213,8 +229,9 @@ td.col-numero {
     bottom: 0;
     background: radial-gradient(circle at 30% 20%, #261A14 0%, #150E0B 100%);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    overflow-y: auto;
     z-index: 9999;
     padding: 1.5rem;
     backdrop-filter: blur(6px);
@@ -225,6 +242,7 @@ td.col-numero {
     grid-template-columns: 1.15fr 1fr;
     max-width: 1040px;
     width: 100%;
+    margin: auto;
     background: var(--color-blanco);
     border-radius: var(--radio-lg);
     overflow: hidden;
@@ -321,7 +339,7 @@ td.col-numero {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--color-ambar);
+    color: #F4C095;
     margin-bottom: 0.85rem;
 }
 
@@ -478,7 +496,7 @@ textarea {
     width: 100%;
     font-family: var(--fuente-principal);
     background: #fff;
-    border: 1px solid var(--color-borde-suave);
+    border: 1px solid var(--color-borde-control);
     border-radius: var(--radio-md);
     padding: 0.75rem 1rem;
     font-size: 0.95rem;
@@ -489,7 +507,8 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-    outline: none;
+    outline: 2px solid var(--color-ambar);
+    outline-offset: 1px;
     border-color: var(--color-ambar);
     box-shadow: 0 0 0 3px var(--color-ambar-light);
 }
@@ -731,21 +750,57 @@ textarea:focus {
 }
 
 .badge-rol.duenio {
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #F59E0B;
+}
+
+.badge-rol.encargado {
+    background: #EFF6FF;
+    color: #1E40AF;
+    border: 1px solid #93C5FD;
+}
+
+.badge-rol.cajero {
+    background: #E6F4EA;
+    color: #1E4A37;
+    border: 1px solid #86EFAC;
+}
+
+.sidebar-comercial .badge-rol.duenio {
     background: rgba(192, 86, 33, 0.18);
     color: #F6AD55;
     border: 1px solid rgba(192, 86, 33, 0.3);
 }
 
-.badge-rol.encargado {
+.sidebar-comercial .badge-rol.encargado {
     background: rgba(43, 108, 176, 0.18);
     color: #90CDF4;
     border: 1px solid rgba(43, 108, 176, 0.3);
 }
 
-.badge-rol.cajero {
+.sidebar-comercial .badge-rol.cajero {
     background: rgba(45, 106, 79, 0.18);
     color: #9AE6B4;
     border: 1px solid rgba(45, 106, 79, 0.3);
+}
+
+.btn-hamburguesa-sidebar,
+.btn-cerrar-sidebar,
+.sidebar-backdrop {
+    display: none;
+}
+
+.btn-cerrar-sidebar {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--color-crema-texto);
+    border-radius: var(--radio-sm);
+    padding: 0.35rem;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-sidebar-logout {
@@ -764,7 +819,7 @@ textarea:focus {
 
 .btn-sidebar-logout:hover {
     background: var(--color-espresso-hover);
-    color: var(--color-peligro);
+    color: #FCA5A5;
 }
 
 /* ============================================================
@@ -860,8 +915,8 @@ textarea:focus {
 }
 
 .pildora-socket.conectado {
-    background: rgba(16, 185, 129, 0.1);
-    color: #059669;
+    background: rgba(16, 185, 129, 0.14);
+    color: #065F46;
 }
 
 .pildora-socket.desconectado {
@@ -985,7 +1040,7 @@ textarea:focus {
     font-size: 0.95rem;
     font-weight: 500;
     border-radius: var(--radio-md);
-    border: 1px solid var(--color-borde-suave);
+    border: 1px solid var(--color-borde-control);
     background: var(--color-blanco);
     height: 48px;
     color: var(--texto-color);
@@ -1072,6 +1127,9 @@ textarea:focus {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
     cursor: pointer;
     box-shadow: var(--sombra-card);
     transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
@@ -1330,6 +1388,13 @@ textarea:focus {
     letter-spacing: -0.03em;
 }
 
+.medios-pago-fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
 .medios-pago-selector {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -1337,7 +1402,8 @@ textarea:focus {
 }
 
 .metodo-pago-chip {
-    border: 1px solid var(--color-borde-suave);
+    position: relative;
+    border: 1px solid var(--color-borde-control);
     border-radius: var(--radio-md);
     background: var(--color-blanco);
     padding: 0.65rem 0.5rem;
@@ -1353,7 +1419,18 @@ textarea:focus {
 }
 
 .metodo-pago-chip input {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.metodo-pago-chip:has(input:focus-visible) {
+    outline: 2px solid var(--color-ambar);
+    outline-offset: 2px;
 }
 
 .metodo-pago-chip:hover {
@@ -1396,7 +1473,10 @@ textarea:focus {
 }
 
 .btn-cobrar-cta:disabled {
-    opacity: 0.55;
+    background: #7A4B35;
+    border-color: #7A4B35;
+    color: #FAF5F0;
+    opacity: 1;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
@@ -2749,8 +2829,115 @@ textarea:focus {
     .login-split-card {
         grid-template-columns: 1fr;
     }
+    .login-formulario-panel {
+        order: 1;
+    }
     .login-branding-panel {
+        order: 2;
+        padding: 1.5rem 1.25rem;
+        border-right: none;
+        border-top: 1px solid var(--color-espresso-borde);
+    }
+    .login-marca-header,
+    .login-propuesta-valor {
         display: none;
+    }
+    .login-demo-selector {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar-comercial {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: min(260px, 85vw);
+        height: 100vh;
+        transform: translateX(-100%);
+        transition: transform 0.22s ease;
+        z-index: 1200;
+    }
+    .sidebar-comercial.abierto {
+        transform: translateX(0);
+    }
+    .btn-hamburguesa-sidebar,
+    .btn-cerrar-sidebar {
+        display: inline-flex;
+    }
+    .sidebar-backdrop.visible {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(26, 18, 14, 0.55);
+        z-index: 1100;
+    }
+    .barra-superior-comercial {
+        padding: 0.75rem 1rem;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .contenedor-vistas {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .pantalla-login-overlay {
+        padding: 0.75rem;
+    }
+    .pos-input-laser-contenedor {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.45rem;
+    }
+    .pos-input-laser-contenedor .laser-icono-indicador {
+        top: 0.88rem;
+    }
+    .pos-input-laser-contenedor input {
+        padding-right: 1rem !important;
+    }
+    .laser-badge-estado {
+        position: static;
+        align-self: flex-start;
+    }
+    .campos-dos-columnas {
+        grid-template-columns: 1fr;
+    }
+    .ticket-modal-acciones,
+    .modal-footer-acciones {
+        flex-wrap: wrap;
+    }
+    .ticket-termico-papel {
+        width: 100%;
+        max-width: 320px;
+    }
+    .modal-overlay {
+        padding: 0.75rem;
+    }
+    .drawer-monitor {
+        width: 100%;
+        max-width: 360px;
+        right: -100%;
+    }
+    .contenedor-toasts {
+        left: 1rem;
+        right: 1rem;
+        top: 1rem;
+    }
+    .toast-notif {
+        min-width: 0;
+        max-width: 100%;
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .login-formulario-panel {
+        padding: 1.5rem 1.25rem;
     }
 }
 
@@ -2758,7 +2945,7 @@ textarea:focus {
    7. ZONA DE IMPORTACIÓN CSV DRAG & DROP Y BANNER OFFLINE
    ============================================================ */
 .zona-drop-csv {
-    border: 1px dashed var(--color-borde-hover);
+    border: 1px dashed var(--color-borde-control);
     border-radius: var(--radio-lg);
     background: var(--color-canvas);
     padding: 2rem 1.5rem;
@@ -2778,6 +2965,7 @@ textarea:focus {
 }
 
 .zona-drop-csv:hover,
+.zona-drop-csv:focus-visible,
 .zona-drop-csv.drag-activo {
     border-color: var(--color-ambar);
     background: var(--color-ambar-light);
@@ -2823,8 +3011,8 @@ textarea:focus {
     width: 36px;
     height: 36px;
     border-radius: var(--radio-sm);
-    background: rgba(200, 109, 31, 0.2);
-    color: var(--color-ambar);
+    background: rgba(244, 192, 149, 0.14);
+    color: #F4C095;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3175,9 +3363,21 @@ textarea:focus {
     color: #065F46;
 }
 
-.btn-exito-comercial:disabled,
+.btn-exito-comercial:disabled {
+    background: #3F6352;
+    border-color: #3F6352;
+    color: #FAF5F0;
+    opacity: 1;
+    cursor: not-allowed;
+    transform: none;
+    pointer-events: none;
+}
+
 .btn-descartar-comercial:disabled {
-    opacity: 0.5;
+    background: #F3EFEA;
+    color: #7A2323;
+    border-color: var(--color-borde-control);
+    opacity: 1;
     cursor: not-allowed;
     transform: none;
     pointer-events: none;
@@ -3226,7 +3426,7 @@ textarea:focus {
 .input-receta-cantidad {
     width: 92px;
     padding: 0.32rem 0.5rem;
-    border: 1px solid var(--color-borde-suave);
+    border: 1px solid var(--color-borde-control);
     border-radius: var(--radio-sm);
     font-size: 0.85rem;
     text-align: right;
@@ -3310,12 +3510,36 @@ textarea:focus {
 
 .btn-cta-primario:disabled,
 .btn-primario-comercial:disabled,
+.btn-ia-analizar:disabled {
+    background: #7A4B35;
+    border-color: #7A4B35;
+    color: #FAF5F0;
+    opacity: 1;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-peligro-comercial:disabled {
+    background: #7D3B3B;
+    border-color: #7D3B3B;
+    color: #FAF5F0;
+    opacity: 1;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .btn-secundario-comercial:disabled,
-.btn-peligro-comercial:disabled,
-.btn-ia-analizar:disabled,
-.btn-refrescar-mini:disabled,
+.btn-refrescar-mini:disabled {
+    background: #F3EFEA;
+    color: var(--texto-secundario);
+    border-color: var(--color-borde-control);
+    opacity: 1;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .btn-sincronizar-cola:disabled {
-    opacity: 0.62;
+    opacity: 0.9;
     cursor: not-allowed;
     transform: none;
 }
@@ -3329,7 +3553,7 @@ textarea:focus {
 
 .btn-cargando,
 .btn-cargando:disabled {
-    opacity: 0.78;
+    opacity: 0.92;
     cursor: wait;
     pointer-events: none;
 }
@@ -3583,7 +3807,7 @@ textarea:focus {
 .carta-publica-buscador {
     width: 100%;
     padding: 0.72rem 0.9rem 0.72rem 2.5rem;
-    border: 1px solid var(--color-borde-suave);
+    border: 1px solid var(--color-borde-control);
     border-radius: var(--radio-md);
     background: var(--color-blanco);
     font-family: var(--fuente-principal);
@@ -3592,7 +3816,8 @@ textarea:focus {
 }
 
 .carta-publica-buscador:focus {
-    outline: 2px solid rgba(163, 72, 31, 0.25);
+    outline: 2px solid var(--color-ambar);
+    outline-offset: 2px;
     border-color: var(--color-ambar);
 }
 

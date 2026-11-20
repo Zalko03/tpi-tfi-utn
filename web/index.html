@@ -166,11 +166,14 @@
             <div class="sidebar-header">
                 <div class="sidebar-marca">
                     <div class="marca-icono-sm">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line></svg>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line></svg>
                     </div>
                     <div class="sidebar-marca-texto">
                         <h2>Sapori Stock</h2>
                     </div>
+                    <button type="button" id="btn-cerrar-sidebar" class="btn-cerrar-sidebar" aria-label="Cerrar menú de navegación">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
                 </div>
             </div>
 
@@ -224,11 +227,26 @@
                 </button>
             </div>
         </aside>
+        <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
 
         <!-- ÁREA DE CONTENIDO PRINCIPAL -->
         <div class="area-trabajo">
             <!-- Barra Superior Comercial -->
             <header class="barra-superior-comercial">
+                <button
+                    type="button"
+                    id="btn-toggle-sidebar"
+                    class="btn-icono-panel btn-hamburguesa-sidebar"
+                    aria-label="Abrir menú de navegación"
+                    aria-expanded="false"
+                    aria-controls="sidebar"
+                >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
                 <div class="cabecera-titulos">
                     <h2 id="titulo-seccion-actual">Punto de Venta</h2>
                     <span id="subtitulo-seccion-actual">Facturación rápida de mostrador y emisión de tickets</span>
@@ -277,14 +295,14 @@
                     </button>
 
                     <!-- Botón de Configuración de Servidor / Modo de Conexión -->
-                    <button type="button" id="btn-config-servidor-header" class="btn-icono-panel" title="Conexión del sistema" style="display: none;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    <button type="button" id="btn-config-servidor-header" class="btn-icono-panel" aria-label="Configuración de conexión" title="Conexión del sistema" style="display: none;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                     </button>
 
                     <!-- Botón para ver monitor lateral en tiempo real -->
-                    <button type="button" id="btn-toggle-monitor" class="btn-icono-panel" title="Monitor de Actividad en Vivo">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                        <span id="contador-notificaciones" class="badge-notif">0</span>
+                    <button type="button" id="btn-toggle-monitor" class="btn-icono-panel" aria-label="Abrir monitor de actividad en vivo" aria-expanded="false" title="Monitor de Actividad en Vivo">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                        <span id="contador-notificaciones" class="badge-notif" aria-hidden="true">0</span>
                     </button>
                 </div>
             </header>
@@ -303,9 +321,10 @@
                             <div class="pos-herramientas-card">
                                 <div class="pos-laser-buscador-fila">
                                     <div class="pos-input-laser-contenedor">
-                                        <div class="laser-icono-indicador">
+                                        <div class="laser-icono-indicador" aria-hidden="true">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h3"></path><path d="M20 7V4h-3"></path><path d="M4 17v3h3"></path><path d="M20 17v3h-3"></path><line x1="4" y1="12" x2="20" y2="12"></line></svg>
                                         </div>
+                                        <label for="input-codigo-barras" class="sr-only">Buscar producto por código de barras o nombre</label>
                                         <input
                                             id="input-codigo-barras"
                                             type="text"
@@ -374,20 +393,23 @@
                                     </div>
 
                                     <!-- Selector visual táctil de medio de pago -->
-                                    <div class="medios-pago-selector">
-                                        <label class="metodo-pago-chip activo">
-                                            <input type="radio" name="medio_pago_radio" value="EFECTIVO" checked />
-                                            <span>Efectivo</span>
-                                        </label>
-                                        <label class="metodo-pago-chip">
-                                            <input type="radio" name="medio_pago_radio" value="TRANSFERENCIA" />
-                                            <span>QR / Transferencia</span>
-                                        </label>
-                                        <label class="metodo-pago-chip">
-                                            <input type="radio" name="medio_pago_radio" value="TARJETA" />
-                                            <span>Tarjeta</span>
-                                        </label>
-                                    </div>
+                                    <fieldset class="medios-pago-fieldset">
+                                        <legend class="sr-only">Medio de pago</legend>
+                                        <div class="medios-pago-selector">
+                                            <label class="metodo-pago-chip activo">
+                                                <input type="radio" name="medio_pago_radio" value="EFECTIVO" checked />
+                                                <span>Efectivo</span>
+                                            </label>
+                                            <label class="metodo-pago-chip">
+                                                <input type="radio" name="medio_pago_radio" value="TRANSFERENCIA" />
+                                                <span>QR / Transferencia</span>
+                                            </label>
+                                            <label class="metodo-pago-chip">
+                                                <input type="radio" name="medio_pago_radio" value="TARJETA" />
+                                                <span>Tarjeta</span>
+                                            </label>
+                                        </div>
+                                    </fieldset>
 
                                     <!-- Select nativo accesible para sincronización -->
                                     <select id="select-metodo-pago" class="sr-only" aria-label="Método de pago">
@@ -570,9 +592,10 @@
                                     </button>
                                 </div>
 
-                                <div id="zona-drop-csv" class="zona-drop-csv">
-                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt,.pdf,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="sr-only" />
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
+                                <div id="zona-drop-csv" class="zona-drop-csv" role="button" tabindex="0" aria-label="Elegir o arrastrar planilla, PDF, Word o foto del proveedor">
+                                    <label for="input-archivo-csv" class="sr-only">Elegir archivo de lista de precios</label>
+                                    <input type="file" id="input-archivo-csv" accept=".csv,.txt,.pdf,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="sr-only" tabindex="-1" />
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
                                     <div>
                                         <strong>Arrastrá aquí la planilla, el PDF, el Word o la foto del proveedor</strong>
                                         <p class="text-muted">o hacé clic para elegirlo (máx. 5 MB)</p>
@@ -636,7 +659,8 @@
                                         <div class="flex-justify-between" style="gap: 0.65rem; flex-wrap: wrap;">
                                             <label for="textarea-lista-ia">Texto de la Lista de Precios, Excel, Word, PDF o foto</label>
                                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                                                <input type="file" id="archivo-lista-ia" accept=".pdf,.txt,.csv,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="sr-only" />
+                                                <label for="archivo-lista-ia" class="sr-only">Subir archivo de lista de precios para analizar con IA</label>
+                                                <input type="file" id="archivo-lista-ia" accept=".pdf,.txt,.csv,.xlsx,.xls,.docx,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="sr-only" tabindex="-1" />
                                                 <button type="button" id="btn-cargar-archivo-ia" class="btn-secundario-comercial" style="padding: 0.35rem 0.75rem; font-size: 0.82rem;">
                                                     <span>Subir archivo</span>
                                                 </button>
@@ -1655,7 +1679,7 @@ Envío: $2000</textarea>
                 </div>
 
                 <div class="modal-footer-acciones no-print">
-                    <button type="button" id="btn-descargar-qr-svg" class="btn-secundario-comercial">Descargar SVG</button>
+                    <button type="button" id="btn-descargar-qr-svg" class="btn-secundario-comercial">Descargar imagen del QR</button>
                     <button type="button" id="btn-imprimir-qr-carta" class="btn-primario-comercial">Imprimir cartel</button>
                 </div>
             </div>
