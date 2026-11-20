@@ -2240,6 +2240,13 @@ textarea:focus {
     margin-top: auto;
 }
 
+/* Botones del mismo ancho y en una sola línea ("Dar de baja" se partía en tres renglones). */
+.usuario-acciones-fila > button {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: nowrap;
+}
+
 .aviso-supervivencia-card {
     background: #EFF6FF;
     border: 1px solid #BFDBFE;

@@ -333,8 +333,12 @@ def _paso_abrir_turno(
     cliente: ClienteApi,
     django_url: str,
     token_cajero: str,
-) -> tuple[int, str]:
-    """Paso 3: Reutilizar el turno abierto de cajero_demo o abrir uno nuevo."""
+) -> tuple[int, str, bool]:
+    """Paso 3: Reutilizar el turno abierto de cajero_demo o abrir uno nuevo.
+
+    Devuelve también si el turno ya existía: un turno que el ensayo no abrió (por ejemplo,
+    el que deja `seed_demo --video` para grabar) no se cierra al final.
+    """
     _, turnos = cliente.peticion_json(
         "GET",
         f"{django_url}/api/turnos/?estado=ABIERTO",
@@ -344,7 +348,7 @@ def _paso_abrir_turno(
     abiertos = turnos.get("datos") or []
     if abiertos:
         turno_id = int(abiertos[0]["id"])
-        return turno_id, f"Turno #{turno_id} ya estaba abierto (reutilizado)"
+        return turno_id, f"Turno #{turno_id} ya estaba abierto (reutilizado)", True
 
     _, creado = cliente.peticion_json(
         "POST",
@@ -354,7 +358,7 @@ def _paso_abrir_turno(
         estados_esperados=(201,),
     )
     turno_id = int(creado["id"])
-    return turno_id, f"Turno #{turno_id} abierto con efectivo inicial $10000.00"
+    return turno_id, f"Turno #{turno_id} abierto con efectivo inicial $10000.00", False
 
 
 def _elegir_producto_pos(
@@ -770,6 +774,7 @@ def ejecutar_ensayo(
     token_duenio = ""
     token_cajero = ""
     turno_id = 0
+    turno_reutilizado = False
     prod_pos_id = 0
     prod_pos_nombre = ""
     total_venta_emitida = Decimal("0.00")
@@ -811,8 +816,8 @@ def ejecutar_ensayo(
 
         # 3. Abrir turno del cajero (si no hay uno)
         def _step3() -> str:
-            nonlocal turno_id
-            turno_id, msg = _paso_abrir_turno(cliente, django_base, token_cajero)
+            nonlocal turno_id, turno_reutilizado
+            turno_id, msg, turno_reutilizado = _paso_abrir_turno(cliente, django_base, token_cajero)
             return msg
 
         if correr_paso(3, "Abrir turno del cajero (o reutilizar abierto)", _step3):
@@ -858,6 +863,17 @@ def ejecutar_ensayo(
                             False,
                             f"Omitido para no cerrar el turno #{turno_id} con la venta huérfana "
                             f"#{estado_limpieza['venta_huerfana_id']} sin anular.",
+                        )
+                    )
+                elif turno_reutilizado:
+                    resultados.append(
+                        ResultadoPaso(
+                            6,
+                            "Cerrar el turno (arqueo ciego + auditoría dueño)",
+                            True,
+                            f"No se cerró el turno #{turno_id} porque ya estaba abierto antes del "
+                            "ensayo (por ejemplo, el que deja seed_demo --video). Quedó con 1 venta "
+                            "de prueba y 1 venta anulada del ensayo.",
                         )
                     )
                 else:

@@ -101,7 +101,10 @@ class TestEnsayoFlujoDemo:
         call_command("seed_demo", "--video")
         modulo = _cargar_modulo_ensayo()
 
-        # Primera corrida: reutiliza el turno abierto de seed_demo --video y lo cierra al final.
+        turno_video = TurnoCaja.objects.get(estado="ABIERTO")
+
+        # Primera corrida: reutiliza el turno abierto de seed_demo --video y NO lo cierra,
+        # porque es el que se prepara para grabar el video.
         codigo_1 = modulo.ejecutar_ensayo(
             django_url=live_server.url,
             node_url="http://127.0.0.1:59998",
@@ -113,6 +116,14 @@ class TestEnsayoFlujoDemo:
         for nro in range(1, 9):
             assert f"✅ Paso {nro}:" in salida_1
         assert "reutilizado" in salida_1
+        assert f"No se cerró el turno #{turno_video.id}" in salida_1
+        turno_video.refresh_from_db()
+        assert turno_video.estado == "ABIERTO"
+
+        # Se cierra a mano el turno del video para que la segunda corrida abra uno propio
+        # y se pueda contrastar el arqueo de un turno que el ensayo abrió y cerró.
+        turno_video.estado = "CERRADO"
+        turno_video.save(update_fields=["estado"])
 
         # Segunda corrida consecutiva: no hay turno abierto, así que abre uno nuevo y lo cierra.
         codigo_2 = modulo.ejecutar_ensayo(
@@ -125,7 +136,7 @@ class TestEnsayoFlujoDemo:
         assert "✅ Ensayo completo OK (8/8 pasos superados)." in salida_2
         assert "abierto con efectivo inicial" in salida_2
         assert TurnoCaja.objects.filter(estado="ABIERTO").count() == 0
-        assert Venta.objects.filter(estado="ANULADA").count() >= 3
+        assert Venta.objects.filter(estado="ANULADA").count() >= 3  # 1 del seed + 1 por corrida
 
         # Contraste numérico del último turno cerrado (abierto en la 2da corrida):
         # efectivo_esperado == efectivo_inicial + venta emitida en efectivo (excluyendo la anulada).

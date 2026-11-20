@@ -2196,3 +2196,11 @@ Cómo probarlo:
 - **Cambio:** las tres CSP permiten `https://fonts.googleapis.com` (estilos) y `https://fonts.gstatic.com` (fuentes), y comparten `connect-src` (Render + localhost). nginx y Vercel quedan idénticas.
 - **Test:** `backend-node/tests/integration/cspConsistencia.integration.test.js` lee `vercel.json`, `web/nginx.conf` y la cabecera real de Node, y verifica fuentes, mapa, `script-src 'self'`, sin comodines e iguales entre sí.
 - **Cómo probarlo:** `npm test` en `backend-node`. A mano: servir `web/` bajo `/app/` con la CSP de nginx y comprobar en la consola del navegador que `getComputedStyle(document.body).fontFamily` empieza con "Plus Jakarta Sans" (verificado por Claude).
+
+## 20/11 — Ensayo de la demo sin romper el turno del video + botones de Equipo (Claude)
+- **Problema encontrado al ensayar sobre una copia de la base:** `scripts/ensayo_demo.py` reutilizaba el turno abierto que deja `seed_demo --video` (el que se prepara para grabar) y lo cerraba al final con un faltante. El historial de Reportes quedaba con un cierre de caja que no se quería mostrar.
+- **Cambio:** el ensayo solo cierra los turnos que abrió él. Si el turno ya estaba abierto, el paso 6 se informa como ✅ "No se cerró el turno #N porque ya estaba abierto antes del ensayo" (queda con 1 venta de prueba y 1 anulada). El test de doble corrida verifica que el turno del video sigue ABIERTO y, para cubrir el arqueo, lo cierra a mano antes de la segunda corrida.
+- **Igual conviene no correr el ensayo sobre la base con la que se graba:** usarlo en una copia (servidores en otros puertos o una copia de `db.sqlite3`).
+- **Antes de `seed_demo --video` en la base local:** hay que cerrar el Turno #1 de cajero_demo (abierto desde el 16/11). El comando se niega a correr mientras haya un turno viejo abierto, y lo explica.
+- **Equipo:** los botones de cada tarjeta ("Permisos", "Dar de baja", "Reactivar") ahora tienen el mismo ancho y no se parten en varios renglones.
+- **Verificado por Claude** sobre una copia de la base (Django 8000 + Node 3000 con Mongo `sapori_ensayo`): `seed_demo --video` dos veces (idempotente), ensayo 8/8 dos veces, el turno del video sigue abierto, y sin URLs el ensayo se niega a correr.
