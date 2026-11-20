@@ -17,6 +17,7 @@ import {
     CALIDAD_JPEG_IMAGEN_IMPORTACION,
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
+    consultarDisponibilidadDemoApi,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -64,6 +65,7 @@ import {
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
     puedeGestionarQrCarta,
+    resolverPerfilDemoDesdeBoton,
     seccionesVisiblesParaUsuario,
     siguienteIdCarga,
     SONIDOS,
@@ -149,6 +151,7 @@ export const estadoApp = {
     djangoUrl: endpointsIniciales.djangoUrl,
     nodeUrl: endpointsIniciales.nodeUrl,
     tokenJwt: tokenInicialGuardado.startsWith('offline-token-') ? '' : tokenInicialGuardado,
+    demoAccesoDisponible: false,
     usuario: tokenInicialGuardado.startsWith('offline-token-')
         ? null
         : JSON.parse(sessionStorage.getItem('cafe_user') || 'null'),
@@ -844,59 +847,111 @@ const intentarReanudarSesionOffline = (usernameSolicitado = '') => {
     return true;
 };
 
-const ejecutarLogin = async (username, password) => {
+const aplicarSesionAutenticada = (data, nombreFallback = '') => {
+    estadoApp.tokenJwt = data.access;
+    sessionStorage.setItem('cafe_jwt', data.access);
+    if (data.refresh) sessionStorage.setItem('cafe_refresh', data.refresh);
+    estadoApp.avisosSilenciadosHasta = 0;
+
+    if (data.usuario) {
+        estadoApp.usuario = data.usuario;
+        sessionStorage.setItem('cafe_user', JSON.stringify(data.usuario));
+    } else {
+        const claims = decodificarClaimsJwt(data.access);
+        if (claims) {
+            estadoApp.usuario = {
+                id: claims.user_id || claims.sub,
+                username: claims.username || nombreFallback,
+                rol: claims.rol || 'CAJERO',
+                permisos: claims.permisos || [],
+            };
+            sessionStorage.setItem('cafe_user', JSON.stringify(estadoApp.usuario));
+        }
+    }
+
+    const nombreBienvenida = estadoApp.usuario?.username || nombreFallback;
+    limpiarCredencialesFormularioLogin();
+    actualizarUIUsuario();
+    conectarSocketTiempoReal();
+    cargarDatosIniciales();
+    mostrarToast(`Bienvenido a Sapori Stock, ${nombreBienvenida}.`, 'exito');
+};
+
+const enviarSolicitudLogin = async ({
+    url,
+    payload,
+    nombreFallback = '',
+    mensajeCarga = 'Verificando credenciales...',
+    mensajeErrorPorDefecto = 'No se pudo ingresar. Revisá tus datos.',
+    esDemo = false,
+}) => {
     if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
-        intentarReanudarSesionOffline(username);
+        intentarReanudarSesionOffline(nombreFallback);
         return;
     }
 
     const estadoEl = $('mensaje-auth');
-    if (estadoEl) estadoEl.textContent = 'Verificando credenciales...';
+    if (estadoEl) estadoEl.textContent = mensajeCarga;
 
     try {
-        const res = await fetch(`${estadoApp.djangoUrl}/api/auth/token/`, {
+        const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify(payload),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-            const err = data.mensaje || data.detail || 'Credenciales inválidas';
+            if (esDemo && res.status === 404) {
+                estadoApp.demoAccesoDisponible = false;
+            }
+            const err =
+                res.status === 429
+                    ? mensajeErrorParaUsuario(429)
+                    : esDemo && res.status === 404
+                      ? 'El acceso rápido no está habilitado. Ingresá tu usuario y contraseña.'
+                      : data.mensaje || data.detail || mensajeErrorPorDefecto;
             if (estadoEl) estadoEl.textContent = err;
             mostrarToast(err, 'peligro');
             return;
         }
 
-        estadoApp.tokenJwt = data.access;
-        sessionStorage.setItem('cafe_jwt', data.access);
-        if (data.refresh) sessionStorage.setItem('cafe_refresh', data.refresh);
-        estadoApp.avisosSilenciadosHasta = 0;
-
-        if (data.usuario) {
-            estadoApp.usuario = data.usuario;
-            sessionStorage.setItem('cafe_user', JSON.stringify(data.usuario));
-        } else {
-            const claims = decodificarClaimsJwt(data.access);
-            if (claims) {
-                estadoApp.usuario = {
-                    id: claims.user_id || claims.sub,
-                    username: claims.username || username,
-                    rol: claims.rol || 'CAJERO',
-                    permisos: claims.permisos || [],
-                };
-                sessionStorage.setItem('cafe_user', JSON.stringify(estadoApp.usuario));
-            }
-        }
-
-        limpiarCredencialesFormularioLogin();
-        actualizarUIUsuario();
-        conectarSocketTiempoReal();
-        cargarDatosIniciales();
-        mostrarToast(`Bienvenido a Sapori Stock, ${username}.`, 'exito');
+        aplicarSesionAutenticada(data, nombreFallback);
     } catch {
-        intentarReanudarSesionOffline(username);
+        intentarReanudarSesionOffline(nombreFallback);
     }
+};
+
+const ejecutarLogin = async (username, password) =>
+    enviarSolicitudLogin({
+        url: `${estadoApp.djangoUrl}/api/auth/token/`,
+        payload: { username, password },
+        nombreFallback: username,
+        mensajeCarga: 'Verificando credenciales...',
+        mensajeErrorPorDefecto: 'Credenciales inválidas',
+    });
+
+const ejecutarLoginDemo = async (perfil, nombreUsuarioDemo = '') =>
+    enviarSolicitudLogin({
+        url: `${estadoApp.djangoUrl}/api/auth/demo/`,
+        payload: { perfil },
+        nombreFallback: nombreUsuarioDemo,
+        mensajeCarga: 'Ingresando...',
+        mensajeErrorPorDefecto: 'El acceso rápido no está habilitado. Ingresá tu usuario y contraseña.',
+        esDemo: true,
+    });
+
+const actualizarDisponibilidadDemo = async () => {
+    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+        estadoApp.demoAccesoDisponible = false;
+        return false;
+    }
+    const disponible = await consultarDisponibilidadDemoApi({
+        fetchFn: (url, opciones) => fetch(url, opciones),
+        djangoUrl: estadoApp.djangoUrl,
+    });
+    estadoApp.demoAccesoDisponible = disponible;
+    return disponible;
 };
 
 const cerrarSesion = ({ motivo = 'Sesión cerrada correctamente.', tipo = 'info' } = {}) => {
@@ -922,6 +977,7 @@ const cerrarSesion = ({ motivo = 'Sesión cerrada correctamente.', tipo = 'info'
     }
     limpiarCredencialesFormularioLogin({ resetearFormulario: true });
     actualizarUIUsuario();
+    actualizarDisponibilidadDemo();
     mostrarToast(motivo, tipo);
 };
 
@@ -4254,10 +4310,19 @@ const cambiarSeccion = (nombreSeccion) => {
 const inicializarEventosDOM = () => {
     inicializarTogglesVisibilidad();
 
-    // 1. Autocompletado de usuario demo (sin contraseñas hardcodeadas)
+    // 1. Acceso rápido demo (1 clic si el servidor lo habilitó) o autocompletado de usuario
     document.querySelectorAll('.btn-demo-acceso').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const usuario = btn.dataset.usuario || '';
+            const perfil = resolverPerfilDemoDesdeBoton({
+                id: btn.id,
+                usuario,
+                perfil: btn.dataset.perfil,
+            });
+            if (estadoApp.demoAccesoDisponible && perfil) {
+                await conCargando(btn, () => ejecutarLoginDemo(perfil, usuario));
+                return;
+            }
             if ($('input-username')) $('input-username').value = usuario;
             if ($('input-password')) {
                 $('input-password').value = '';
@@ -5085,6 +5150,9 @@ Flete y entrega a local: $4500`;
         if ($('modal-config-servidor')) $('modal-config-servidor').style.display = 'none';
         actualizarIndicadorColaOffline();
         conectarSocketTiempoReal();
+        if (!estadoApp.tokenJwt) {
+            actualizarDisponibilidadDemo();
+        }
         const etiquetasModo = {
             local: 'En la computadora del local',
             cloud: 'En internet',
@@ -5377,5 +5445,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (estadoApp.tokenJwt) {
         conectarSocketTiempoReal();
         cargarDatosIniciales();
+    } else {
+        actualizarDisponibilidadDemo();
     }
 });

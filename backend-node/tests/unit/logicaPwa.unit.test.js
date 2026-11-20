@@ -17,6 +17,7 @@ import {
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
     construirUrlsMapaOpenStreetMap,
+    consultarDisponibilidadDemoApi,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -80,6 +81,7 @@ import {
     puedeGestionarQrCarta,
     reconstruirLineasDeItemsPdf,
     renderizarUbicacionCarta,
+    resolverPerfilDemoDesdeBoton,
     resolverUbicacionCartaPublica,
     ROLES_PLANTILLAS,
     seccionesVisiblesParaUsuario,
@@ -2485,6 +2487,74 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                     'script',
                     'https://fakeopenstreetmap.org'
                 )
+            ).toBe(false);
+        });
+    });
+
+    describe('Acceso rápido de demostración (resolverPerfilDemoDesdeBoton y consultarDisponibilidadDemoApi)', () => {
+        it('mapea los tres botones y usuarios demo a su perfil exacto y rechaza otros valores', () => {
+            expect(resolverPerfilDemoDesdeBoton({ id: 'btn-demo-duenio' })).toBe('duenio');
+            expect(resolverPerfilDemoDesdeBoton({ id: 'btn-demo-encargado' })).toBe('encargado');
+            expect(resolverPerfilDemoDesdeBoton({ id: 'btn-demo-cajero' })).toBe('cajero');
+
+            expect(resolverPerfilDemoDesdeBoton({ usuario: 'duenio_demo' })).toBe('duenio');
+            expect(resolverPerfilDemoDesdeBoton({ usuario: 'encargado_demo' })).toBe('encargado');
+            expect(resolverPerfilDemoDesdeBoton({ usuario: 'cajero_demo' })).toBe('cajero');
+
+            expect(resolverPerfilDemoDesdeBoton({ perfil: 'DUENIO' })).toBe('duenio');
+            expect(resolverPerfilDemoDesdeBoton({ perfil: 'admin' })).toBeNull();
+            expect(resolverPerfilDemoDesdeBoton({ usuario: 'admin' })).toBeNull();
+            expect(resolverPerfilDemoDesdeBoton({ id: 'btn-otro' })).toBeNull();
+            expect(resolverPerfilDemoDesdeBoton()).toBeNull();
+        });
+
+        it('consulta GET /api/auth/demo/ y devuelve true solo si disponible === true', async () => {
+            const fetchOkTrue = jest.fn(async () => ({
+                ok: true,
+                json: async () => ({ disponible: true }),
+            }));
+            expect(
+                await consultarDisponibilidadDemoApi({
+                    fetchFn: fetchOkTrue,
+                    djangoUrl: 'http://localhost:8000/',
+                })
+            ).toBe(true);
+            expect(fetchOkTrue).toHaveBeenCalledWith('http://localhost:8000/api/auth/demo/', {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+            });
+
+            const fetchOkFalse = jest.fn(async () => ({
+                ok: true,
+                json: async () => ({ disponible: false }),
+            }));
+            expect(
+                await consultarDisponibilidadDemoApi({
+                    fetchFn: fetchOkFalse,
+                    djangoUrl: 'http://localhost:8000',
+                })
+            ).toBe(false);
+
+            const fetchErrorHttp = jest.fn(async () => ({
+                ok: false,
+                status: 500,
+                json: async () => ({}),
+            }));
+            expect(
+                await consultarDisponibilidadDemoApi({
+                    fetchFn: fetchErrorHttp,
+                    djangoUrl: 'http://localhost:8000',
+                })
+            ).toBe(false);
+
+            const fetchRed = jest.fn(async () => {
+                throw new Error('Falla de red');
+            });
+            expect(
+                await consultarDisponibilidadDemoApi({
+                    fetchFn: fetchRed,
+                    djangoUrl: 'http://localhost:8000',
+                })
             ).toBe(false);
         });
     });
