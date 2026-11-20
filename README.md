@@ -60,7 +60,7 @@ docker compose up -d --build
 
 ### Paso 4 — URLs de acceso y verificación (Docker)
 - **PWA / POS:** [http://localhost](http://localhost)
-- **Carta Digital Pública (`carta.html`):** En Docker existe una limitación actual en `web/Dockerfile` (no copia `carta.html` al contenedor Nginx, por lo que `http://localhost/carta.html` cae en `index.html`). Para abrir la carta pública utilizá el modo local ([http://localhost:3000/carta.html](http://localhost:3000/carta.html)).
+- **Carta Digital Pública (`carta.html`):** [http://localhost/carta.html](http://localhost/carta.html) (también [http://localhost/app/carta.html](http://localhost/app/carta.html); en local con Node en [http://localhost:3000/carta.html](http://localhost:3000/carta.html))
 - **Salud Nginx:** [http://localhost/healthz](http://localhost/healthz)
 - **Salud Django:** [http://localhost/api/health/](http://localhost/api/health/) y [http://localhost/api/health/profundo/](http://localhost/api/health/profundo/)
 - **Salud Node:** `web/nginx.conf` no proxea `/health` ni `/health/profundo` hacia `backend-node` (si se consultan en `:80` caen en `index.html`). En Docker se verifica con `docker compose ps` o internamente en el contenedor:
@@ -180,15 +180,15 @@ DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<tu-clave-demo>" .venv/bin/python manage.p
 
 ## 5. Suites de Pruebas y Linters
 
-Resultados verificados en la rama actual (`docs/matriz-hu-readme`):
+Resultados verificados en la rama actual (`fix/post-auditoria-tanda2`):
 
 | Componente | Comando de verificación | Resultado verificado |
 |---|---|---|
-| **backend-django** | `cd backend-django && .venv/bin/python -m pytest -q` | **465 tests pasando** |
-| **backend-node** | `cd backend-node && npm test` | **25 suites, 223 tests pasando** |
+| **backend-django** | `cd backend-django && .venv/bin/python -m pytest -q` | **507 tests pasando** |
+| **backend-node** | `cd backend-node && npm test` | **25 suites, 224 tests pasando** |
 | **ai-service** | `cd ai-service && .venv/bin/python -m pytest -q` | **87 tests pasando** |
-| **Total automatizado** | — | **775 tests en verde** |
-| **Lint Python (Ruff)** | `.venv/bin/ruff check backend-django/ ai-service/` y `.venv/bin/ruff format --check backend-django/ ai-service/` | Sin errores (`All checks passed!`) |
+| **Total automatizado** | — | **818 tests en verde** |
+| **Lint Python (Ruff)** | `.venv/bin/ruff check backend-django/ ai-service/ scripts/` y `.venv/bin/ruff format --check backend-django/ ai-service/ scripts/` | Sin errores (`All checks passed!`) |
 | **Lint Node (ESLint)** | `cd backend-node && npm run lint` | `0` errores |
 | **Sintaxis Web (`web/`)** | `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/js/config.js && node --check web/sw.js` | Exit `0` en los 5 archivos |
 

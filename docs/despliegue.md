@@ -80,12 +80,12 @@ docker compose up -d --build
 
 ### Paso 3: Acceso a la Aplicación
 * **Cliente Web / PWA:** Abrí en el navegador de la PC local o de cualquier tablet/móvil en la red Wi-Fi: `http://localhost` (o `http://<IP-DE-LA-PC-LOCAL>`).
-* **Documentación / Endpoints:**
-  * Healthcheck general: `http://localhost/healthz`
+* **Carta Digital Pública (`carta.html`):** `http://localhost/carta.html` o `http://localhost/app/carta.html` (incluida en la imagen `web-proxy` junto con `index.html`).
+* **Documentación / Endpoints de Salud:**
+  * Healthcheck general (Nginx): `http://localhost/healthz`
   * Healthcheck Django: `http://localhost/api/health/`
   * Healthcheck profundo Django: `http://localhost/api/health/profundo/`
-  * Healthcheck Node: `http://localhost/health/`
-  * Healthcheck profundo Node: `http://localhost/health/profundo/`
+  * Healthcheck Node (interno en Docker o modo local `:3000`): `web/nginx.conf` no proxea `/health` ni `/health/profundo` en `:80`; en Docker se verifica con `docker compose ps` o `docker compose exec backend-node node -e "fetch('http://localhost:3000/health').then(r=>r.text()).then(console.log)"`, y en desarrollo local sin Docker en `http://localhost:3000/health` y `http://localhost:3000/health/profundo`.
 
 ---
 
@@ -128,8 +128,8 @@ docker compose logs -f backend-django backend-node ai-service
 | `/healthz` | Liveness | Nginx Reverse Proxy | HTTP 200 OK |
 | `/api/health/` | Liveness | Django Process | HTTP 200 OK (sin tocar BD) |
 | `/api/health/profundo/` | Readiness | Django + PostgreSQL | HTTP 200 OK + `SELECT 1` exitoso y latencia |
-| `/health/` | Liveness | Node.js Process | HTTP 200 OK (sin tocar BD) |
-| `/health/profundo/` | Readiness | Node + MongoDB + Django | HTTP 200/503 con diagnóstico de conexiones |
+| `/health` *(puerto 3000 local / interno Docker)* | Liveness | Node.js Process | HTTP 200 OK (sin tocar BD; no proxieado por Nginx en `:80`) |
+| `/health/profundo` *(puerto 3000 local / interno Docker)* | Readiness | Node + MongoDB + Django | HTTP 200/503 con diagnóstico de conexiones (no proxieado por Nginx en `:80`) |
 | `/health/profundo` (ai) | Readiness | FastAPI AI Service | HTTP 200 con configuración activa de adapter |
 
 ---

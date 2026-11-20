@@ -37,8 +37,8 @@ docker compose up -d --build
 ```
 
 - **Web / POS:** `http://localhost` (puerto `80` vía Nginx `web-proxy`)
-- **Carta Digital Pública:** `http://localhost/carta.html` (o `http://localhost/app/carta.html`)
-- **Salud general:** `http://localhost/healthz` | `http://localhost/api/health/profundo/` | `http://localhost/health/profundo/`
+- **Carta Digital Pública:** `http://localhost/carta.html` (o `http://localhost/app/carta.html`, servida por Nginx `web-proxy`)
+- **Salud general:** `http://localhost/healthz` | `http://localhost/api/health/profundo/` (Django vía Nginx); la salud de `backend-node` (`/health` y `/health/profundo`) no está proxieada por `web/nginx.conf` en `:80` y se verifica dentro del contenedor o en modo local en `http://localhost:3000/health` y `http://localhost:3000/health/profundo`.
 
 ### Opción B — Desarrollo Local (sin Docker, 3 terminales)
 

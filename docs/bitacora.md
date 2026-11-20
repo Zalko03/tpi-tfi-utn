@@ -2139,3 +2139,54 @@ Cómo probarlo:
 - `.venv/bin/ruff check backend-django/ ai-service/ scripts/ensayo_demo.py && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/ensayo_demo.py`
 - `bash -n scripts/ensayo_demo.sh`
 ---
+
+Fecha: 2026-11-20
+Tarea: T12 — Correcciones post-auditoría de Tanda 2/3 y accesibilidad pre-video (T11)
+Rama: fix/post-auditoria-tanda2 (base `test/e2e-flujo-demo`)
+Qué se hizo y por qué:
+- **Seguridad y robustez de `scripts/ensayo_demo.py` y `scripts/ensayo_demo.sh` (A.4 + revisión Claude):**
+  - Guarda obligatoria contra `backend-django/db.sqlite3`: sin `DJANGO_URL` y `NODE_URL` explícitas (salvo flag `--confirmo-base-real`), el script rechaza ejecutar e indica qué variables o flag pasar; `scripts/ensayo_demo.sh` reenvía `"$@"`.
+  - `correr_paso` captura `(KeyError, AttributeError, TypeError, ValueError)` ante JSON con forma inesperada y lo reporta como fallo controlado del paso.
+  - Limpieza ante falla intermedia: si falla Paso 4 o Paso 5 luego de crear `venta_temp`, intenta anularla en limpieza y evita cerrar el turno si quedó una venta huérfana o falló el cobro.
+  - Rango de últimos 7 días en Paso 7 calculado con `ZoneInfo("America/Argentina/Buenos_Aires")`, bloqueo de redirecciones `3xx` en `ClienteApi` (respetando `monkeypatch` de `urlopen` en tests) y `efectivo_contado` alineado con `10000.00 + total_venta_emitida`.
+  - Tests en `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py` para guarda sin URLs, `--confirmo-base-real`, wrapper `.sh`, JSON malformado/inesperado, fallas intermedias en Pasos 4 y 5, y `VERIFICAR_NODE=1` con servidor HTTP simulado.
+- **Correcciones de `seed_demo.py` (A.1):**
+  - `_asegurar_venta_video` no re-vincula ni altera ventas que ya pertenecen a un `TurnoCaja` `CERRADO` distinto al objetivo (protegiendo `efectivo_esperado`, `diferencia` y `anulada_en` históricos en re-ejecuciones multi-día).
+  - Reactiva productos e insumos demo preexistentes con `estado_activo=False` (y precio `<= 0` en producto) para no abortar `registrar_venta`, y actualiza `unidad_base` de insumos sin compras aunque coincida `costo_unitario`.
+  - Tests agregados en `backend-django/apps/insumos/tests/unit/test_unit_seed_demo.py` (arqueo cerrado multi-día, asserts de `diferencia` 0.00 y -200.00, colisión de `codigo_barras`, producto inactivo, insumo con distinta `unidad_base` y `--video` con `DEBUG=False`).
+- **Correcciones de mapa y carta pública (A.2):**
+  - `web/Dockerfile`: incluye `carta.html` en la imagen Nginx.
+  - `web/js/logicaPwa.js`: `construirUrlsMapaOpenStreetMap` tolera `opciones = null` sin `TypeError`.
+  - `web/sw.js`: fallback offline retorna `Response.error()` / `Response(503)` si no hay caché previa (evita resolver `undefined`).
+  - `web/carta.html`: agrega `sandbox="allow-scripts allow-same-origin"` al `<iframe>` de OpenStreetMap.
+  - `web/nginx.conf` y `vercel.json`: agregan `Content-Security-Policy` coherente con `backend-node/app.js` (`frame-src https://www.openstreetmap.org`) preservando orígenes locales (y Render en `vercel.json`).
+  - Tests agregados en `backend-node/tests/unit/logicaPwa.unit.test.js` y `backend-node/tests/integration/clientePwa.integration.test.js` (bordes de coordenadas/dirección/`opciones=null`, `debeIgnorarPeticionSw` con URL vacía/inválida/subdominios OSM y CSP + `sandbox` en `/app/carta.html` y `/carta.html`).
+- **Accesibilidad y UX pre-video de T11 (ítems #1–#10 marcados "antes del video (24/11)"):**
+  - Sidebar responsive en `<= 768 px` (cajón deslizable `#sidebar`, botón hamburguesa `#btn-toggle-sidebar`, cierre `#btn-cerrar-sidebar`, `#sidebar-backdrop`, `Escape` y autocierre al navegar).
+  - Contraste WCAG AA: `.badge-rol.*` legible en fondos claros manteniendo variante oscura en `.sidebar-comercial`; `.pildora-socket.conectado` (`#065F46`), `.demo-selector-etiqueta` y `.demo-avatar` (`#F4C095`), `.btn-sidebar-logout:hover` (`#FCA5A5`), estados `:disabled` con contraste sólido, bordes de inputs (`--color-borde-control: #8F8278`) y foco visible en buscador de `carta.html` y botones oscuros/primarios.
+  - Operabilidad por teclado: radios de medio de pago accesibles en `<fieldset>` con sincronización bidireccional con `#select-metodo-pago`, tarjetas POS como `<button type="button">`, botón explícito `"Ver receta"` en tabla de Recetas, `#zona-drop-csv` con `role="button" tabindex="0"` y `Enter`/`Espacio`, y `aria-label` / `<label class="sr-only">` en botones de ícono e inputs faltantes.
+  - Responsive móvil (`<= 1024 px` / `640 px` / `480 px`): mantiene `.login-demo-selector` visible bajo el formulario en móvil, evita recorte vertical en `.pantalla-login-overlay`, y adapta `#input-codigo-barras`, `.campos-dos-columnas`, modales, drawer y toasts a `375 px`.
+  - Textos en español: reemplaza `"snapshots de costos unitarios"`, `err.message` crudos en toasts/dictámenes, `"Modo de conexión actualizado a: CLOUD/LOCAL/OFFLINE"` y `"Descargar SVG"` por equivalentes claros para el usuario final.
+- **Ítems de T11 marcados "puede esperar" (anotados sin tocar):**
+  - #11: `role="dialog"`, `aria-modal="true"`, trampa de foco y `inert`/`hidden` en `#panel-monitor-lateral` y modales.
+  - #12: `tabindex="-1"` / `inert` en `.compatibilidad-tests-pwa` (`aria-hidden="true"`).
+  - #13: `aria-live="polite"` en `#contenedor-toasts`, `#mensaje-auth`, `#estado-caja` y `#estado-importacion-ia`.
+  - #14: `role="tab"` / `aria-selected` en pestañas de Trazabilidad y Compras.
+  - #15: anglicismos/abreviaturas menores (`POS`, `ID`, `Email`, `S/C`, `TAB`, estados crudos de IA).
+  - #16: `<h1>` visible al estar logueado, `<label>` explícito en `#carta-buscador`, `flex-wrap` en `.carta-publica-meta`, CSS huérfano (`estilos.css:1920-1928`) y contraste del ícono activo en sidebar oscuro.
+- **Documentación (A.3):**
+  - `docs/MATRIZ_HU.md`: clasifica Abarrotes como condicional Escenario B (`docs/PROPUESTA.md §3`) y expande rutas de tests a rutas literales.
+  - `docs/despliegue.md`, `docs/PRESENTACION_Y_EVIDENCIAS.md` y `README.md`: alinea URLs Docker tras copiar `carta.html` en `web/Dockerfile` y actualiza los conteos reales de tests (`507` Django + `224` Node + `87` AI Service = `818`).
+Archivos tocados:
+- `scripts/ensayo_demo.py`, `scripts/ensayo_demo.sh`, `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py`
+- `backend-django/apps/insumos/management/commands/seed_demo.py`, `backend-django/apps/insumos/tests/unit/test_unit_seed_demo.py`
+- `web/Dockerfile`, `web/nginx.conf`, `vercel.json`, `web/carta.html`, `web/sw.js`, `web/js/logicaPwa.js`, `web/index.html`, `web/css/estilos.css`, `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/MATRIZ_HU.md`, `docs/despliegue.md`, `docs/PRESENTACION_Y_EVIDENCIAS.md`, `README.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q` (507 passed)
+- `cd backend-node && npm test && npm run lint` (25 suites, 224 tests passed; ESLint sin errores)
+- `cd ai-service && .venv/bin/python -m pytest -q` (87 passed)
+- `.venv/bin/ruff check backend-django/ ai-service/ scripts/ && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
+---
