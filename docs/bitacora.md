@@ -2190,3 +2190,9 @@ Cómo probarlo:
 - `.venv/bin/ruff check backend-django/ ai-service/ scripts/ && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/`
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
 ---
+
+## 20/11 — CSP de la web: Google Fonts y hosts de Render (Claude)
+- **Qué:** la CSP que se agregó en T12 a `web/nginx.conf` y `vercel.json` bloqueaba la hoja de Google Fonts (`style-src` sin `fonts.googleapis.com`, sin `font-src` para `fonts.gstatic.com`) y la web caía a Times New Roman. La de Node (`backend-node/app.js`) tenía lo mismo desde antes, y su `connect-src` no incluía los hosts de Render (la web abierta desde `/app` del Node publicado no podía hablar con Django).
+- **Cambio:** las tres CSP permiten `https://fonts.googleapis.com` (estilos) y `https://fonts.gstatic.com` (fuentes), y comparten `connect-src` (Render + localhost). nginx y Vercel quedan idénticas.
+- **Test:** `backend-node/tests/integration/cspConsistencia.integration.test.js` lee `vercel.json`, `web/nginx.conf` y la cabecera real de Node, y verifica fuentes, mapa, `script-src 'self'`, sin comodines e iguales entre sí.
+- **Cómo probarlo:** `npm test` en `backend-node`. A mano: servir `web/` bajo `/app/` con la CSP de nginx y comprobar en la consola del navegador que `getComputedStyle(document.body).fontFamily` empieza con "Plus Jakarta Sans" (verificado por Claude).

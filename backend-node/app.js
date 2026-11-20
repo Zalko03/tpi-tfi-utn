@@ -33,11 +33,17 @@ app.use(
             directives: {
                 defaultSrc: ["'self'"],
                 scriptSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'"],
+                // Google Fonts: la hoja de estilos sale de googleapis y los archivos de gstatic.
+                styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+                fontSrc: ["'self'", 'https://fonts.gstatic.com'],
                 imgSrc: ["'self'", 'data:'],
                 frameSrc: ['https://www.openstreetmap.org'],
                 connectSrc: [
                     "'self'",
+                    // Render: cuando la web se abre desde /app de Node publicado, habla con estos hosts.
+                    'https://sapori-backend-django.onrender.com',
+                    'https://sapori-backend-node.onrender.com',
+                    'wss://sapori-backend-node.onrender.com',
                     'http://localhost:8000',
                     'http://localhost:3000',
                     'ws://localhost:3000',

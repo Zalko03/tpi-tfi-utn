@@ -18,7 +18,7 @@
                 },
                 {
                     "key": "Content-Security-Policy",
-                    "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://www.openstreetmap.org; connect-src 'self' https://sapori-backend-django.onrender.com https://sapori-backend-node.onrender.com wss://sapori-backend-node.onrender.com http://localhost:8000 http://localhost:3000 ws://localhost:3000 http://127.0.0.1:8000 http://127.0.0.1:3000 ws://127.0.0.1:3000"
+                    "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; frame-src https://www.openstreetmap.org; connect-src 'self' https://sapori-backend-django.onrender.com https://sapori-backend-node.onrender.com wss://sapori-backend-node.onrender.com http://localhost:8000 http://localhost:3000 ws://localhost:3000 http://127.0.0.1:8000 http://127.0.0.1:3000 ws://127.0.0.1:3000"
                 }
             ]
         },
