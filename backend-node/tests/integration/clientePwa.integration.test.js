@@ -68,6 +68,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
 
         expect(resAppCarta.status).toBe(200);
         expect(resAppCarta.headers['content-type']).toMatch(/text\/html/);
+        expect(resAppCarta.headers['content-security-policy']).toContain(
+            'frame-src https://www.openstreetmap.org'
+        );
         expect(resAppCarta.text).toContain('Carta Digital');
         expect(resAppCarta.text).toContain('carta-buscador');
         expect(resAppCarta.text).toContain('carta-lista-productos');
@@ -77,12 +80,16 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(resAppCarta.text).toContain('(se abre en una pestaña nueva)');
         expect(resAppCarta.text).toContain('carta-ubicacion-iframe');
         expect(resAppCarta.text).toContain('referrerpolicy="strict-origin-when-cross-origin"');
+        expect(resAppCarta.text).toContain('sandbox="allow-scripts allow-same-origin"');
         expect(resAppCarta.text).toContain('js/config.js');
         expect(resAppCarta.text).toContain('js/carta.js');
         expect(resAppCarta.text).not.toContain('input-token-jwt');
 
         expect(resRaizCarta.status).toBe(200);
         expect(resRaizCarta.headers['content-type']).toMatch(/text\/html/);
+        expect(resRaizCarta.headers['content-security-policy']).toContain(
+            'frame-src https://www.openstreetmap.org'
+        );
         expect(resRaizCarta.text).toContain('Carta Digital');
         expect(resRaizCarta.text).toContain('carta-donde-estamos');
 

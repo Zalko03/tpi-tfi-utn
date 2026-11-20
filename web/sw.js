@@ -124,18 +124,16 @@ if (typeof self !== 'undefined' && typeof self.addEventListener === 'function') 
                     if (directa) return directa;
 
                     if (evento.request.mode === 'navigate') {
-                        if (url.pathname.endsWith('/carta.html')) {
-                            return (
-                                (await caches.match('/app/carta.html')) ||
-                                (await caches.match('/carta.html'))
-                            );
-                        }
-                        return (
-                            (await caches.match('/app/index.html')) ||
-                            (await caches.match('/index.html'))
-                        );
+                        const fallback = url.pathname.endsWith('/carta.html')
+                            ? (await caches.match('/app/carta.html')) ||
+                              (await caches.match('/carta.html'))
+                            : (await caches.match('/app/index.html')) ||
+                              (await caches.match('/index.html'));
+                        if (fallback) return fallback;
                     }
-                    return directa;
+                    return typeof Response !== 'undefined' && typeof Response.error === 'function'
+                        ? Response.error()
+                        : new Response('', { status: 503 });
                 })
         );
     });

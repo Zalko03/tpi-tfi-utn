@@ -2375,11 +2375,75 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(elementos.enlace.href).toMatch(/^https:\/\/www\.openstreetmap\.org\/\?mlat=/);
         });
 
-        it('debeIgnorarPeticionSw en web/sw.js ignora otros orígenes, destino iframe y openstreetmap.org sin ignorar recursos propios', () => {
+        it('construirUrlsMapaOpenStreetMap soporta opciones null, strings numéricos, límites exactos y alias lat/lon/lng', () => {
+            const conOpcionesNull = construirUrlsMapaOpenStreetMap(
+                { lat: '-27.4514', lon: '-58.9867', direccion: 'Plaza 25 de Mayo' },
+                null
+            );
+            expect(conOpcionesNull).not.toBeNull();
+            expect(conOpcionesNull.latitud).toBe(-27.4514);
+            expect(conOpcionesNull.longitud).toBe(-58.9867);
+
+            const enBordes = construirUrlsMapaOpenStreetMap({
+                lat: -90,
+                lng: 180,
+                direccion: '',
+            });
+            expect(enBordes).not.toBeNull();
+            expect(enBordes.direccion).toBe('');
+            expect(enBordes.urlEmbed).toContain('marker=-90.000000,180.000000');
+
+            const enOrigen = construirUrlsMapaOpenStreetMap({ latitud: 0, longitud: 0 });
+            expect(enOrigen).not.toBeNull();
+            expect(enOrigen.latitud).toBe(0);
+            expect(enOrigen.longitud).toBe(0);
+
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: true, longitud: -58.98 })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: false, longitud: -58.98 })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: {}, longitud: [] })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: Number.NaN, longitud: -58.98 })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: Number.POSITIVE_INFINITY, longitud: -58.98 })
+            ).toBeNull();
+
+            const elementos = {
+                seccion: { hidden: true },
+                direccionEl: { textContent: 'Anterior', hidden: false },
+                iframe: { src: '' },
+                enlace: { href: '' },
+            };
+            const mostrado = renderizarUbicacionCarta(elementos, {
+                ubicacion: { lat: -27.45, lng: -58.98, direccion: '   ' },
+            });
+            expect(mostrado).toBe(true);
+            expect(elementos.seccion.hidden).toBe(false);
+            expect(elementos.direccionEl.textContent).toBe('');
+            expect(elementos.direccionEl.hidden).toBe(true);
+        });
+
+        it('debeIgnorarPeticionSw en web/sw.js ignora otros orígenes, destino iframe, URLs vacías/inválidas y subdominios OSM', () => {
             const requireCjs = createRequire(import.meta.url);
             const { debeIgnorarPeticionSw, NOMBRE_CACHE } = requireCjs('../../../web/sw.js');
 
             expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v4');
+            expect(debeIgnorarPeticionSw('', 'document', 'https://sapori.local')).toBe(true);
+            expect(debeIgnorarPeticionSw(null, 'document', 'https://sapori.local')).toBe(true);
+            expect(debeIgnorarPeticionSw('http://[', 'document', 'https://sapori.local')).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://tile.openstreetmap.org/17/44056/76251.png',
+                    'image',
+                    'https://sapori.local'
+                )
+            ).toBe(true);
             expect(
                 debeIgnorarPeticionSw(
                     'https://sapori.local/app/carta.html',

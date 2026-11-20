@@ -3344,6 +3344,7 @@ export const construirUrlsMapaOpenStreetMap = (ubicacion, opciones = {}) => {
     if (!ubicacion || typeof ubicacion !== 'object') {
         return null;
     }
+    const opts = opciones && typeof opciones === 'object' ? opciones : {};
 
     const latitud = parsearCoordenadaMapa(ubicacion.latitud ?? ubicacion.lat, -90, 90);
     const longitud = parsearCoordenadaMapa(
@@ -3356,7 +3357,7 @@ export const construirUrlsMapaOpenStreetMap = (ubicacion, opciones = {}) => {
         return null;
     }
 
-    const deltaBruto = Number(opciones.delta ?? 0.004);
+    const deltaBruto = Number(opts.delta ?? 0.004);
     const delta =
         Number.isFinite(deltaBruto) && deltaBruto > 0 && deltaBruto <= 1 ? deltaBruto : 0.004;
 
@@ -3367,7 +3368,7 @@ export const construirUrlsMapaOpenStreetMap = (ubicacion, opciones = {}) => {
     const latStr = latitud.toFixed(6);
     const lonStr = longitud.toFixed(6);
 
-    const zoomBruto = Number(opciones.zoom ?? 17);
+    const zoomBruto = Number(opts.zoom ?? 17);
     const zoom = Number.isInteger(zoomBruto) && zoomBruto >= 1 && zoomBruto <= 19 ? zoomBruto : 17;
 
     const direccion =
