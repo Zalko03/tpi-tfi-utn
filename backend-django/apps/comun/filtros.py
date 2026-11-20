@@ -34,7 +34,7 @@ def parsear_parametro_fecha(valor: str | None, es_fin: bool = False) -> datetime
         return timezone.make_aware(datetime.combine(fecha, hora), tz_actual)
 
     raise serializers.ValidationError(
-        f"Formato de fecha inválido: '{valor}'. Use YYYY-MM-DD o ISO-8601."
+        f"La fecha '{valor}' no es válida. Usá el formato AAAA-MM-DD."
     )
 
 
@@ -66,7 +66,7 @@ def extraer_rango_fechas(
     dt_hasta = parsear_parametro_fecha(raw_hasta, es_fin=True)
 
     if dt_desde and dt_hasta and dt_desde > dt_hasta:
-        raise serializers.ValidationError("fecha_desde no puede ser posterior a fecha_hasta.")
+        raise serializers.ValidationError("La fecha desde no puede ser posterior a la fecha hasta.")
 
     return dt_desde, dt_hasta
 

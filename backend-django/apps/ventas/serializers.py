@@ -19,7 +19,7 @@ class VentaItemInputSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if "producto_id" not in attrs and "producto" not in attrs:
-            raise serializers.ValidationError("Debe indicar 'producto_id' o 'producto'.")
+            raise serializers.ValidationError("Elegí un producto para agregar a la venta.")
         if "producto_id" not in attrs:
             attrs["producto_id"] = attrs["producto"]
         return attrs
@@ -45,6 +45,7 @@ class VentaSerializer(serializers.ModelSerializer):
     items_entrada = VentaItemInputSerializer(many=True, write_only=True, required=True)
     id_operacion = serializers.UUIDField(required=False, allow_null=True)
     usuario_nombre = serializers.ReadOnlyField(source="turno_caja.usuario.username")
+    anulada_por_nombre = serializers.ReadOnlyField(source="anulada_por.username")
 
     class Meta:
         model = Venta
@@ -56,6 +57,11 @@ class VentaSerializer(serializers.ModelSerializer):
             "fecha",
             "medio_pago",
             "origen",
+            "estado",
+            "anulada_en",
+            "anulada_por",
+            "anulada_por_nombre",
+            "motivo_anulacion",
             "total",
             "costo_total_snapshot",
             "items",
@@ -66,6 +72,11 @@ class VentaSerializer(serializers.ModelSerializer):
             "id",
             "usuario_nombre",
             "fecha",
+            "estado",
+            "anulada_en",
+            "anulada_por",
+            "anulada_por_nombre",
+            "motivo_anulacion",
             "total",
             "costo_total_snapshot",
             "creado_en",
@@ -92,7 +103,9 @@ class VentaSerializer(serializers.ModelSerializer):
             if not getattr(user, "is_superuser", False):
                 puede_ajenos = usuario_tiene_permiso(request, "caja.gestionar_turnos_ajenos")
                 if turno.usuario_id and turno.usuario_id != user.id and not puede_ajenos:
-                    raise exceptions.PermissionDenied("Debe pertenecer al turno abierto del cajero")
+                    raise exceptions.PermissionDenied(
+                        "Tenés que usar tu propio turno de caja abierto."
+                    )
 
         if turno and turno.estado != "ABIERTO":
             raise serializers.ValidationError(

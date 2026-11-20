@@ -15,6 +15,8 @@ import {
     calcularFactorConversionReceta,
     calcularResumenCarrito,
     construirDictPermisosDesdeSeleccion,
+    construirUrlCartaPublica,
+    construirUrlsMapaOpenStreetMap,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -50,6 +52,8 @@ import {
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    generarMatrizQr,
+    generarSvgQrCarta,
     GRUPOS_PERMISOS_EQUIPO,
     guardarPreferenciaSonidosSilenciados,
     LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
@@ -73,7 +77,10 @@ import {
     PERMISOS_POR_SECCION,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    puedeGestionarQrCarta,
     reconstruirLineasDeItemsPdf,
+    renderizarUbicacionCarta,
+    resolverUbicacionCartaPublica,
     ROLES_PLANTILLAS,
     seccionesVisiblesParaUsuario,
     siguienteIdCarga,
@@ -654,6 +661,47 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             ]);
             expect(resultado.registros[0].tipoEtiqueta).toBe('Cierre de Caja');
             expect(resultado.registros[2].tipoEtiqueta).toBe('Insumos · Ingreso');
+        });
+
+        it('marca las ventas anuladas con badge "Anulada" y detalle de motivo sin ocultar confidencialidad', () => {
+            const fechaDia12 = new Date(2026, 10, 12, 11, 0, 0).toISOString();
+            const resultado = unificarTrazabilidadRegistros({
+                ventas: [
+                    {
+                        id: 21,
+                        fecha: fechaDia12,
+                        medio_pago: 'EFECTIVO',
+                        estado: 'ANULADA',
+                        motivo_anulacion: 'Ticket duplicado',
+                        total: '3500.00',
+                        usuario_nombre: 'encargado_demo',
+                        items: [{ producto_nombre: 'Latte', cantidad: 1 }],
+                    },
+                    {
+                        id: 22,
+                        fecha: fechaDia12,
+                        medio_pago: null,
+                        estado: 'ANULADA',
+                        motivo_anulacion: '',
+                        total: null,
+                        usuario_nombre: 'cajero_demo',
+                        items: [{ producto_nombre: 'Espresso', cantidad: 1 }],
+                    },
+                ],
+                fechaDesde: '2026-11-12',
+                fechaHasta: '2026-11-12',
+            });
+
+            expect(resultado.registros).toHaveLength(2);
+            const [r1, r2] = resultado.registros;
+            expect(r1.tipoEtiqueta).toBe('Venta · Anulada');
+            expect(r1.nivelBadge).toBe('peligro');
+            expect(r1.detalle).toContain('Anulada: Ticket duplicado');
+            expect(r1.montoCantidad).toContain('(Anulada)');
+
+            expect(r2.tipoEtiqueta).toBe('Venta · Anulada');
+            expect(r2.nivelBadge).toBe('peligro');
+            expect(r2.montoCantidad).toBe('Confidencial');
         });
     });
 
@@ -1914,6 +1962,530 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
 
             expect(extraerBase64DeDataUrl('data:image/jpeg;base64,/9j/4AAQ')).toBe('/9j/4AAQ');
             expect(extraerBase64DeDataUrl('sin-prefijo')).toBe('');
+        });
+    });
+
+    describe('Carta pública por QR: permisos, URL y codificador ISO/IEC 18004 (T5)', () => {
+        it('puedeGestionarQrCarta habilita solo si tiene permiso recetas.editar (dueño y encargado sí, cajero y cocina no)', () => {
+            expect(puedeGestionarQrCarta({ rol: 'DUENIO', permisos: [] })).toBe(true);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'ENCARGADO',
+                    permisos: ['recetas.ver', 'recetas.crear', 'recetas.editar', 'recetas.ver_costos'],
+                })
+            ).toBe(true);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'ENCARGADO',
+                    permisos: ['recetas.ver'],
+                })
+            ).toBe(false);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'CAJERO',
+                    permisos: ['ventas.cobrar_ticket'],
+                })
+            ).toBe(false);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'COCINA',
+                    permisos: ['recetas.ver', 'insumos.ver'],
+                })
+            ).toBe(false);
+            expect(
+                puedeGestionarQrCarta({
+                    rol: 'COCINA',
+                    permisos: ['recetas.editar'],
+                })
+            ).toBe(true);
+            expect(puedeGestionarQrCarta(null)).toBe(false);
+        });
+
+        it('construirUrlCartaPublica respeta prefijo /app/ o raíz /', () => {
+            expect(construirUrlCartaPublica('http://localhost:3000', '/app/index.html')).toBe(
+                'http://localhost:3000/app/carta.html'
+            );
+            expect(construirUrlCartaPublica('http://localhost:3000', '/app/')).toBe(
+                'http://localhost:3000/app/carta.html'
+            );
+            expect(construirUrlCartaPublica('http://localhost:3000', '/app')).toBe(
+                'http://localhost:3000/app/carta.html'
+            );
+            expect(construirUrlCartaPublica('https://cafesapori.com/', '/')).toBe(
+                'https://cafesapori.com/carta.html'
+            );
+            expect(construirUrlCartaPublica('https://cafesapori.com', '/index.html')).toBe(
+                'https://cafesapori.com/carta.html'
+            );
+        });
+
+        it('generarMatrizQr produce una matriz cuadrada determinista con finder, separadores, timing y dark module ISO', () => {
+            expect(() => generarMatrizQr('')).toThrow();
+
+            const urlCorta = 'http://localhost:3000/app/carta.html';
+            const m1 = generarMatrizQr(urlCorta);
+            const m2 = generarMatrizQr(urlCorta);
+            expect(m1).toEqual(m2);
+
+            const n = m1.length;
+            expect(n).toBeGreaterThanOrEqual(21);
+            expect((n - 17) % 4).toBe(0);
+            for (const fila of m1) {
+                expect(fila.length).toBe(n);
+            }
+
+            // Verificar 3 finder patterns 7x7 + separadores blancos
+            const verificarFinder = (r0, c0) => {
+                for (let r = 0; r < 7; r++) {
+                    for (let c = 0; c < 7; c++) {
+                        const borde = r === 0 || r === 6 || c === 0 || c === 6;
+                        const centro = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+                        expect(m1[r0 + r][c0 + c]).toBe(borde || centro);
+                    }
+                }
+            };
+            verificarFinder(0, 0);
+            verificarFinder(0, n - 7);
+            verificarFinder(n - 7, 0);
+
+            // Separadores blancos
+            for (let i = 0; i < 8; i++) {
+                expect(m1[7][i]).toBe(false);
+                expect(m1[i][7]).toBe(false);
+                expect(m1[7][n - 1 - i]).toBe(false);
+                expect(m1[i][n - 8]).toBe(false);
+                expect(m1[n - 8][i]).toBe(false);
+                expect(m1[n - 1 - i][7]).toBe(false);
+            }
+
+            // Timing patterns fila 6 y col 6
+            for (let i = 8; i < n - 8; i++) {
+                expect(m1[6][i]).toBe(i % 2 === 0);
+                expect(m1[i][6]).toBe(i % 2 === 0);
+            }
+
+            // Dark module fijo ISO en (n - 8, 8)
+            expect(m1[n - 8][8]).toBe(true);
+        });
+
+        it('decodifica integralmente los bits de formato BCH(15,5), desenmascara y recupera la URL original (v1 a v6+)', () => {
+            const urlsPrueba = [
+                'http://localhost/carta.html',
+                'http://localhost:3000/app/carta.html',
+                'https://sapori-cafe-gestion.onrender.com/app/carta.html?sucursal=resistencia&vista=qr&largo=123456789012345678901234567890',
+            ];
+
+            const mascaraFn = (m, r, c) => {
+                if (m === 0) return (r + c) % 2 === 0;
+                if (m === 1) return r % 2 === 0;
+                if (m === 2) return c % 3 === 0;
+                if (m === 3) return (r + c) % 3 === 0;
+                if (m === 4) return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0;
+                if (m === 5) return ((r * c) % 2) + ((r * c) % 3) === 0;
+                if (m === 6) return (((r * c) % 2) + ((r * c) % 3)) % 2 === 0;
+                return (((r + c) % 2) + ((r * c) % 3)) % 2 === 0;
+            };
+
+            const alignTabla = {
+                1: [],
+                2: [6, 18],
+                3: [6, 22],
+                4: [6, 26],
+                5: [6, 30],
+                6: [6, 34],
+                7: [6, 22, 38],
+            };
+
+            const dataCountTabla = {
+                M: { 1: 16, 2: 28, 3: 44, 4: 64, 5: 86, 6: 108, 7: 124 },
+            };
+
+            for (const url of urlsPrueba) {
+                const matriz = generarMatrizQr(url, { nivelEcc: 'M' });
+                const n = matriz.length;
+                const ver = (n - 17) / 4;
+
+                // Leer ambas copias de format info y verificar coincidencia + BCH(15,5)
+                let fmtA = 0;
+                let fmtB = 0;
+                for (let i = 0; i < 15; i++) {
+                    const bA =
+                        i < 6
+                            ? matriz[i][8]
+                            : i < 8
+                              ? matriz[i + 1][8]
+                              : matriz[n - 15 + i][8];
+                    const bB =
+                        i < 8
+                            ? matriz[8][n - i - 1]
+                            : i < 9
+                              ? matriz[8][15 - i]
+                              : matriz[8][15 - i - 1];
+                    if (bA) fmtA |= 1 << i;
+                    if (bB) fmtB |= 1 << i;
+                }
+                expect(fmtA).toBe(fmtB);
+
+                const rawFmt = fmtA ^ 0x5412;
+                let rem = rawFmt;
+                for (let i = 14; i >= 10; i--) {
+                    if ((rem >> i) & 1) rem ^= 0x537 << (i - 10);
+                }
+                expect(rem).toBe(0);
+
+                const eccBits = (rawFmt >> 13) & 3;
+                const maskId = (rawFmt >> 10) & 7;
+                expect(eccBits).toBe(0); // 'M' = 00
+
+                // Marcar módulos de función para leer los bits de datos en zigzag
+                const esFunc = Array.from({ length: n }, () => Array(n).fill(false));
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) esFunc[r][c] = true;
+                }
+                for (let r = 0; r < 9; r++) {
+                    for (let c = n - 8; c < n; c++) esFunc[r][c] = true;
+                }
+                for (let r = n - 8; r < n; r++) {
+                    for (let c = 0; c < 9; c++) esFunc[r][c] = true;
+                }
+                for (let i = 8; i < n - 8; i++) {
+                    esFunc[6][i] = true;
+                    esFunc[i][6] = true;
+                }
+                for (const cr of alignTabla[ver]) {
+                    for (const cc of alignTabla[ver]) {
+                        if ((cr <= 8 && cc <= 8) || (cr <= 8 && cc >= n - 9) || (cr >= n - 9 && cc <= 8)) continue;
+                        for (let dr = -2; dr <= 2; dr++) {
+                            for (let dc = -2; dc <= 2; dc++) esFunc[cr + dr][cc + dc] = true;
+                        }
+                    }
+                }
+                if (ver >= 7) {
+                    for (let r = 0; r < 6; r++) {
+                        for (let c = n - 11; c < n - 8; c++) {
+                            esFunc[r][c] = true;
+                            esFunc[c][r] = true;
+                        }
+                    }
+                }
+
+                const bitsLeidos = [];
+                let subir = true;
+                for (let col = n - 1; col > 0; col -= 2) {
+                    if (col === 6) col--;
+                    for (let step = 0; step < n; step++) {
+                        const fila = subir ? n - 1 - step : step;
+                        for (let dc = 0; dc < 2; dc++) {
+                            const c = col - dc;
+                            if (!esFunc[fila][c]) {
+                                const crudo = matriz[fila][c];
+                                const desenmascarado = mascaraFn(maskId, fila, c) ? !crudo : crudo;
+                                bitsLeidos.push(desenmascarado ? 1 : 0);
+                            }
+                        }
+                    }
+                    subir = !subir;
+                }
+
+                // Deshacer intercalado para recuperar los bytes de datos (v3: 1 bloque, v4-v7: 2 o 4 bloques)
+                const totalData = dataCountTabla.M[ver];
+                const numBloques = ver <= 3 ? 1 : ver <= 5 ? 2 : 4;
+                const dataPorBloque = totalData / numBloques;
+                const codewords = [];
+                for (let i = 0; i + 7 < bitsLeidos.length; i += 8) {
+                    let b = 0;
+                    for (let j = 0; j < 8; j++) b = (b << 1) | bitsLeidos[i + j];
+                    codewords.push(b);
+                }
+
+                const bloquesDatos = Array.from({ length: numBloques }, () => []);
+                for (let i = 0; i < totalData; i++) {
+                    bloquesDatos[i % numBloques].push(codewords[i]);
+                }
+                const dataUnida = bloquesDatos.flat();
+                expect(dataUnida.length).toBe(dataPorBloque * numBloques);
+
+                const dataBits = [];
+                for (const b of dataUnida) {
+                    for (let i = 7; i >= 0; i--) dataBits.push((b >> i) & 1);
+                }
+                const leerInt = (inicio, len) => {
+                    let v = 0;
+                    for (let i = 0; i < len; i++) v = (v << 1) | dataBits[inicio + i];
+                    return v;
+                };
+
+                expect(leerInt(0, 4)).toBe(0b0100); // Modo Byte
+                const longitud = leerInt(4, 8);
+                const bytesDecodificados = [];
+                for (let i = 0; i < longitud; i++) {
+                    bytesDecodificados.push(leerInt(12 + i * 8, 8));
+                }
+                const textoRecuperado = new TextDecoder().decode(new Uint8Array(bytesDecodificados));
+                expect(textoRecuperado).toBe(url);
+            }
+        });
+
+        it('generarSvgQrCarta devuelve SVG válido con quiet zone de 4 módulos y escape de atributos', () => {
+            const url = 'http://localhost:3000/app/carta.html';
+            const matriz = generarMatrizQr(url);
+            const svg = generarSvgQrCarta(url, { tamanoPx: 240 });
+
+            const esperadoViewBox = `viewBox="0 0 ${matriz.length + 8} ${matriz.length + 8}"`;
+            expect(svg).toContain('<svg ');
+            expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"');
+            expect(svg).toContain(esperadoViewBox);
+            expect(svg).toContain('width="240" height="240"');
+            expect(svg).toContain('shape-rendering="crispEdges"');
+            expect(svg).toContain('<rect width="100%" height="100%"');
+            expect(svg).toContain('<path d="M');
+            expect(svg).toContain('</svg>');
+        });
+    });
+
+    describe('Mapa de ubicación OpenStreetMap en carta pública (T8)', () => {
+        it('construirUrlsMapaOpenStreetMap arma URL embebida con bbox/marker y enlace externo válido', () => {
+            const resultado = construirUrlsMapaOpenStreetMap(
+                {
+                    direccion: '  Av. San Martín 1420, Resistencia, Chaco  ',
+                    latitud: -27.4514,
+                    longitud: -58.9867,
+                },
+                { delta: 0.005, zoom: 17 }
+            );
+
+            expect(resultado).not.toBeNull();
+            expect(resultado.direccion).toBe('Av. San Martín 1420, Resistencia, Chaco');
+            expect(resultado.latitud).toBe(-27.4514);
+            expect(resultado.longitud).toBe(-58.9867);
+
+            const embedUrl = new URL(resultado.urlEmbed);
+            expect(embedUrl.origin).toBe('https://www.openstreetmap.org');
+            expect(embedUrl.pathname).toBe('/export/embed.html');
+            expect(embedUrl.searchParams.get('layer')).toBe('mapnik');
+            expect(embedUrl.searchParams.get('bbox')).toBe(
+                '-58.991700,-27.456400,-58.981700,-27.446400'
+            );
+            expect(embedUrl.searchParams.get('marker')).toBe('-27.451400,-58.986700');
+
+            expect(resultado.urlMapa).toBe(
+                'https://www.openstreetmap.org/?mlat=-27.451400&mlon=-58.986700#map=17/-27.451400/-58.986700'
+            );
+        });
+
+        it('construirUrlsMapaOpenStreetMap y resolverUbicacionCartaPublica devuelven null sin coordenadas válidas', () => {
+            expect(construirUrlsMapaOpenStreetMap(null)).toBeNull();
+            expect(construirUrlsMapaOpenStreetMap({})).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({
+                    direccion: 'Av. San Martín 1420',
+                    latitud: null,
+                    longitud: -58.9867,
+                })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({
+                    latitud: '',
+                    longitud: '',
+                })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({
+                    latitud: -91,
+                    longitud: -58.9867,
+                })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({
+                    latitud: -27.4514,
+                    longitud: 181,
+                })
+            ).toBeNull();
+
+            expect(resolverUbicacionCartaPublica(null)).toBeNull();
+            expect(resolverUbicacionCartaPublica({})).toBeNull();
+            expect(
+                resolverUbicacionCartaPublica({
+                    ubicacionLocal: { direccion: 'Solo dirección sin coords' },
+                })
+            ).toBeNull();
+        });
+
+        it('renderizarUbicacionCarta mantiene oculta la sección sin coordenadas y no asigna src al iframe', () => {
+            const atributosRemovidosIframe = [];
+            const atributosRemovidosEnlace = [];
+            const elementos = {
+                seccion: { hidden: false },
+                direccionEl: { textContent: 'Vieja dirección', hidden: false },
+                iframe: {
+                    src: 'https://www.openstreetmap.org/previo',
+                    removeAttribute: (nombre) => {
+                        atributosRemovidosIframe.push(nombre);
+                        delete elementos.iframe.src;
+                    },
+                },
+                enlace: {
+                    href: 'https://www.openstreetmap.org/previo',
+                    removeAttribute: (nombre) => {
+                        atributosRemovidosEnlace.push(nombre);
+                        delete elementos.enlace.href;
+                    },
+                },
+            };
+
+            const mostrado = renderizarUbicacionCarta(elementos, {
+                ubicacionLocal: { direccion: 'Sin mapa', latitud: null, longitud: null },
+            });
+
+            expect(mostrado).toBe(false);
+            expect(elementos.seccion.hidden).toBe(true);
+            expect(elementos.direccionEl.textContent).toBe('');
+            expect(elementos.direccionEl.hidden).toBe(true);
+            expect(atributosRemovidosIframe).toEqual(['src']);
+            expect(atributosRemovidosEnlace).toEqual(['href']);
+            expect(elementos.iframe.src).toBeUndefined();
+        });
+
+        it('renderizarUbicacionCarta muestra la sección cuando hay configuración en web/js/config.js', () => {
+            const __filename = fileURLToPath(import.meta.url);
+            const __dirname = path.dirname(__filename);
+            const rutaConfig = path.resolve(__dirname, '../../../web/js/config.js');
+            const codigoConfig = fs.readFileSync(rutaConfig, 'utf8');
+
+            const contexto = { window: {} };
+            vm.runInNewContext(codigoConfig, contexto);
+
+            const elementos = {
+                seccion: { hidden: true },
+                direccionEl: { textContent: '', hidden: true },
+                iframe: { src: '' },
+                enlace: { href: '' },
+            };
+
+            const mostrado = renderizarUbicacionCarta(elementos, contexto.window.__SAPORI_CONFIG__);
+
+            expect(mostrado).toBe(true);
+            expect(elementos.seccion.hidden).toBe(false);
+            expect(elementos.direccionEl.hidden).toBe(false);
+            expect(elementos.direccionEl.textContent).toContain('Plaza 25 de Mayo');
+            expect(elementos.direccionEl.textContent).toContain('Resistencia, Chaco');
+            expect(elementos.iframe.src).toMatch(
+                /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html\?bbox=.*&layer=mapnik&marker=/
+            );
+            expect(elementos.enlace.href).toMatch(/^https:\/\/www\.openstreetmap\.org\/\?mlat=/);
+        });
+
+        it('construirUrlsMapaOpenStreetMap soporta opciones null, strings numéricos, límites exactos y alias lat/lon/lng', () => {
+            const conOpcionesNull = construirUrlsMapaOpenStreetMap(
+                { lat: '-27.4514', lon: '-58.9867', direccion: 'Plaza 25 de Mayo' },
+                null
+            );
+            expect(conOpcionesNull).not.toBeNull();
+            expect(conOpcionesNull.latitud).toBe(-27.4514);
+            expect(conOpcionesNull.longitud).toBe(-58.9867);
+
+            const enBordes = construirUrlsMapaOpenStreetMap({
+                lat: -90,
+                lng: 180,
+                direccion: '',
+            });
+            expect(enBordes).not.toBeNull();
+            expect(enBordes.direccion).toBe('');
+            expect(enBordes.urlEmbed).toContain('marker=-90.000000,180.000000');
+
+            const enOrigen = construirUrlsMapaOpenStreetMap({ latitud: 0, longitud: 0 });
+            expect(enOrigen).not.toBeNull();
+            expect(enOrigen.latitud).toBe(0);
+            expect(enOrigen.longitud).toBe(0);
+
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: true, longitud: -58.98 })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: false, longitud: -58.98 })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: {}, longitud: [] })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: Number.NaN, longitud: -58.98 })
+            ).toBeNull();
+            expect(
+                construirUrlsMapaOpenStreetMap({ latitud: Number.POSITIVE_INFINITY, longitud: -58.98 })
+            ).toBeNull();
+
+            const elementos = {
+                seccion: { hidden: true },
+                direccionEl: { textContent: 'Anterior', hidden: false },
+                iframe: { src: '' },
+                enlace: { href: '' },
+            };
+            const mostrado = renderizarUbicacionCarta(elementos, {
+                ubicacion: { lat: -27.45, lng: -58.98, direccion: '   ' },
+            });
+            expect(mostrado).toBe(true);
+            expect(elementos.seccion.hidden).toBe(false);
+            expect(elementos.direccionEl.textContent).toBe('');
+            expect(elementos.direccionEl.hidden).toBe(true);
+        });
+
+        it('debeIgnorarPeticionSw en web/sw.js ignora otros orígenes, destino iframe, URLs vacías/inválidas y subdominios OSM', () => {
+            const requireCjs = createRequire(import.meta.url);
+            const { debeIgnorarPeticionSw, NOMBRE_CACHE } = requireCjs('../../../web/sw.js');
+
+            expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v4');
+            expect(debeIgnorarPeticionSw('', 'document', 'https://sapori.local')).toBe(true);
+            expect(debeIgnorarPeticionSw(null, 'document', 'https://sapori.local')).toBe(true);
+            expect(debeIgnorarPeticionSw('http://[', 'document', 'https://sapori.local')).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://tile.openstreetmap.org/17/44056/76251.png',
+                    'image',
+                    'https://sapori.local'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://sapori.local/app/carta.html',
+                    'document',
+                    'https://sapori.local'
+                )
+            ).toBe(false);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans',
+                    'style',
+                    'https://sapori.local'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://sapori.local/mapa-interno.html',
+                    'iframe',
+                    'https://sapori.local'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    new URL('https://www.openstreetmap.org/export/embed.html?bbox=1,2,3,4'),
+                    '',
+                    'https://www.openstreetmap.org'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://openstreetmap.org/',
+                    'document',
+                    'https://openstreetmap.org'
+                )
+            ).toBe(true);
+            expect(
+                debeIgnorarPeticionSw(
+                    'https://fakeopenstreetmap.org/app.js',
+                    'script',
+                    'https://fakeopenstreetmap.org'
+                )
+            ).toBe(false);
         });
     });
 });

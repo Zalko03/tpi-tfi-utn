@@ -4,12 +4,15 @@ import app from '../../app.js';
 import { generarTokenTest } from '../helpers/auth.helper.js';
 
 describe('Integration Tests - Endurecimiento de Seguridad (T2.5) en Express', () => {
-    it('Helmet emite cabeceras de seguridad HTTP (X-Content-Type-Options, etc.)', async () => {
+    it('Helmet emite cabeceras de seguridad HTTP (X-Content-Type-Options, CSP con frame-src OSM, etc.)', async () => {
         const res = await request(app).get('/health');
 
         expect(res.status).toBe(200);
         expect(res.headers['x-content-type-options']).toBe('nosniff');
         expect(res.headers['x-frame-options']).toBeDefined();
+        expect(res.headers['content-security-policy']).toContain(
+            'frame-src https://www.openstreetmap.org'
+        );
     });
 
     it('CORS autoriza origen listado en la lista blanca y emite Access-Control-Allow-Origin', async () => {

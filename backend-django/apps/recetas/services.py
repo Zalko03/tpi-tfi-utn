@@ -8,6 +8,13 @@ from django.utils import timezone
 from apps.insumos.services import convertir_a_unidad_base
 
 
+def listar_productos_carta_publica():
+    """Devuelve los productos activos ordenados alfabéticamente para la carta pública (HU15)."""
+    from apps.recetas.models import Producto
+
+    return Producto.objects.filter(estado_activo=True).order_by("nombre")
+
+
 def listar_productos_con_costos_optimizado(solo_activos: bool = False):
     """
     Construye el QuerySet de productos precargando receta_items e insumos asociados

@@ -5,7 +5,7 @@ FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copiar archivos estáticos de la PWA
-COPY index.html manifest.webmanifest sw.js /usr/share/nginx/html/
+COPY index.html carta.html manifest.webmanifest sw.js /usr/share/nginx/html/
 COPY css/ /usr/share/nginx/html/css/
 COPY js/ /usr/share/nginx/html/js/
 COPY vendor/ /usr/share/nginx/html/vendor/

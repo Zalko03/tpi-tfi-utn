@@ -5,6 +5,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
+from apps.caja.services import validar_movimiento_en_turno
 from apps.usuarios.permissions import usuario_tiene_permiso
 
 
@@ -26,6 +27,24 @@ class MovimientoCajaSerializer(serializers.ModelSerializer):
         if Decimal(str(value)) <= Decimal("0"):
             raise serializers.ValidationError("El monto del movimiento debe ser mayor a cero.")
         return value
+
+    def validate(self, attrs):
+        if self.instance is None:
+            turno = attrs.get("turno_caja")
+            if turno is not None:
+                request = self.context.get("request")
+                usuario = getattr(request, "user", None) if request else None
+                puede_ajenos = (
+                    usuario_tiene_permiso(request, "caja.gestionar_turnos_ajenos")
+                    if request
+                    else False
+                )
+                validar_movimiento_en_turno(
+                    turno=turno,
+                    usuario=usuario,
+                    puede_gestionar_ajenos=puede_ajenos,
+                )
+        return attrs
 
 
 class TurnoCajaSerializer(serializers.ModelSerializer):
@@ -77,11 +96,18 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
             cache_prefetch = getattr(obj, "_prefetched_objects_cache", None)
             if isinstance(cache_prefetch, dict) and "ventas" in cache_prefetch:
                 total = sum(
-                    (v.total for v in obj.ventas.all() if v.medio_pago == "EFECTIVO"),
+                    (
+                        v.total
+                        for v in obj.ventas.all()
+                        if v.medio_pago == "EFECTIVO"
+                        and getattr(v, "estado", "EMITIDA") == "EMITIDA"
+                    ),
                     Decimal("0.00"),
                 )
             else:
-                agregado = obj.ventas.filter(medio_pago="EFECTIVO").aggregate(total=Sum("total"))
+                agregado = obj.ventas.filter(medio_pago="EFECTIVO", estado="EMITIDA").aggregate(
+                    total=Sum("total")
+                )
                 total = (agregado.get("total") if isinstance(agregado, dict) else None) or Decimal(
                     "0.00"
                 )
@@ -93,8 +119,10 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
         try:
             cache_prefetch = getattr(obj, "_prefetched_objects_cache", None)
             if isinstance(cache_prefetch, dict) and "ventas" in cache_prefetch:
-                return len(obj.ventas.all())
-            conteo = obj.ventas.count()
+                return sum(
+                    1 for v in obj.ventas.all() if getattr(v, "estado", "EMITIDA") == "EMITIDA"
+                )
+            conteo = obj.ventas.filter(estado="EMITIDA").count()
             return int(conteo) if isinstance(conteo, (int, float)) else 0
         except (TypeError, ValueError, AttributeError):
             return 0
@@ -109,5 +137,12 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
                 ret["diferencia"] = None
                 ret["ventas_efectivo_total"] = None
                 ret["cantidad_tickets"] = None
-                ret["movimientos"] = []
+                usuario_id = getattr(request.user, "id", None)
+                es_titular = (
+                    usuario_id is not None and getattr(instance, "usuario_id", None) == usuario_id
+                )
+                if not es_titular and not usuario_tiene_permiso(
+                    request, "caja.gestionar_turnos_ajenos"
+                ):
+                    ret["movimientos"] = []
         return ret

@@ -1,6 +1,6 @@
 """ViewSets para turnos y movimientos de caja."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db.models import Q
 from django.utils import timezone
@@ -12,9 +12,14 @@ from rest_framework.response import Response
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
 from apps.caja.serializers import MovimientoCajaSerializer, TurnoCajaSerializer
-from apps.caja.services import abrir_turno
+from apps.caja.services import abrir_turno, registrar_movimiento_caja
 from apps.comun.filtros import extraer_rango_fechas, filtrar_queryset_por_rango_fechas
-from apps.usuarios.permissions import PermisoObjetoTurnoCaja, TienePermiso, usuario_tiene_permiso
+from apps.usuarios.permissions import (
+    PermisoObjetoTurnoCaja,
+    TieneAlgunPermiso,
+    TienePermiso,
+    usuario_tiene_permiso,
+)
 
 
 class TurnoCajaViewSet(viewsets.ModelViewSet):
@@ -96,18 +101,29 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         turno = self.get_object()
         if turno.estado == "CERRADO":
             return Response(
-                {"mensaje": "El turno de caja ya se encuentra cerrado."},
+                {"mensaje": "El turno de caja ya está cerrado.", "detalles": None},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         efectivo_contado = request.data.get("efectivo_contado")
         if efectivo_contado is None:
             return Response(
-                {"mensaje": "Debe informar el efectivo_contado para cerrar la caja."},
+                {"mensaje": "Ingresá el efectivo contado para cerrar la caja.", "detalles": None},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        contado = Decimal(str(efectivo_contado))
+        try:
+            contado = Decimal(str(efectivo_contado))
+            if not contado.is_finite():
+                raise ValueError("El efectivo contado debe ser un número finito.")
+        except (InvalidOperation, ValueError, TypeError):
+            return Response(
+                {
+                    "mensaje": "Ingresá un monto válido para el efectivo contado.",
+                    "detalles": None,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         esperado = turno.calcular_efectivo_esperado()
         diferencia = contado - esperado
 
@@ -134,12 +150,22 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
 
 
 class MovimientoCajaViewSet(viewsets.ModelViewSet):
-    queryset = MovimientoCaja.objects.all()
+    queryset = MovimientoCaja.objects.select_related("turno_caja", "turno_caja__usuario").all()
     serializer_class = MovimientoCajaSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["turno_caja", "tipo"]
     ordering_fields = ["fecha", "monto", "id"]
     ordering = ["-fecha", "-id"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = getattr(self.request, "user", None)
+        if not user or not user.is_authenticated:
+            return qs.none()
+        if user.is_superuser or usuario_tiene_permiso(self.request, "caja.gestionar_turnos_ajenos"):
+            return qs
+        # Un cajero habilitado para ver/registrar movimientos solo accede a los de sus propios turnos.
+        return qs.filter(turno_caja__usuario=user)
 
     def filter_queryset(self, queryset):
         qs = super().filter_queryset(queryset)
@@ -149,8 +175,20 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
             )
         return qs
 
+    def perform_create(self, serializer):
+        puede_ajenos = usuario_tiene_permiso(self.request, "caja.gestionar_turnos_ajenos")
+        registrar_movimiento_caja(
+            serializer=serializer,
+            usuario=self.request.user,
+            puede_gestionar_ajenos=puede_ajenos,
+        )
+
     def get_permissions(self):
-        if self.action in ("list", "retrieve", "create"):
+        if self.action in ("list", "retrieve"):
+            return [
+                TieneAlgunPermiso("caja.registrar_movimiento", "caja.gestionar_turnos_ajenos")()
+            ]
+        elif self.action == "create":
             return [TienePermiso("caja.registrar_movimiento")()]
         elif self.action in ("update", "partial_update", "destroy"):
             return [TienePermiso("caja.gestionar_turnos_ajenos")()]

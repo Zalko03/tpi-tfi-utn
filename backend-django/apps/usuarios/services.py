@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 
 from apps.usuarios.constantes import (
@@ -35,8 +36,11 @@ def validar_claves_permisos(permisos_dict: Dict[str, Any]) -> None:
 
 
 def contar_duenios_activos(excluir_usuario_id: Optional[int] = None) -> int:
-    """Retorna la cantidad de usuarios activos con rol DUENIO en el sistema."""
-    qs = User.objects.filter(is_active=True, perfil__rol=ROL_DUENIO)
+    """Retorna la cantidad de usuarios activos con rol DUENIO o superusuarios en el sistema."""
+    qs = User.objects.filter(
+        Q(perfil__rol=ROL_DUENIO) | Q(is_superuser=True),
+        is_active=True,
+    ).distinct()
     if excluir_usuario_id is not None:
         qs = qs.exclude(id=excluir_usuario_id)
     return qs.count()
@@ -83,7 +87,7 @@ def crear_personal(
     last_name = datos_usuario.get("last_name", "")
 
     if not username:
-        raise ErrorReglaNegocio("El nombre de usuario (username) es obligatorio.")
+        raise ErrorReglaNegocio("El nombre de usuario es obligatorio.")
     if not password:
         raise ErrorReglaNegocio("La contraseña inicial es obligatoria.")
     if User.objects.filter(username=username).exists():
@@ -108,7 +112,7 @@ def crear_personal(
             for perm in permisos_a_otorgar:
                 if not permisos_creador.get(perm, False):
                     raise PermissionDenied(
-                        f"No puede otorgar el permiso '{perm}' porque no lo posee en su cuenta."
+                        f"No podés otorgar el permiso '{perm}' porque no lo tenés en tu cuenta."
                     )
 
     usuario = User.objects.create_user(
@@ -157,7 +161,18 @@ def actualizar_personal(
     except User.DoesNotExist:
         raise ErrorReglaNegocio("El usuario especificado no existe.")
 
-    perfil = usuario.perfil
+    if usuario.is_superuser:
+        if modificado_por is not None and not getattr(modificado_por, "is_superuser", False):
+            raise ErrorReglaNegocio("No podés modificar la cuenta de un administrador principal.")
+        if rol is not None or permisos is not None:
+            raise ErrorReglaNegocio(
+                "No podés modificar el rol ni los permisos de un administrador principal."
+            )
+
+    perfil = getattr(usuario, "perfil", None)
+    if perfil is None and not usuario.is_superuser and (rol is not None or permisos is not None):
+        perfil = PerfilUsuario(usuario=usuario, rol=ROL_CAJERO, permisos={})
+
     detalles_cambio: Dict[str, Any] = {}
 
     # 1. Modificación de datos básicos de Django User
@@ -170,7 +185,7 @@ def actualizar_personal(
         usuario.save()
 
     # 2. Modificación de rol con protección del último Dueño
-    if rol and rol != perfil.rol:
+    if rol and perfil is not None and rol != perfil.rol:
         roles_validos = dict(ROLES_CHOICES).keys()
         if rol not in roles_validos:
             raise ErrorReglaNegocio(f"Rol inválido: '{rol}'.")
@@ -186,7 +201,7 @@ def actualizar_personal(
         perfil.rol = rol
 
     # 3. Ajuste de permisos granulares
-    if permisos is not None:
+    if permisos is not None and perfil is not None:
         validar_claves_permisos(permisos)
 
         # Regla de supervivencia: protección contra remoción de permisos críticos del último Dueño
@@ -210,7 +225,7 @@ def actualizar_personal(
                 for clave, valor in permisos.items():
                     if valor and not permisos_operador.get(clave, False):
                         raise PermissionDenied(
-                            f"No puede otorgar el permiso '{clave}' porque no lo posee en su cuenta."
+                            f"No podés otorgar el permiso '{clave}' porque no lo tenés en tu cuenta."
                         )
 
         # Merge de personalizaciones existentes con las nuevas
@@ -219,7 +234,12 @@ def actualizar_personal(
         detalles_cambio["permisos_modificados"] = permisos
         perfil.permisos = nuevos_permisos
 
-    perfil.save()
+    if perfil is not None and (
+        perfil.pk is None
+        or "rol_nuevo" in detalles_cambio
+        or "permisos_modificados" in detalles_cambio
+    ):
+        perfil.save()
 
     accion_auditoria = "MODIFICACION_USUARIO"
     if "rol_nuevo" in detalles_cambio:
@@ -254,12 +274,20 @@ def desactivar_personal(
     except User.DoesNotExist:
         raise ErrorReglaNegocio("El usuario especificado no existe.")
 
+    if (
+        usuario.is_superuser
+        and desactivado_por is not None
+        and not getattr(desactivado_por, "is_superuser", False)
+    ):
+        raise ErrorReglaNegocio("No podés desactivar la cuenta de un administrador principal.")
+
     if not usuario.is_active:
         return usuario  # Ya se encuentra inactivo
 
-    # Regla de supervivencia del último Dueño activo
+    # Regla de supervivencia del último Dueño o administrador activo
     perfil = getattr(usuario, "perfil", None)
-    if perfil and perfil.rol == ROL_DUENIO:
+    es_duenio_o_admin = usuario.is_superuser or (perfil is not None and perfil.rol == ROL_DUENIO)
+    if es_duenio_o_admin:
         if contar_duenios_activos(excluir_usuario_id=usuario.id) == 0:
             raise ErrorSupervivenciaDuenio(
                 "No se puede desactivar al único Dueño activo en el sistema."

@@ -8,6 +8,7 @@ from rest_framework import serializers
 from apps.usuarios.constantes import (
     PERMISOS_CATALOGO,
     ROL_CAJERO,
+    ROL_DUENIO,
     ROLES_CHOICES,
 )
 from apps.usuarios.models import PerfilUsuario, RegistroAuditoria
@@ -27,8 +28,8 @@ class PerfilUsuarioSerializer(serializers.ModelSerializer):
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
-    rol = serializers.CharField(source="perfil.rol", read_only=True)
-    permisos = serializers.JSONField(source="perfil.permisos", read_only=True)
+    rol = serializers.SerializerMethodField()
+    permisos = serializers.SerializerMethodField()
     permisos_activos = serializers.SerializerMethodField()
 
     class Meta:
@@ -40,14 +41,29 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "is_active",
+            "is_superuser",
             "rol",
             "permisos",
             "permisos_activos",
             "date_joined",
         )
-        read_only_fields = ("id", "date_joined", "is_active")
+        read_only_fields = ("id", "date_joined", "is_active", "is_superuser")
+
+    def get_rol(self, obj) -> str:
+        if getattr(obj, "is_superuser", False):
+            return ROL_DUENIO
+        perfil = getattr(obj, "perfil", None)
+        return perfil.rol if perfil else ROL_CAJERO
+
+    def get_permisos(self, obj) -> dict:
+        perfil = getattr(obj, "perfil", None)
+        return perfil.permisos if (perfil and isinstance(perfil.permisos, dict)) else {}
 
     def get_permisos_activos(self, obj) -> list[str]:
+        if not getattr(obj, "is_active", True):
+            return []
+        if getattr(obj, "is_superuser", False):
+            return sorted(PERMISOS_CATALOGO)
         perfil = getattr(obj, "perfil", None)
         return perfil.obtener_permisos_activos() if perfil else []
 

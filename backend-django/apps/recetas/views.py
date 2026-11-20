@@ -3,17 +3,45 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from apps.comun.throttling import RecalculoRateThrottle
+from apps.comun.throttling import CartaPublicaRateThrottle, RecalculoRateThrottle
 from apps.recetas.models import RecetaItem
-from apps.recetas.serializers import ProductoSerializer, RecetaItemSerializer
+from apps.recetas.serializers import (
+    CartaPublicaProductoSerializer,
+    ProductoSerializer,
+    RecetaItemSerializer,
+)
 from apps.recetas.services import (
     actualizar_costo_y_margen_producto,
+    listar_productos_carta_publica,
     listar_productos_con_costos_optimizado,
 )
 from apps.usuarios.permissions import TieneAlgunPermiso, TienePermiso
+
+
+class CartaPublicaView(APIView):
+    """
+    Endpoint público de solo lectura con la carta digital para clientes por QR (HU15).
+    No requiere autenticación, aplica rate limiting anónimo y expone solo id, nombre y precio.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [CartaPublicaRateThrottle]
+
+    def get(self, request):
+        productos = listar_productos_carta_publica()
+        serializer = CartaPublicaProductoSerializer(productos, many=True)
+        return Response(
+            {
+                "datos": serializer.data,
+                "total": len(serializer.data),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ProductoViewSet(viewsets.ModelViewSet):

@@ -16,6 +16,7 @@ import {
     calcularResumenCarrito,
     CALIDAD_JPEG_IMAGEN_IMPORTACION,
     construirDictPermisosDesdeSeleccion,
+    construirUrlCartaPublica,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -44,6 +45,7 @@ import {
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
+    generarSvgQrCarta,
     GRUPOS_PERMISOS_EQUIPO,
     guardarPreferenciaSonidosSilenciados,
     LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
@@ -61,6 +63,7 @@ import {
     parsearCsvProveedor,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    puedeGestionarQrCarta,
     seccionesVisiblesParaUsuario,
     siguienteIdCarga,
     SONIDOS,
@@ -678,6 +681,12 @@ const actualizarUIUsuario = () => {
         if ($('btn-config-servidor-header')) {
             $('btn-config-servidor-header').style.display = 'none';
         }
+        if ($('btn-qr-carta-publica')) {
+            $('btn-qr-carta-publica').hidden = true;
+        }
+        if ($('modal-qr-carta')) {
+            $('modal-qr-carta').style.display = 'none';
+        }
         if (pantallaLogin) pantallaLogin.style.display = 'flex';
         return;
     }
@@ -724,6 +733,7 @@ const actualizarUIUsuario = () => {
     }
 
     configurarVisibilidadPorRol(rol);
+    actualizarVisibilidadGestionRecetas();
     actualizarIndicadorColaOffline();
 };
 
@@ -1189,7 +1199,8 @@ const renderizarCatalogoPOS = () => {
     }
 
     for (const prod of filtrados) {
-        const card = document.createElement('div');
+        const card = document.createElement('button');
+        card.type = 'button';
         card.className = 'producto-card-comercial';
         card.dataset.id = String(prod.id);
 
@@ -1198,13 +1209,13 @@ const renderizarCatalogoPOS = () => {
 
         card.innerHTML = `
             <div>
-                <div class="producto-icono-grande">${icono}</div>
-                <h4 class="producto-titulo">${escaparHtml(prod.nombre)}</h4>
+                <div class="producto-icono-grande" aria-hidden="true">${icono}</div>
+                <span class="producto-titulo" style="display: block;">${escaparHtml(prod.nombre)}</span>
                 <span class="producto-codigo-badge">${escaparHtml(prod.codigo_barras || 'SIN CÓDIGO')}</span>
             </div>
             <div class="producto-precio-fila">
                 <span class="producto-precio-grande">${escaparHtml(precioFormateado)}</span>
-                <div class="producto-btn-agregar">+</div>
+                <span class="producto-btn-agregar" aria-hidden="true">+</span>
             </div>
         `;
 
@@ -1255,9 +1266,9 @@ const renderizarCarritoTicket = () => {
             </td>
             <td class="col-centro">
                 <div class="item-control-cant">
-                    <button type="button" class="btn-cant-tactil btn-restar" data-idx="${idx}">-</button>
+                    <button type="button" class="btn-cant-tactil btn-restar" data-idx="${idx}" aria-label="Restar una unidad de ${escaparHtml(item.nombre)}">-</button>
                     <span class="item-cant-numero">${item.cantidad}</span>
-                    <button type="button" class="btn-cant-tactil btn-sumar" data-idx="${idx}">+</button>
+                    <button type="button" class="btn-cant-tactil btn-sumar" data-idx="${idx}" aria-label="Sumar una unidad de ${escaparHtml(item.nombre)}">+</button>
                 </div>
             </td>
             <td class="col-numero">${formatearMoneda(item.precioUnitarioDecimal)}</td>
@@ -1676,7 +1687,8 @@ const cerrarTurnoCaja = async (efectivoContado) => {
             mostrarToast(data.mensaje || 'Error al cerrar el turno.', 'peligro');
         }
     } catch (err) {
-        mostrarToast(`Error de conexión al cerrar caja: ${err.message}`, 'peligro');
+        console.error('Error de conexión al cerrar caja:', err);
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
     }
 };
 
@@ -1867,7 +1879,7 @@ const procesarArchivoPdfSeleccionado = async (archivo, origenSelector = 'ia') =>
         }
     } catch (err) {
         console.error('Error al leer PDF:', err);
-        const msg = err?.message || 'No se pudo leer el archivo PDF.';
+        const msg = 'No se pudo leer el archivo PDF.';
         mostrarEstadoArchivoPdf(msg, 'advertencia');
         mostrarToast(msg, 'peligro');
     }
@@ -1923,7 +1935,7 @@ const procesarArchivoExcelSeleccionado = async (archivo, origenSelector = 'csv')
         }
     } catch (err) {
         console.error('Error al leer Excel:', err);
-        const msg = err?.message || 'No se pudo leer la planilla.';
+        const msg = 'No se pudo leer la planilla.';
         mostrarEstadoArchivoPdf(msg, 'advertencia');
         mostrarToast(msg, 'peligro');
     }
@@ -1960,7 +1972,7 @@ const procesarArchivoDocxSeleccionado = async (archivo, origenSelector = 'ia') =
         }
     } catch (err) {
         console.error('Error al leer Word:', err);
-        const msg = err?.message || 'No se pudo leer el archivo Word.';
+        const msg = 'No se pudo leer el archivo Word.';
         mostrarEstadoArchivoPdf(msg, 'advertencia');
         mostrarToast(msg, 'peligro');
     }
@@ -2073,7 +2085,7 @@ const procesarArchivoImagenSeleccionado = async (archivo, origenSelector = 'ia')
     } catch (err) {
         console.error('Error al preparar la foto:', err);
         limpiarFotoImportacionActual();
-        const msg = err?.message || 'No se pudo procesar la foto seleccionada.';
+        const msg = 'No se pudo procesar la foto seleccionada.';
         mostrarEstadoArchivoPdf(msg, 'advertencia');
         mostrarToast(msg, 'peligro');
     }
@@ -2319,13 +2331,14 @@ const enviarCsvAlCircuitoAprobacion = async () => {
             mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
         }
     } catch (err) {
+        console.error('Error al consultar servicio de importación IA:', err);
         renderizarPropuestaIAComercial({
             _id: null,
             estado: 'CONTINGENCIA',
             contingencia: true,
             proveedorIa: 'contingencia',
-            mensajeContingencia: err?.message || 'No se pudo conectar con el servicio de importación IA.',
-            advertencias: [err?.message || 'Error de red'],
+            mensajeContingencia: 'No se pudo conectar con el servicio de importación IA.',
+            advertencias: ['No pudimos comunicarnos con el servidor de IA.'],
             salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
         });
         if ($('estado-importacion-ia')) {
@@ -2423,12 +2436,13 @@ const consultarDetalleImportacion = async (importacionId, intento = 1) => {
         renderizarPropuestaIAComercial(docError);
         return docError;
     } catch (err) {
+        console.error('Error al consultar importación IA:', err);
         const docError = {
             _id: importacionId,
             estado: 'CONTINGENCIA',
             contingencia: true,
             proveedorIa: 'contingencia',
-            mensajeContingencia: err?.message || 'Error de conexión al consultar el servicio de IA.',
+            mensajeContingencia: 'Error de conexión al consultar el servicio de IA.',
             salida: { items: [] },
         };
         renderizarPropuestaIAComercial(docError);
@@ -2674,6 +2688,36 @@ const actualizarVisibilidadGestionRecetas = () => {
     if (btnNuevo) {
         btnNuevo.style.display = usuarioTienePermiso(estadoApp.usuario, 'recetas.crear') ? '' : 'none';
     }
+    const btnQr = $('btn-qr-carta-publica');
+    if (btnQr) {
+        btnQr.hidden = !puedeGestionarQrCarta(estadoApp.usuario);
+    }
+};
+
+let ultimoSvgQrCartaGenerado = '';
+
+const abrirModalQrCarta = () => {
+    if (!puedeGestionarQrCarta(estadoApp.usuario)) return;
+    const modal = $('modal-qr-carta');
+    if (!modal) return;
+
+    const urlCarta = construirUrlCartaPublica(window.location.origin, window.location.pathname);
+    ultimoSvgQrCartaGenerado = generarSvgQrCarta(urlCarta, { tamanoPx: 248 });
+
+    const contenedorSvg = $('qr-carta-svg-contenedor');
+    if (contenedorSvg) {
+        contenedorSvg.innerHTML = ultimoSvgQrCartaGenerado;
+    }
+    if ($('qr-carta-cartel-url')) {
+        $('qr-carta-cartel-url').textContent = urlCarta;
+    }
+    if ($('input-url-carta-publica')) {
+        $('input-url-carta-publica').value = urlCarta;
+    }
+    if ($('link-abrir-carta-publica')) {
+        $('link-abrir-carta-publica').href = urlCarta;
+    }
+    modal.style.display = 'flex';
 };
 
 const actualizarSelectUnidadReceta = () => {
@@ -2786,6 +2830,9 @@ const renderizarTablaRecetas = () => {
             <td class="col-texto">${margenBarraHtml}</td>
             <td class="col-centro">
                 <div class="receta-acciones-fila">
+                    <button type="button" class="btn-refrescar-mini btn-ver-receta-producto" data-id="${escaparHtml(p.id)}" title="Ver desglose de receta">
+                        <span>Ver receta</span>
+                    </button>
                     <button type="button" class="btn-refrescar-mini btn-recalcular-producto" data-id="${escaparHtml(p.id)}" title="Recalcular Costo" style="display: inline-flex; align-items: center; gap: 0.35rem;">
                         ${SVG_ICONOS.refrescar}
                         <span>Recalcular</span>
@@ -2797,6 +2844,11 @@ const renderizarTablaRecetas = () => {
 
         tr.style.cursor = 'pointer';
         tr.addEventListener('click', () => {
+            mostrarDesgloseReceta(p);
+        });
+
+        tr.querySelector('.btn-ver-receta-producto')?.addEventListener('click', (e) => {
+            e.stopPropagation();
             mostrarDesgloseReceta(p);
         });
 
@@ -2838,7 +2890,8 @@ const actualizarCantidadRecetaItem = async (itemId, nuevaCantidad) => {
             mostrarToast(extraerMensajeErrorApi(data, 'Error al actualizar cantidad del insumo.'), 'peligro');
         }
     } catch (err) {
-        mostrarToast(`Error: ${err.message}`, 'peligro');
+        console.error('Error al actualizar cantidad de receta:', err);
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
     }
 };
 
@@ -2858,7 +2911,8 @@ const eliminarRecetaItem = async (itemId) => {
             mostrarToast(extraerMensajeErrorApi(data, 'Error al quitar el insumo de la receta.'), 'peligro');
         }
     } catch (err) {
-        mostrarToast(`Error: ${err.message}`, 'peligro');
+        console.error('Error al quitar insumo de receta:', err);
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
     }
 };
 
@@ -3004,7 +3058,8 @@ const recalcularProducto = async (productoId) => {
             mostrarToast(data.mensaje || 'Error al recalcular receta.', 'peligro');
         }
     } catch (err) {
-        mostrarToast(`Error: ${err.message}`, 'peligro');
+        console.error('Error al recalcular producto:', err);
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
     }
 };
 
@@ -3639,7 +3694,8 @@ const consultarDiagnosticoStockIA = async () => {
                 errorAi = 'No hay datos de catálogo o sesión activa para consultar la IA.';
             }
         } catch (err) {
-            errorAi = err?.message || 'No se pudo comunicar con el servicio de IA.';
+            console.error('Error al consultar diagnóstico IA:', err);
+            errorAi = 'No se pudo comunicar con el servicio de IA.';
         }
 
         const evalResumen = evaluarEstadoResumenIA(dataAi, errorAi);
@@ -3713,9 +3769,10 @@ const consultarDiagnosticoStockIA = async () => {
         `;
         mostrarToast('Diagnóstico de stock e insumos completado con éxito.', 'exito');
     } catch (err) {
+        console.error('Error en diagnóstico de stock:', err);
         cuerpo.innerHTML = `
             <h4>DIAGNÓSTICO DE INVENTARIO Y REPOSICIÓN</h4>
-            <p>Se produjo un inconveniente al consultar los servicios centrales: ${escaparHtml(err.message)}. Los datos de inventario local se encuentran resguardados en memoria.</p>
+            <p>Se produjo un inconveniente al consultar los servicios centrales. Los datos de inventario local se encuentran resguardados en memoria.</p>
         `;
         mostrarToast('Error al procesar diagnóstico de stock.', 'peligro');
     }
@@ -3805,7 +3862,10 @@ const auditarCierreCajaIA = async () => {
             // Continuar
         }
 
-        const totalVendidoTurno = ventasTurno.reduce((acc, v) => acc + (Number(v.total) || 0), 0);
+        const ventasEmitidasTurno = ventasTurno.filter(
+            (v) => String(v.estado || 'EMITIDA').toUpperCase() !== 'ANULADA'
+        );
+        const totalVendidoTurno = ventasEmitidasTurno.reduce((acc, v) => acc + (Number(v.total) || 0), 0);
         const diferenciaNum = Number(turnoAuditado.diferencia || 0);
 
         let dictamenDiferencia = 'ARQUEO EXACTO SIN DISCREPANCIAS';
@@ -3838,7 +3898,7 @@ const auditarCierreCajaIA = async () => {
                 <div class="ia-bloque-titulo">2. Conciliación de Fondos y Arqueo Ciego</div>
                 <ul>
                     <li><strong>Fondo Inicial de Apertura:</strong> ${formatearMoneda(turnoAuditado.efectivo_inicial)}</li>
-                    <li><strong>Facturación en Ventas Registrada:</strong> ${formatearMoneda(totalVendidoTurno)} (${ventasTurno.length} tickets emitidos)</li>
+                    <li><strong>Facturación en Ventas Registrada:</strong> ${formatearMoneda(totalVendidoTurno)} (${ventasEmitidasTurno.length} tickets emitidos)</li>
                     <li><strong>Movimientos de Caja Chica:</strong> ${movimientos.length} registros (Ingresos: ${formatearMoneda(totalIngresosChica)} | Egresos: ${formatearMoneda(totalEgresosChica)})</li>
                     <li><strong>Efectivo Esperado en Gaveta:</strong> ${turnoAuditado.efectivo_esperado !== null && turnoAuditado.efectivo_esperado !== undefined ? formatearMoneda(turnoAuditado.efectivo_esperado) : 'En curso'}</li>
                     <li><strong>Efectivo Declarado por el Cajero:</strong> ${turnoAuditado.efectivo_contado !== null && turnoAuditado.efectivo_contado !== undefined ? formatearMoneda(turnoAuditado.efectivo_contado) : 'Pendiente de cierre'}</li>
@@ -3848,15 +3908,16 @@ const auditarCierreCajaIA = async () => {
 
             <div class="ia-bloque">
                 <div class="ia-bloque-titulo">3. Evaluación de Rentabilidad y Desempeño</div>
-                <p>El turno presenta un volumen transaccional de ${ventasTurno.length} ventas con estricta preservación de snapshots de costos unitarios. No se detectan anomalías en la correlación entre insumos descontados y tickets facturados.</p>
+                <p>El turno presenta un volumen transaccional de ${ventasEmitidasTurno.length} ventas emitidas con estricta preservación de costos guardados al momento de cada venta. No se detectan anomalías en la correlación entre insumos descontados y tickets facturados.</p>
                 <p><strong>Dictamen Final:</strong> CONCILIACIÓN CONFORME A PROTOCOLO OPERATIVO GASTRONÓMICO.</p>
             </div>
         `;
         mostrarToast('Auditoría de caja completada con éxito.', 'exito');
     } catch (err) {
+        console.error('Error al auditar cierre de caja:', err);
         cuerpo.innerHTML = `
             <h4>DICTAMEN DE AUDITORÍA DE CAJA</h4>
-            <p>Se produjo un inconveniente al consultar los registros transaccionales: ${escaparHtml(err.message)}. Los datos locales de caja permanecen accesibles.</p>
+            <p>Se produjo un inconveniente al consultar los registros transaccionales. Los datos locales de caja permanecen accesibles.</p>
         `;
         mostrarToast('Error al auditar cierre de caja.', 'peligro');
     }
@@ -3917,24 +3978,26 @@ const renderizarTarjetasPersonal = () => {
         const card = document.createElement('div');
         card.className = 'usuario-tarjeta-comercial';
 
-        const rol = (u.rol || 'CAJERO').toUpperCase();
+        const rol = ((u.is_superuser ? 'DUENIO' : u.rol) || 'CAJERO').toUpperCase();
         const rolEtiqueta = ETIQUETAS_ROL[rol] || 'Cajero';
         const rolClase = rol === 'DUENIO' ? 'duenio' : rol === 'ENCARGADO' ? 'encargado' : 'cajero';
 
         const nombre = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : (u.username || 'Usuario');
         const acciones = accionesEmpleadoVisiblesParaUsuario(estadoApp.usuario, u);
+        const esSuperusuario = Boolean(u.is_superuser);
+        const bloqueadoPorSuperusuario = esSuperusuario && !Boolean(estadoApp.usuario?.is_superuser);
 
         const botonesHtml = [];
         if (acciones.permisos) {
             botonesHtml.push(
-                `<button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">Permisos</button>`
+                `<button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">${esSuperusuario ? 'Ver permisos' : 'Permisos'}</button>`
             );
         }
-        if (acciones.darDeBaja) {
+        if (acciones.darDeBaja && !bloqueadoPorSuperusuario) {
             botonesHtml.push(
                 `<button type="button" class="btn-descartar-comercial btn-toggle-usuario" data-id="${u.id}">Dar de baja</button>`
             );
-        } else if (acciones.reactivar) {
+        } else if (acciones.reactivar && !bloqueadoPorSuperusuario) {
             botonesHtml.push(
                 `<button type="button" class="btn-secundario-comercial btn-toggle-usuario" data-id="${u.id}">Reactivar</button>`
             );
@@ -4036,24 +4099,34 @@ const mostrarModalPermisos = (u) => {
     if (!modal || !u) return;
 
     estadoApp.empleadoEditandoPermisos = u;
-    const rolActual = (u.rol || 'CAJERO').toUpperCase();
+    const esSuperusuario = Boolean(u.is_superuser);
+    const rolActual = ((esSuperusuario ? 'DUENIO' : u.rol) || 'CAJERO').toUpperCase();
     const rolEtiqueta = ETIQUETAS_ROL[rolActual] || 'Cajero';
 
     if ($('permisos-usuario-titulo')) {
         $('permisos-usuario-titulo').textContent = `Permisos de @${u.username}`;
     }
     if ($('permisos-usuario-rol')) {
-        $('permisos-usuario-rol').textContent = `Rol actual: ${rolEtiqueta}`;
+        $('permisos-usuario-rol').textContent = esSuperusuario
+            ? `Rol actual: ${rolEtiqueta} · El administrador principal tiene acceso completo y no se puede editar.`
+            : `Rol actual: ${rolEtiqueta}`;
     }
 
-    const puedeEditarRol = usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
+    const puedeEditarRol = !esSuperusuario && usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
     const grupoRol = $('grupo-selector-rol-permisos');
     const selectRol = $('select-permisos-rol');
     if (grupoRol) {
-        grupoRol.style.display = puedeEditarRol ? '' : 'none';
+        grupoRol.style.display = puedeEditarRol || esSuperusuario ? '' : 'none';
     }
     if (selectRol) {
         selectRol.value = ETIQUETAS_ROL[rolActual] ? rolActual : 'CAJERO';
+        selectRol.disabled = esSuperusuario;
+    }
+
+    const btnGuardar = $('btn-guardar-permisos');
+    if (btnGuardar) {
+        btnGuardar.disabled = esSuperusuario;
+        btnGuardar.style.display = esSuperusuario ? 'none' : '';
     }
 
     const contenedor = $('permisos-categorias-grilla');
@@ -4081,6 +4154,7 @@ const mostrarModalPermisos = (u) => {
                 checkbox.type = 'checkbox';
                 checkbox.dataset.permiso = item.clave;
                 checkbox.checked = Boolean(permisosIniciales[item.clave]);
+                checkbox.disabled = esSuperusuario;
 
                 const textoSpan = document.createElement('span');
                 textoSpan.textContent = item.etiqueta;
@@ -4212,15 +4286,40 @@ const inicializarEventosDOM = () => {
     // 3. Logout
     $('btn-cerrar-sesion')?.addEventListener('click', () => cerrarSesion());
 
-    // 4. Navegación del Sidebar
+    // 4. Navegación del Sidebar (y menú deslizable en pantallas chicas)
+    const setSidebarMovilAbierto = (abierto) => {
+        const sidebarEl = $('sidebar');
+        const backdropEl = $('sidebar-backdrop');
+        const btnToggle = $('btn-toggle-sidebar');
+        if (sidebarEl) sidebarEl.classList.toggle('abierto', Boolean(abierto));
+        if (backdropEl) {
+            backdropEl.hidden = !abierto;
+            backdropEl.classList.toggle('visible', Boolean(abierto));
+        }
+        if (btnToggle) btnToggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+    };
+
+    $('btn-toggle-sidebar')?.addEventListener('click', () => {
+        const abierto = !$('sidebar')?.classList.contains('abierto');
+        setSidebarMovilAbierto(abierto);
+    });
+    $('btn-cerrar-sidebar')?.addEventListener('click', () => setSidebarMovilAbierto(false));
+    $('sidebar-backdrop')?.addEventListener('click', () => setSidebarMovilAbierto(false));
+
     document.querySelectorAll('.sidebar-nav .nav-item').forEach((btn) => {
         btn.addEventListener('click', () => {
             const seccion = btn.dataset.seccion;
+            setSidebarMovilAbierto(false);
             cambiarSeccion(seccion);
         });
     });
 
     // 5. Drawer lateral de monitor y silenciador de sonidos
+    const actualizarEstadoMonitor = (abierto) => {
+        $('panel-monitor-lateral')?.classList.toggle('abierto', Boolean(abierto));
+        $('btn-toggle-monitor')?.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+    };
+
     $('btn-toggle-sonidos')?.addEventListener('click', () => {
         sonidosSilenciados = !sonidosSilenciados;
         guardarPreferenciaSonidosSilenciados(sonidosSilenciados);
@@ -4230,10 +4329,11 @@ const inicializarEventosDOM = () => {
         }
     });
     $('btn-toggle-monitor')?.addEventListener('click', () => {
-        $('panel-monitor-lateral')?.classList.toggle('abierto');
+        const abierto = !$('panel-monitor-lateral')?.classList.contains('abierto');
+        actualizarEstadoMonitor(abierto);
     });
     $('btn-cerrar-monitor')?.addEventListener('click', () => {
-        $('panel-monitor-lateral')?.classList.remove('abierto');
+        actualizarEstadoMonitor(false);
     });
 
     // 6. Lector Láser y Búsqueda en POS
@@ -4267,7 +4367,8 @@ const inicializarEventosDOM = () => {
             document.querySelectorAll('.modal-overlay').forEach((m) => {
                 m.style.display = 'none';
             });
-            $('panel-monitor-lateral')?.classList.remove('abierto');
+            actualizarEstadoMonitor(false);
+            setSidebarMovilAbierto(false);
         }
     });
 
@@ -4290,12 +4391,26 @@ const inicializarEventosDOM = () => {
     });
 
     // 9. Radios de Medios de Pago
+    const sincronizarChipsMedioPago = (valorSeleccionado) => {
+        document.querySelectorAll('.metodo-pago-chip').forEach((chip) => chip.classList.remove('activo'));
+        const radioMatch = Array.from(document.querySelectorAll('input[name="medio_pago_radio"]')).find(
+            (r) => r.value === valorSeleccionado
+        );
+        if (radioMatch) {
+            radioMatch.checked = true;
+            radioMatch.closest('.metodo-pago-chip')?.classList.add('activo');
+        }
+    };
+
     document.querySelectorAll('input[name="medio_pago_radio"]').forEach((radio) => {
         radio.addEventListener('change', () => {
-            document.querySelectorAll('.metodo-pago-chip').forEach((chip) => chip.classList.remove('activo'));
-            radio.closest('.metodo-pago-chip')?.classList.add('activo');
+            sincronizarChipsMedioPago(radio.value);
             if ($('select-metodo-pago')) $('select-metodo-pago').value = radio.value;
         });
+    });
+
+    $('select-metodo-pago')?.addEventListener('change', (e) => {
+        sincronizarChipsMedioPago(e.target.value);
     });
 
     // 10. Modales de Impresión de Ticket Térmico
@@ -4360,7 +4475,8 @@ const inicializarEventosDOM = () => {
                     mostrarToast('Error al registrar movimiento.', 'peligro');
                 }
             } catch (err) {
-                mostrarToast(`Error: ${err.message}`, 'peligro');
+                console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
     });
@@ -4395,7 +4511,8 @@ const inicializarEventosDOM = () => {
                     if (res.status === 400) cargarTurnoActivo();
                 }
             } catch (err) {
-                mostrarToast(`Error: ${err.message}`, 'peligro');
+                console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
     });
@@ -4419,6 +4536,13 @@ const inicializarEventosDOM = () => {
 
     zonaDrop?.addEventListener('click', () => {
         inputArchivoCsv?.click();
+    });
+
+    zonaDrop?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            inputArchivoCsv?.click();
+        }
     });
 
     zonaDrop?.addEventListener('dragover', (e) => {
@@ -4682,7 +4806,8 @@ Flete y entrega a local: $4500`;
                     if ($('panel-revision-ia')) $('panel-revision-ia').style.display = 'none';
                 }
             } catch (err) {
-                mostrarToast(`Error: ${err.message}`, 'peligro');
+                console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
     });
@@ -4729,7 +4854,8 @@ Flete y entrega a local: $4500`;
                     mostrarToast('Error al registrar compra.', 'peligro');
                 }
             } catch (err) {
-                mostrarToast(`Error: ${err.message}`, 'peligro');
+                console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
     });
@@ -4737,6 +4863,50 @@ Flete y entrega a local: $4500`;
     // 18. Recalcular toda la carta y Gestión de Productos / Recetas
     $('btn-recalcular-toda-carta')?.addEventListener('click', () => {
         conCargando($('btn-recalcular-toda-carta'), recalcularTodaLaCarta);
+    });
+
+    $('btn-qr-carta-publica')?.addEventListener('click', abrirModalQrCarta);
+
+    $('btn-copiar-url-carta')?.addEventListener('click', async () => {
+        const inputUrl = $('input-url-carta-publica');
+        const url = inputUrl?.value || '';
+        if (!url) return;
+        try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                await navigator.clipboard.writeText(url);
+            } else if (inputUrl) {
+                inputUrl.select();
+                document.execCommand('copy');
+            }
+            mostrarToast('Enlace de la carta copiado.', 'exito');
+        } catch {
+            mostrarToast('No pudimos copiar el enlace automáticamente. Copialo desde el recuadro.', 'advertencia');
+        }
+    });
+
+    $('btn-descargar-qr-svg')?.addEventListener('click', () => {
+        if (!ultimoSvgQrCartaGenerado) return;
+        const blob = new Blob([ultimoSvgQrCartaGenerado], { type: 'image/svg+xml;charset=utf-8' });
+        const urlObj = URL.createObjectURL(blob);
+        const enlace = document.createElement('a');
+        enlace.href = urlObj;
+        enlace.download = 'qr-carta-sapori.svg';
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+        setTimeout(() => URL.revokeObjectURL(urlObj), 1000);
+        mostrarToast('Imagen del código QR descargada.', 'exito');
+    });
+
+    $('btn-imprimir-qr-carta')?.addEventListener('click', () => {
+        document.body.classList.add('imprimiendo-qr-carta');
+        const limpiarClasePrint = () => {
+            document.body.classList.remove('imprimiendo-qr-carta');
+            window.removeEventListener('afterprint', limpiarClasePrint);
+        };
+        window.addEventListener('afterprint', limpiarClasePrint);
+        window.print();
+        setTimeout(limpiarClasePrint, 600);
     });
 
     $('btn-modal-nuevo-producto')?.addEventListener('click', () => {
@@ -4789,7 +4959,8 @@ Flete y entrega a local: $4500`;
                     mostrarToast(extraerMensajeErrorApi(data, 'No se pudo crear el producto.'), 'peligro');
                 }
             } catch (err) {
-                mostrarToast(`Error: ${err.message}`, 'peligro');
+                console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
     });
@@ -4822,7 +4993,8 @@ Flete y entrega a local: $4500`;
                     mostrarToast(extraerMensajeErrorApi(data, 'No se pudo actualizar el precio de venta.'), 'peligro');
                 }
             } catch (err) {
-                mostrarToast(`Error: ${err.message}`, 'peligro');
+                console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
     });
@@ -4868,7 +5040,8 @@ Flete y entrega a local: $4500`;
                     mostrarToast(extraerMensajeErrorApi(data, 'No se pudo agregar el insumo a la receta.'), 'peligro');
                 }
             } catch (err) {
-                mostrarToast(`Error: ${err.message}`, 'peligro');
+                console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
     });
@@ -4912,7 +5085,15 @@ Flete y entrega a local: $4500`;
         if ($('modal-config-servidor')) $('modal-config-servidor').style.display = 'none';
         actualizarIndicadorColaOffline();
         conectarSocketTiempoReal();
-        mostrarToast(`Modo de conexión actualizado a: ${modo.toUpperCase()}.`, 'exito');
+        const etiquetasModo = {
+            local: 'En la computadora del local',
+            cloud: 'En internet',
+            offline: 'Sin internet (temporal)',
+        };
+        mostrarToast(
+            `Modo de conexión actualizado a: ${etiquetasModo[modo] || 'En la computadora del local'}.`,
+            'exito'
+        );
     });
 
     // 21. Sincronización de ventas offline y reconexión automática
@@ -5098,13 +5279,16 @@ Flete y entrega a local: $4500`;
     });
 
     $('select-permisos-rol')?.addEventListener('change', (e) => {
+        if (estadoApp.empleadoEditandoPermisos?.is_superuser) return;
         aplicarPlantillaEnCasillasPermisos(obtenerPlantillaRol(e.target.value));
     });
 
     $('form-permisos-empleado')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const u = estadoApp.empleadoEditandoPermisos;
-        if (!u || !usuarioTienePermiso(estadoApp.usuario, 'personal.ajustar_permisos')) return;
+        if (!u || u.is_superuser || !usuarioTienePermiso(estadoApp.usuario, 'personal.ajustar_permisos')) {
+            return;
+        }
 
         const clavesMarcadas = Array.from(
             document.querySelectorAll('#permisos-categorias-grilla input[type="checkbox"][data-permiso]:checked')
@@ -5112,7 +5296,7 @@ Flete y entrega a local: $4500`;
         const permisosDict = construirDictPermisosDesdeSeleccion(clavesMarcadas);
 
         const puedeEditarRol = usuarioTienePermiso(estadoApp.usuario, 'personal.editar');
-        const rolOriginal = (u.rol || 'CAJERO').toUpperCase();
+        const rolOriginal = ((u.is_superuser ? 'DUENIO' : u.rol) || 'CAJERO').toUpperCase();
         const nuevoRol = ($('select-permisos-rol')?.value || rolOriginal).toUpperCase();
         const cambioRol = puedeEditarRol && nuevoRol !== rolOriginal;
 

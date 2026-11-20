@@ -2,11 +2,16 @@
 
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
 
 class Venta(models.Model):
+    ESTADOS = (
+        ("EMITIDA", "Emitida"),
+        ("ANULADA", "Anulada"),
+    )
     MEDIOS_PAGO = (
         ("EFECTIVO", "Efectivo"),
         ("TRANSFERENCIA", "Transferencia"),
@@ -42,6 +47,31 @@ class Venta(models.Model):
         default="propio",
         verbose_name="Origen de la venta",
     )
+    estado = models.CharField(
+        max_length=12,
+        choices=ESTADOS,
+        default="EMITIDA",
+        verbose_name="Estado de la venta",
+    )
+    anulada_en = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha y hora de anulación",
+    )
+    anulada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ventas_anuladas",
+        verbose_name="Anulada por",
+    )
+    motivo_anulacion = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Motivo de anulación",
+    )
     id_operacion = models.UUIDField(
         unique=True,
         null=True,
@@ -69,10 +99,11 @@ class Venta(models.Model):
         indexes = [
             models.Index(fields=["fecha"], name="idx_venta_fecha"),
             models.Index(fields=["-fecha", "-id"], name="idx_venta_fecha_id_desc"),
+            models.Index(fields=["estado", "fecha"], name="idx_venta_estado_fecha"),
         ]
 
     def __str__(self):
-        return f"Ticket #{self.id} (${self.total}) - {self.medio_pago}"
+        return f"Ticket #{self.id} (${self.total}) - {self.medio_pago} [{self.estado}]"
 
 
 class VentaItem(models.Model):

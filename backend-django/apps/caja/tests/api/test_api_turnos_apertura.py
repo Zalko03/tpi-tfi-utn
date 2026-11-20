@@ -80,3 +80,52 @@ class TestApiAperturaTurno:
 
         assert res.status_code == status.HTTP_400_BAD_REQUEST
         assert res.data["mensaje"] == MENSAJE_TURNO_YA_ABIERTO
+
+    def test_cerrar_sin_efectivo_contado_responde_400_voseo(self, client, cajero):
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("5000.00"))
+        client.force_authenticate(user=cajero)
+
+        res = client.post(f"/api/caja/turnos/{turno.id}/cerrar/", {}, format="json")
+
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        assert res.json() == {
+            "mensaje": "Ingresá el efectivo contado para cerrar la caja.",
+            "detalles": None,
+        }
+
+    def test_cerrar_turno_ya_cerrado_responde_400(self, client, cajero):
+        turno = TurnoCaja.objects.create(
+            usuario=cajero, efectivo_inicial=Decimal("5000.00"), estado="CERRADO"
+        )
+        client.force_authenticate(user=cajero)
+
+        res = client.post(
+            f"/api/caja/turnos/{turno.id}/cerrar/",
+            {"efectivo_contado": "5000.00"},
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        assert res.json() == {
+            "mensaje": "El turno de caja ya está cerrado.",
+            "detalles": None,
+        }
+
+    @pytest.mark.parametrize("valor_invalido", ["abc", "", "NaN", "Infinity", ["100"], True])
+    def test_cerrar_con_efectivo_contado_invalido_responde_400_voseo(
+        self, client, cajero, valor_invalido
+    ):
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("5000.00"))
+        client.force_authenticate(user=cajero)
+
+        res = client.post(
+            f"/api/caja/turnos/{turno.id}/cerrar/",
+            {"efectivo_contado": valor_invalido},
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        assert res.json() == {
+            "mensaje": "Ingresá un monto válido para el efectivo contado.",
+            "detalles": None,
+        }

@@ -44,6 +44,24 @@ def construir_respuesta_contingencia_extraccion(
     )
 
 
+def construir_instrucciones_extraccion(version_prompt: str, tiene_imagen: bool) -> str:
+    """Carga el prompt versionado y agrega las pautas específicas cuando se procesa una foto."""
+    instrucciones = cargar_prompt("extraer_precios", version_prompt)
+    if tiene_imagen:
+        instrucciones = (
+            f"{instrucciones}\n\n"
+            "Nota: El contenido de la lista de precios viene en una foto adjunta; "
+            "extraé los ítems y precios visibles en la imagen separando siempre "
+            "nombre_insumo, cantidad y unidad (no incluyas la cantidad ni la unidad "
+            "dentro de nombre_insumo, ej.: 'Harina 0000 25kg' -> nombre_insumo: "
+            "'Harina 0000', cantidad: '25', unidad: 'kg'; 'Dulce de leche repostero x 10 kg' -> "
+            "nombre_insumo: 'Dulce de leche repostero', cantidad: '10', unidad: 'kg'; "
+            "salvo descartables o envases con medida identitaria como 'Vaso Polipapel 240ml x 50 un' -> "
+            "nombre_insumo: 'Vaso Polipapel 240ml', cantidad: '50', unidad: 'un')."
+        )
+    return instrucciones
+
+
 async def extraer_precios_de_lista(
     solicitud: SolicitudExtraccionPrecios,
     adaptador: Optional[ProveedorIA] = None,
@@ -57,9 +75,13 @@ async def extraer_precios_de_lista(
     """
     inicio = time.perf_counter()
     nombre_proveedor = adaptador.nombre if adaptador else config.proveedor_activo
+    tiene_imagen = bool(solicitud.imagen_base64)
 
     try:
-        instrucciones_sistema = cargar_prompt("extraer_precios", solicitud.version_prompt)
+        instrucciones_sistema = construir_instrucciones_extraccion(
+            solicitud.version_prompt,
+            tiene_imagen=tiene_imagen,
+        )
     except (FileNotFoundError, ValueError) as exc:
         latencia_ms = int((time.perf_counter() - inicio) * 1000)
         return construir_respuesta_contingencia_extraccion(
@@ -79,14 +101,6 @@ async def extraer_precios_de_lista(
             proveedor_ia=nombre_proveedor,
             latencia_ms=latencia_ms,
             motivo=str(exc),
-        )
-
-    tiene_imagen = bool(solicitud.imagen_base64)
-    if tiene_imagen:
-        instrucciones_sistema = (
-            f"{instrucciones_sistema}\n\n"
-            "Nota: El contenido de la lista de precios viene en una foto adjunta; "
-            "extraé los ítems y precios visibles en la imagen."
         )
 
     # El texto del usuario se pasa como un objeto de datos estructurado independiente

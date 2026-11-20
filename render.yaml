@@ -71,10 +71,14 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+        value: openai/gpt-oss-120b
+      - key: GROQ_VISION_MODEL
+        value: qwen/qwen3.8-27b
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash
       - key: AI_PROMPT_VERSION
         value: v1
       - key: AI_TIMEOUT_SECONDS
-        value: "10.0"
+        value: "25.0"
       - key: AI_MAX_RETRIES
         value: "2"

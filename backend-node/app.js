@@ -33,10 +33,17 @@ app.use(
             directives: {
                 defaultSrc: ["'self'"],
                 scriptSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'"],
+                // Google Fonts: la hoja de estilos sale de googleapis y los archivos de gstatic.
+                styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+                fontSrc: ["'self'", 'https://fonts.gstatic.com'],
                 imgSrc: ["'self'", 'data:'],
+                frameSrc: ['https://www.openstreetmap.org'],
                 connectSrc: [
                     "'self'",
+                    // Render: cuando la web se abre desde /app de Node publicado, habla con estos hosts.
+                    'https://sapori-backend-django.onrender.com',
+                    'https://sapori-backend-node.onrender.com',
+                    'wss://sapori-backend-node.onrender.com',
                     'http://localhost:8000',
                     'http://localhost:3000',
                     'ws://localhost:3000',
@@ -58,8 +65,13 @@ if (entorno !== 'test') {
     app.use(morgan('dev'));
 }
 
-// Cliente mínimo PWA y chequeo de salud sin rate limiting para no gastar cupo de API
+// Cliente mínimo PWA, carta pública y chequeo de salud sin rate limiting para no gastar cupo de API
 app.use('/app', express.static(rutaClienteWeb));
+app.get('/carta.html', (_req, res) => {
+    res.sendFile(path.join(rutaClienteWeb, 'carta.html'));
+});
+app.use('/css', express.static(path.join(rutaClienteWeb, 'css')));
+app.use('/js', express.static(path.join(rutaClienteWeb, 'js')));
 app.use('/health', healthRoutes);
 
 // Rate limiting perimetral general (T2.5)

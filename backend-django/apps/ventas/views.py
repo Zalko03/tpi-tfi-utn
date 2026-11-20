@@ -11,6 +11,7 @@ from apps.usuarios.permissions import PermisoObjetoVenta, TienePermiso, usuario_
 from apps.ventas.models import Venta
 from apps.ventas.serializers import VentaSerializer
 from apps.ventas.services import (
+    anular_venta,
     calcular_punto_equilibrio_y_metas,
     obtener_ganancia_diaria,
     obtener_ranking_productos,
@@ -20,13 +21,13 @@ from apps.ventas.services import (
 
 class VentaViewSet(viewsets.ModelViewSet):
     queryset = (
-        Venta.objects.select_related("turno_caja__usuario")
+        Venta.objects.select_related("turno_caja__usuario", "anulada_por")
         .prefetch_related("items__producto")
         .all()
     )
     serializer_class = VentaSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ["turno_caja", "medio_pago", "origen"]
+    filterset_fields = ["turno_caja", "medio_pago", "origen", "estado"]
     ordering_fields = ["fecha", "total"]
     ordering = ["-fecha", "-id"]
 
@@ -78,10 +79,10 @@ class VentaViewSet(viewsets.ModelViewSet):
             self.request, "caja.ver_efectivo_esperado"
         ):
             # Evita deducir ventas en efectivo filtrando por medio_pago u ordenando por total
-            self.filterset_fields = ["turno_caja", "origen"]
+            self.filterset_fields = ["turno_caja", "origen", "estado"]
             self.ordering_fields = ["fecha"]
         else:
-            self.filterset_fields = ["turno_caja", "medio_pago", "origen"]
+            self.filterset_fields = ["turno_caja", "medio_pago", "origen", "estado"]
             self.ordering_fields = ["fecha", "total"]
         qs = super().filter_queryset(queryset)
         if self.action == "list":
@@ -94,10 +95,26 @@ class VentaViewSet(viewsets.ModelViewSet):
     def anular(self, request, pk=None):
         """Anula una venta emitida (docs/seguridad.md §5.1)."""
         venta = self.get_object()
+        motivo = ""
+        if isinstance(request.data, dict):
+            motivo = request.data.get("motivo") or request.data.get("motivo_anulacion") or ""
+
+        venta_anulada = anular_venta(
+            venta=venta,
+            usuario=request.user,
+            motivo=motivo,
+            permiso_verificado=True,
+        )
         return Response(
             {
-                "mensaje": f"Venta #{venta.id} anulada exitosamente.",
-                "venta_id": venta.id,
+                "mensaje": f"Venta #{venta_anulada.id} anulada exitosamente.",
+                "venta_id": venta_anulada.id,
+                "estado": venta_anulada.estado,
+                "anulada_en": (
+                    venta_anulada.anulada_en.isoformat() if venta_anulada.anulada_en else None
+                ),
+                "anulada_por": venta_anulada.anulada_por_id,
+                "motivo_anulacion": venta_anulada.motivo_anulacion,
             },
             status=status.HTTP_200_OK,
         )
@@ -146,7 +163,7 @@ class VentaViewSet(viewsets.ModelViewSet):
             limite = int(limite_param)
         except (TypeError, ValueError) as exc:
             raise serializers.ValidationError(
-                "El parámetro 'limite' debe ser un número entero positivo."
+                "El límite debe ser un número entero mayor a cero."
             ) from exc
 
         resultado = obtener_ranking_productos(
@@ -169,7 +186,7 @@ class VentaViewSet(viewsets.ModelViewSet):
         costos_fijos = fuente.get("costos_fijos")
         if costos_fijos is None or str(costos_fijos).strip() == "":
             raise serializers.ValidationError(
-                "El parámetro 'costos_fijos' es obligatorio para calcular el punto de equilibrio."
+                "Ingresá los costos fijos para calcular el punto de equilibrio."
             )
 
         costos_variables = fuente.get("costos_variables")

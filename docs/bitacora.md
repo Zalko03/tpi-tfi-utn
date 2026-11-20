@@ -21,6 +21,244 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-19
+Tarea: T9 (ronda de corrección post-auditoría) — Ajustes de fidelidad en `README.md` (solo documentación)
+Rama: docs/matriz-hu-readme
+Cambios realizados:
+- **Claves RS256 en Docker (`README.md`):** Se documentó el comportamiento real verificado en `docker-compose.yml`, `backend-django/Dockerfile` y `backend-node/Dockerfile`: generar `backend-django/config/keys/{private,public}.pem` antes de construir embebe las claves en `/app/config/keys/` en Django (`COPY . /app`, sin volúmenes ni variables `DJANGO_JWT_*` en Compose), mientras que `backend-node/Dockerfile` no copia `config/` y `docker-compose.yml` no monta ni inyecta `JWT_PUBLIC_KEY`.
+- **Salud de Node y `carta.html` en Docker (`README.md`):** Se quitaron `http://localhost/health/` y `http://localhost/health/profundo/` de las URLs expuestas en Docker (en `web/nginx.conf` caen en `index.html`; se verifica con `docker compose ps` / `docker compose exec backend-node ...` y en local en `:3000/health`). Se documentó que `web/Dockerfile` no copia `carta.html`, remitiendo a `http://localhost:3000/carta.html` en modo local.
+- **Variables `SEED_DEMO_*` y redacción de usuarios demo (`README.md`):** Se sacaron `SEED_DEMO_PASSWORD` y `SEED_DEMO_ALLOW_PRODUCTION` de la tabla de `.env.example` (pasadas a nota breve en §3 y §4), se usó `SEED_DEMO_PASSWORD="<tu-clave-demo>"` en los comandos de ejemplo y se corrigió `"3 usuarios demo por rol"` a `"3 usuarios demo (1 por rol)"`.
+Archivos tocados:
+- `README.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- Revisión manual de `README.md` contra `docker-compose.yml`, `web/nginx.conf`, `web/Dockerfile`, `backend-django/Dockerfile`, `backend-node/Dockerfile`, `.env.example` y `seed_demo.py`.
+- `git diff --stat` y `git status`
+---
+
+---
+Fecha: 2026-11-19
+Tarea: T9 — Matriz de historias de usuario y README para la entrega (solo documentación)
+Rama: docs/matriz-hu-readme
+Cambios realizados:
+- **Matriz de Historias de Usuario (`docs/MATRIZ_HU.md`):** Se relevó y verificó en el código fuente y suites de pruebas cada una de las 15 HU definidas en `docs/PROPUESTA.md` y `docs/PLAN_IMPLEMENTACION.md` (`HU1`–`HU15`), registrando prioridad MoSCoW, estado real (`11 Hechas`, `2 Parciales`: `HU8` y `HU14`, `2 No hechas`: `HU9` y `HU12`), ubicación exacta en código y tests que las cubren. Se dejó explícito que `HU12` (stock) no está hecha (`Insumo` no tiene stock y `/api/insumos/movimientos/` es consumo teórico), que `HU8` es parcial (`POST /api/ventas/` no emite `venta.registrada` automáticamente hacia Node), que `HU9` no está hecha, que `HU14` es parcial (`costear_con_iva` sin `condicion_fiscal`) y que `HU15` está completa incluyendo el mapa OpenStreetMap (T8).
+- **README de raíz (`README.md`):** Se actualizó la guía de puesta en marcha para Docker Compose y desarrollo local sin Docker (generación de claves JWT RS256, `USE_SQLITE=True`, comandos de arranque por servicio, tabla de variables de `.env.example` sin secretos reales, carga de datos demo y escenario `--video` de T7, usuarios demo sin contraseñas remitiendo a `.env.example`, declaración de uso de IA y cifras reales verificadas: 465 tests Django + 223 Node + 87 ai-service = 775 tests).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna (solo documentación).
+Problemas y decisiones técnicas:
+- Se auditaron los servicios, serializers y endpoints antes de clasificar cada HU para no marcar historias como "Hecha" por su nombre; no se modificó código ni se leyó `.env`.
+Archivos tocados:
+- `docs/MATRIZ_HU.md`
+- `README.md`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/js/config.js && node --check web/sw.js`
+---
+
+---
+Fecha: 2026-11-19
+Tarea: T8 (corrección post-auditoría) — Consistencia de ubicación, privacidad de iframe, a11y, test real de SW y CONNECTIONS.md
+Rama: feat/mapa-carta-publica
+Cambios realizados:
+- **Documentación de conexiones (`docs/CONNECTIONS.md`):** Se actualizó la referencia de caché del Service Worker a `cafe-gestion-pwa-v4` y se agregó la fila de conexión cliente `web/carta.html` → `https://www.openstreetmap.org` (iframe embebido, solo cliente, sin credenciales/claves), detallando la directiva CSP `frame-src https://www.openstreetmap.org` en `backend-node/app.js`.
+- **Seguridad y accesibilidad en `web/carta.html`:** Se reemplazó `referrerpolicy="no-referrer-when-downgrade"` por `referrerpolicy="strict-origin-when-cross-origin"` en `#carta-ubicacion-iframe` y se añadió `<span class="sr-only"> (se abre en una pestaña nueva)</span>` en `#carta-ubicacion-link` reutilizando `.sr-only` de `web/css/estilos.css`.
+- **Coherencia de ubicación ficticia (`web/js/config.js`):** Se actualizó `direccion` a `'Av. 25 de Mayo 100 (frente a Plaza 25 de Mayo), Resistencia, Chaco'` para alinear la dirección ficticia con las coordenadas ficticias de Plaza 25 de Mayo (`-27.4514, -58.9867`).
+- **Service Worker testeable (`web/sw.js`) y tests (`backend-node/tests/`):** Se extrajo la lógica de exclusión de `web/sw.js` a la función pura `debeIgnorarPeticionSw(url, destino, origen)` con guarda sobre `self.addEventListener` y exportación CommonJS condicional; se reemplazaron las aserciones de texto plano en `clientePwa.integration.test.js` y se sumaron pruebas unitarias en `logicaPwa.unit.test.js` cubriendo recurso propio, origen externo, destino `'iframe'` y `openstreetmap.org`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/carta.html` (`web/js/carta.js`) → `https://www.openstreetmap.org` (solo cliente, `frame-src` en `backend-node/app.js`, exclusión en `web/sw.js` `cafe-gestion-pwa-v4`).
+Problemas y decisiones técnicas:
+- Se mantuvo `web/sw.js` compatible simultáneamente con el contexto Service Worker del navegador y con `createRequire` / `vm` en Node/Jest sin introducir pasos de build.
+Archivos tocados:
+- `docs/CONNECTIONS.md`, `docs/bitacora.md`
+- `web/carta.html`, `web/js/config.js`, `web/sw.js`
+- `backend-node/tests/integration/clientePwa.integration.test.js`, `backend-node/tests/unit/logicaPwa.unit.test.js`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js web/js/logicaPwa.js web/js/carta.js web/js/config.js web/sw.js`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+
+---
+Fecha: 2026-11-19
+Tarea: T8 — Mapa embebido de OpenStreetMap en la carta pública (HU15)
+Rama: feat/mapa-carta-publica
+Cambios realizados:
+- **Configuración externa (`web/js/config.js`):** Se creó la configuración web pública (`window.__SAPORI_CONFIG__.ubicacionLocal`) con dirección inventada en Resistencia, Chaco (`Av. San Martín 1420, Resistencia, Chaco`) y coordenadas, sin fijarlas en el código de la carta ni en el HTML.
+- **Lógica pura del mapa (`web/js/logicaPwa.js`):** Se agregaron `construirUrlsMapaOpenStreetMap`, `resolverUbicacionCartaPublica` y `renderizarUbicacionCarta` para armar la URL de `https://www.openstreetmap.org/export/embed.html` (`bbox` y `marker`) y el enlace externo, ocultando la sección `#carta-donde-estamos` sin asignar `src` al iframe ni generar errores cuando faltan coordenadas válidas.
+- **Vista pública, estilos, CSP y Service Worker (`web/carta.html`, `web/js/carta.js`, `web/css/estilos.css`, `backend-node/app.js`, `web/sw.js`):** Se sumó la sección "Dónde estamos" con el iframe y enlace "Abrir en el mapa" debajo de la lista de productos (adaptada a 375 px de ancho y preservando el contraste corregido en `1bdead4`), se habilitó `frameSrc: ['https://www.openstreetmap.org']` en Helmet CSP y se excluyeron iframes y peticiones externas/OpenStreetMap de la caché de `sw.js` (`cafe-gestion-pwa-v4`, precacheando `config.js`).
+- **Tests (`backend-node/tests/unit/logicaPwa.unit.test.js`, `tests/integration/clientePwa.integration.test.js`, `tests/integration/seguridadHardening.integration.test.js`):** Se cubrió el armado de URLs de OpenStreetMap, el ocultamiento sin coordenadas, el servicio de `config.js` y `carta.html`, la exclusión en `sw.js` y la directiva `frame-src` en CSP.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/carta.html` (iframe embebido) → `https://www.openstreetmap.org/export/embed.html` (solo cliente, sin API keys).
+Problemas y decisiones técnicas:
+- Se utilizó `window.__SAPORI_CONFIG__.ubicacionLocal` en `web/js/config.js` (script local `'self'` compatible con CSP) para desacoplar dirección y coordenadas del código de la carta sin agregar endpoints ni librerías externas.
+Archivos tocados:
+- `web/js/config.js`, `web/js/logicaPwa.js`, `web/js/carta.js`, `web/carta.html`, `web/css/estilos.css`, `web/sw.js`
+- `backend-node/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`, `backend-node/tests/integration/seguridadHardening.integration.test.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `backend-django/.venv/bin/pytest backend-django/ -q`
+- `ai-service/.venv/bin/pytest ai-service/ -q`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/js/config.js && node --check web/sw.js`
+
+---
+Fecha: 2026-11-18
+Tarea: T6 — Consolidación de presentación, evidencias visuales (IA y QR), script de capturas y guion de video
+Rama: feat/presentacion-evidencias
+Cambios realizados:
+- Se verificó `/home/evilkitty/orq/tareas/`: no existe `T6_capturas_presentacion.txt`; la consigna presente es `T6_guion_video.txt`, junto con las capturas previas en `~/Escritorio/capturas-presentacion/` (`CAMBIOS.md`, `01`..`07` y `pruebas-ia/01`..`08`).
+- Se creó `docs/PRESENTACION_Y_EVIDENCIAS.md` (y copia del guion en `/home/evilkitty/orq/resultados/T6_presentacion_y_guion.md`) con el alcance real del sistema, guía paso a paso de ejecución (Docker y local), inventario consolidado de evidencias (flujo general, módulo IA con Groq y módulo QR Carta Pública HU15), guion de 2 minutos (~264 palabras en español rioplatense, 7 escenas) y tabla de pruebas verificadas.
+- Se creó `scripts/capturar_carta_qr.sh` (cero dependencias nuevas) para verificar `GET /api/carta-publica/`, exportar `qr-carta-ejemplo.svg` con `web/js/logicaPwa.js` y generar capturas Desktop (`1280×900`) y Mobile (`390×844`) de `web/carta.html` en `~/Escritorio/capturas-presentacion/qr-carta/`.
+- Al inspeccionar las capturas de `carta.html`, se detectó bajo contraste en `.carta-publica-titulo` (heredaba color oscuro de la regla global `h1` sobre fondo `--color-espresso`); se corrigió en `web/css/estilos.css` aplicando `color: var(--color-crema-texto)` y se regeneraron las capturas.
+- Se corrigió una condición de carrera en `backend-node/tests/integration/importacionIA.integration.test.js` moviendo el mock de `global.fetch` antes de `POST /api/importaciones` para evitar que `setImmediate` dispare `fetch` real cuando `ai-service` no está levantado.
+Conexiones nuevas o modificadas (reflejadas en `docs/CONNECTIONS.md`):
+- Sin cambios de contratos ni conexiones entre servicios.
+Problemas y decisiones técnicas:
+- La captura del modal `#modal-qr-carta` dentro de `#vista-recetas` quedó documentada como captura manual con sesión autenticada de Dueño/Encargado para no leer `.env` ni automatizar credenciales desde el script.
+Archivos tocados:
+- `docs/PRESENTACION_Y_EVIDENCIAS.md`, `docs/bitacora.md`
+- `scripts/capturar_carta_qr.sh`
+- `web/css/estilos.css`
+- `backend-node/tests/integration/importacionIA.integration.test.js`
+Cómo probarlo:
+- `./scripts/capturar_carta_qr.sh`
+- `backend-django/.venv/bin/pytest backend-django/ -q`
+- `ai-service/.venv/bin/pytest ai-service/ -q`
+- `.venv/bin/ruff check backend-django/ ai-service/` && `.venv/bin/ruff format --check backend-django/ ai-service/`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
+
+---
+Fecha: 2026-11-18
+Tarea: T5 — Carta Digital pública por QR (HU15, Opción A: QR SVG en JS puro ISO/IEC 18004)
+Rama: feat/qr-carta-publica
+Cambios realizados:
+- **Backend Django (`backend-django/apps/comun/throttling.py`, `config/settings/base.py`, `.env.example`, `apps/recetas/`):**
+  - Se agregó `CartaPublicaRateThrottle(AnonRateThrottle)` (`scope = "carta_publica"`, tasa por defecto `DJANGO_THROTTLE_CARTA_PUBLICA=60/minute`).
+  - Se creó `listar_productos_carta_publica()` (`Producto.objects.filter(estado_activo=True).order_by("nombre")`), `CartaPublicaProductoSerializer` (únicamente `id`, `nombre`, `precio_venta`) y `CartaPublicaView` (`AllowAny`, `authentication_classes = []`, `throttle_classes = [CartaPublicaRateThrottle]`) montada en `GET /api/carta-publica/`.
+- **Generador QR ISO/IEC 18004 en JS puro (`web/js/logicaPwa.js`):**
+  - Se implementaron `puedeGestionarQrCarta(usuario)` (habilita únicamente con `recetas.editar`), `construirUrlCartaPublica(origin, pathname)` (respeta prefijo `/app/` o raíz `/`), `generarMatrizQr(texto)` (modo Byte UTF-8, Reed-Solomon GF(256) `0x11D`, versiones 1 a 10, niveles L/M, patrones de función, BCH(15,5) y selección óptima de máscara) y `generarSvgQrCarta(url, opciones)` con quiet zone de 4 módulos.
+- **Página pública y Modal QR (`web/carta.html`, `web/js/carta.js`, `web/index.html`, `web/js/app.js`, `web/css/estilos.css`, `backend-node/app.js`, `web/sw.js`):**
+  - Se creó `web/carta.html` + `web/js/carta.js` mobile-first, sin login y en voseo, consumiendo `GET /api/carta-publica/` con precios ARS, búsqueda en vivo, botón de actualizar, hora de consulta y estados de carga/vacío/error (sin script inline para respetar Helmet CSP).
+  - En `backend-node/app.js` se expusieron `/carta.html`, `/css` y `/js` además de `/app/carta.html`; en `web/sw.js` (`cafe-gestion-pwa-v3`) se precacheó `carta.html` y `carta.js` con fallback de navegación separado de `index.html`.
+  - En `#vista-recetas` se agregó `#btn-qr-carta-publica` (oculto con `hidden` sin `recetas.editar`) y el modal `#modal-qr-carta` con SVG, copia de URL, apertura en pestaña nueva, descarga SVG e impresión de cartel (`body.imprimiendo-qr-carta`).
+- **Tests (`backend-django/apps/recetas/tests/api/test_api_carta_publica.py`, `apps/comun/tests/unit/test_unit_throttling.py`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `tests/integration/clientePwa.integration.test.js`):**
+  - Pytest cubre HTTP 200 sin login, exclusión de inactivos, ausencia de costos/márgenes/mano de obra/insumos y HTTP 429 por throttle; Jest cubre permisos, URLs, decodificación integral ISO/IEC 18004 (BCH + zigzag + Byte mode) y servicio de `carta.html`.
+Conexiones nuevas o modificadas (reflejadas en `docs/CONNECTIONS.md`):
+- `web/carta.html` (`web/js/carta.js`) → `backend-django` (`GET /api/carta-publica/` anónimo con `CartaPublicaRateThrottle`).
+Problemas y decisiones técnicas:
+- Se eligió retornar `{"datos": [...], "total": N}` en `/api/carta-publica/` para mantener consistencia con `reporte_por_producto` y evitar paginación de 10 ítems en la carta completa; `carta.js` soporta tanto array como `{datos}`.
+- Se movió el JS de la carta a `web/js/carta.js` por la directiva CSP `scriptSrc: ["'self'"]` de Helmet en `backend-node/app.js`.
+Archivos tocados:
+- `.env.example`, `backend-django/config/settings/base.py`, `backend-django/apps/comun/throttling.py`
+- `backend-django/apps/recetas/{services.py,serializers.py,views.py,urls.py}`
+- `backend-django/apps/recetas/tests/api/test_api_carta_publica.py`, `backend-django/apps/comun/tests/unit/test_unit_throttling.py`
+- `backend-node/app.js`, `web/{carta.html,index.html,sw.js,css/estilos.css,js/carta.js,js/logicaPwa.js,js/app.js}`
+- `backend-node/tests/{unit/logicaPwa.unit.test.js,integration/clientePwa.integration.test.js}`
+- `docs/{CONNECTIONS.md,ARCHITECTURE.md,seguridad.md,bitacora.md}`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check ai-service/ backend-django/`
+- `.venv/bin/ruff format --check ai-service/ backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
+
+---
+Fecha: 2026-11-18
+Tarea: T1 — Modelos de IA vigentes por defecto, timeout de 25s, prompt de extracción y pruebas reales desde la web
+Rama: fix/ia-pruebas-reales
+Cambios realizados:
+- **Modelos por defecto vigentes y timeout de 25s (`ai-service/app/config.py`, `.env.example`, `ai-service/.env.example`, `docker-compose.yml`, `docker-compose.prod.yml`, `render.yaml`):** Actualización de `GROQ_MODEL` a `openai/gpt-oss-120b`, `GROQ_VISION_MODEL` a `qwen/qwen3.8-27b` (verificados activos en `GET https://api.groq.com/openai/v1/models`) y `GEMINI_MODEL` a `gemini-3.8-flash` (referencia: `https://ai.google.dev/gemini-api/docs/models`). Se aumentó el timeout por defecto `AI_TIMEOUT_SECONDS` de 10 a 25 segundos para evitar caídas en contingencia por latencia en modelos de razonamiento (como `gpt-oss-120b`) o visión.
+- **Prompt y servicio de extracción (`ai-service/app/prompts/v1/extraer_precios.txt`, `ai-service/app/services/extraccion.py`):** En línea 2 se precisó "texto o imagen de una lista de precios". En la regla 4 se explicitó la separación de cantidad/peso/volumen comercializado de bultos ("Harina 0000 25kg" -> nombre: "Harina 0000", cantidad: 25, unidad: "kg"; "Dulce de leche repostero x 10 kg" -> nombre: "Dulce de leche repostero", cantidad: 10, unidad: "kg"), preservando la medida identitaria en descartables vendidos por pack ("Vaso Polipapel 240ml x 50 un" -> nombre: "Vaso Polipapel 240ml", cantidad: 50, unidad: "un") para no romper el matching exacto con el catálogo de insumos.
+- **Tests unitarios (`ai-service/app/tests/unit/test_unit_adapters_y_servicios.py`, `test_unit_prompts.py`):** Se verificó el override de `GROQ_VISION_MODEL` con un valor no default (`qwen/qwen-vision-custom-test`) para garantizar que la variable de entorno tiene precedencia real, y se cubrieron las nuevas reglas del prompt de extracción.
+- **Verificación real punta a punta (`http://localhost:3000/app/` y `uvicorn` reiniciado en puerto 8001):**
+  - Se validó extracción real con Groq (`proveedor_ia=groq`, `contingencia=false`, estado `LISTA`) desde CSV («Analizar Planilla con IA»), Excel `.xlsx` («Analizar Planilla con IA»), Word `.docx`, texto libre y foto PNG inventada usando `qwen/qwen3.8-27b` (separación correcta de nombre, cantidad, unidad y flete).
+  - Se probó la aprobación completa («Aprobar e Impactar Costos en Recetas», HTTP 200) y se restauró la BD SQLite local a su estado previo para no alterar los datos demo.
+  - Se probó «Consultar a la IA: insumos a reponer» (`POST /v1/resumen-semanal` con Groq real `openai/gpt-oss-120b`, sin contingencia) y «Auditar Cierre de Caja y Rentabilidad del Turno con IA» (auditoría local de Turno #1). Se verificó que «Recetas & Rentabilidad» no tiene botones de IA.
+  - Capturas y descripción guardadas fuera del repo en `~/Escritorio/capturas-presentacion/pruebas-ia/`.
+Archivos tocados:
+- `.env.example`, `ai-service/.env.example`, `docker-compose.yml`, `docker-compose.prod.yml`, `render.yaml`
+- `ai-service/app/config.py`, `ai-service/app/prompts/v1/extraer_precios.txt`, `ai-service/app/services/extraccion.py`
+- `ai-service/app/tests/unit/{test_unit_adapters_y_servicios.py,test_unit_prompts.py}`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `backend-django/.venv/bin/pytest backend-django/`
+- `cd backend-node && npm test && npm run lint`
+- `ai-service/.venv/bin/pytest ai-service/`
+- `.venv/bin/ruff check backend-django/ ai-service/`
+- `.venv/bin/ruff format --check backend-django/ ai-service/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+
+---
+Fecha: 2026-11-18
+Tarea: T3 (corrección post-auditoría) — Validación de turno abierto y titularidad en `POST /api/caja/movimientos/`
+Rama: fix/movimientos-caja-cajero
+Cambios realizados:
+- **Servicio y validaciones de creación (`backend-django/apps/caja/services.py`, `serializers.py`, `views.py`):** Se agregó `validar_movimiento_en_turno` y `registrar_movimiento_caja` (con `@transaction.atomic` y `select_for_update()` sobre `TurnoCaja`). Al hacer `POST /api/caja/movimientos/`, se rechaza con HTTP 403 si el usuario no es superusuario ni posee `caja.gestionar_turnos_ajenos` e intenta registrar sobre un turno ajeno, y con HTTP 400 (`"No podés registrar movimientos en un turno de caja que ya está cerrado."`) si el turno está `CERRADO`.
+- **Permisos de lectura (`MovimientoCajaViewSet.get_permissions`):** `list` y `retrieve` aceptan `TieneAlgunPermiso("caja.registrar_movimiento", "caja.gestionar_turnos_ajenos")`, manteniendo HTTP 403 para el cajero estándar sin esos permisos (coherente con `test_api_permisos_negativos.py` y arqueo ciego en `GET /api/caja/turnos/`), filtro por titular para cajeros con `caja.registrar_movimiento` y vista global para encargado/dueño.
+- **Tests (`backend-django/apps/caja/tests/api/test_api_movimientos_caja.py`):** Se agregaron pruebas para `POST` en turno propio abierto (201), `POST` de cajero en turno ajeno (403), `POST` en turno `CERRADO` (400), `POST` de encargado en turno ajeno abierto (201) y `PATCH`/`DELETE` de cajero sobre movimientos propios y ajenos (403).
+Archivos tocados:
+- `backend-django/apps/caja/{services.py,serializers.py,views.py}`
+- `backend-django/apps/caja/tests/api/test_api_movimientos_caja.py`
+- `docs/{seguridad.md,CONNECTIONS.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+
+---
+Fecha: 2026-11-17
+Tarea: T3 — Movimientos de caja: cada cajero ve solo los suyos (y sí ve los de su turno)
+Rama: fix/movimientos-caja-cajero
+Cambios realizados:
+- **`MovimientoCajaViewSet.get_queryset` (`backend-django/apps/caja/views.py`):** Se filtró el queryset a `turno_caja__usuario=user` cuando el usuario autenticado no es superusuario ni posee `caja.gestionar_turnos_ajenos`, cubriendo tanto `list` como `retrieve` (retorna HTTP 404 ante movimientos de turnos ajenos).
+- **`TurnoCajaSerializer.to_representation` (`backend-django/apps/caja/serializers.py`):** El cajero no veía los movimientos de caja chica en la tarjeta de Caja de la web (`web/js/app.js`, `renderizarMovimientosCaja(turno.movimientos || [])`) porque `TurnoCajaSerializer` vaciaba `ret["movimientos"] = []` al faltar `caja.ver_efectivo_esperado`. Ahora se conservan los `movimientos` cuando el usuario es titular del turno (o tiene `caja.gestionar_turnos_ajenos`), manteniendo en `None` `efectivo_inicial`, `efectivo_esperado`, `diferencia`, `ventas_efectivo_total` y `cantidad_tickets` (arqueo ciego estricto).
+- **Tests:** Se agregó `backend-django/apps/caja/tests/api/test_api_movimientos_caja.py` (7 tests para cajero, cajero estándar con arqueo ciego, encargado, dueño, superusuario y serializer en turno ajeno) y se actualizó la aserción de `movimientos` del turno propio en `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`.
+Conexiones nuevas o modificadas (reflejadas en `docs/CONNECTIONS.md` y `docs/seguridad.md`):
+- `GET /api/caja/movimientos/` y `GET /api/caja/movimientos/:id/` quedan acotados al titular del turno salvo `caja.gestionar_turnos_ajenos`; `GET /api/caja/turnos/` devuelve `movimientos` del turno propio consumidos por `web/js/app.js` sin exponer montos del arqueo.
+Problemas y decisiones técnicas:
+- Un cajero sin `caja.ver_efectivo_esperado` tampoco conoce `efectivo_inicial`, `ventas_efectivo_total` ni `cantidad_tickets`, por lo que ver los `movimientos` de su propio turno no permite deducir `efectivo_esperado` y corrige la discrepancia en la tarjeta de Caja sin tocar el frontend.
+Archivos tocados:
+- `backend-django/apps/caja/{views.py,serializers.py}`
+- `backend-django/apps/caja/tests/api/test_api_movimientos_caja.py`
+- `backend-django/apps/comun/tests/api/test_api_permisos_negativos.py`
+- `docs/{CONNECTIONS.md,seguridad.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+
+---
+Fecha: 2026-11-17
+Tarea: T2 — Anulación real de ventas (`POST /api/ventas/{id}/anular/`)
+Rama: fix/anular-venta
+Cambios realizados:
+- **Modelo y migración (`backend-django/apps/ventas/`):** Se agregaron `estado` (`EMITIDA` / `ANULADA`, default `EMITIDA`), `anulada_en`, `anulada_por`, `motivo_anulacion` e índice `idx_venta_estado_fecha` en `Venta` (`0005_venta_anulada_en_venta_anulada_por_venta_estado_and_more.py`), conservando las ventas sin borrado físico.
+- **Servicio y API (`apps/ventas/services.py`, `serializers.py`, `views.py`):** Se implementó `anular_venta(venta, usuario, motivo)` con `@transaction.atomic` y `select_for_update()`, validando `ventas.anular_ticket` (403), doble anulación (400) y estado del turno (400 si `CERRADO`). `VentaViewSet.anular` delega en el servicio y `VentaSerializer` expone los campos de anulación como `read_only`.
+- **Exclusión en caja, reportes y consumo (`apps/caja/`, `apps/ventas/`, `apps/insumos/`):** Se filtró `estado="EMITIDA"` en `TurnoCaja.calcular_efectivo_esperado`, `TurnoCajaSerializer` (`ventas_efectivo_total`, `cantidad_tickets`), `construir_queryset_reporte_ventas_por_producto` (reporte por producto y ranking), `obtener_ganancia_diaria` (y punto de equilibrio) y `obtener_movimientos_stock_trazabilidad` (consumo de insumos).
+- **Web (`web/js/logicaPwa.js`, `web/js/app.js`):** En la trazabilidad de Reportes, las ventas con `estado === 'ANULADA'` se muestran marcadas con `"Anulada"` y badge `.peligro` (manteniendo `"Confidencial"` si `total` es `null`), y en la auditoría de turno (`auditarCierreCajaIA`) se excluyen del total vendido y conteo de emitidas. No se agregó botón para anular en la UI por no existir previamente (fuera de alcance de la tarea).
+- **Tests:** Pruebas unitarias y de API en Django (`test_unit_anulacion_ventas.py`, `test_api_anulacion_ventas.py`) y unitarias en Jest (`logicaPwa.unit.test.js`).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `POST /api/ventas/:id/anular/` pasa de stub a mutación transaccional real de `Venta.estado` (`ANULADA`); `GET /api/ventas/` expone `estado`, `anulada_en`, `anulada_por`, `anulada_por_nombre` y `motivo_anulacion` consumidos por `web/js/logicaPwa.js`.
+Problemas y decisiones técnicas:
+- **Regla de turno cerrado:** `PLAN_IMPLEMENTACION.md` §3, `PROPUESTA.md` y `seguridad.md` §5.1 no definen si se puede anular una venta de un turno cerrado. Se eligió la regla conservadora: rechazar con HTTP 400 si `turno_caja` está `CERRADO` (para no invalidar arqueos ya cerrados); si `turno_caja` es `ABIERTO` (o `None`, p. ej. ventas importadas sin turno), se permite anular.
+Archivos tocados:
+- `backend-django/apps/ventas/{models.py,serializers.py,services.py,views.py,migrations/0005_venta_anulada_en_venta_anulada_por_venta_estado_and_more.py}`
+- `backend-django/apps/caja/{models.py,serializers.py}`, `backend-django/apps/insumos/services.py`
+- `backend-django/apps/ventas/tests/{unit/test_unit_anulacion_ventas.py,api/test_api_anulacion_ventas.py}`
+- `web/js/{logicaPwa.js,app.js}`, `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `docs/{CONNECTIONS.md,ARCHITECTURE.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+
+---
 Fecha: 2026-11-17
 Tarea: Extracción de precios con IA desde foto de lista de proveedor (Web, Node y ai-service)
 Rama: feature/mejoras-profesor
@@ -1781,3 +2019,188 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint` (25 suites, 207 tests en verde).
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 ---
+
+
+
+Fecha: 2026-11-18
+Tarea: T4 — Mensajes de la API de Django de vos y superusuario mostrado como Dueño
+Rama: fix/textos-api-vos
+Qué se hizo y por qué:
+- Mensajes de error de Django pasados a vos y sin nombres internos de campos ni tecnicismos (ej. `"Ingresá el efectivo contado para cerrar la caja."`), incluyendo `apps/comun/excepciones.py` (401, 403, 429), `apps/comun/filtros.py`, `apps/caja/views.py`, `apps/usuarios/{permissions,services,tokens,views}.py`, `apps/ventas/{views,services,serializers}.py` y `apps/insumos/{views,services,serializers}.py`, manteniendo códigos HTTP y `{ mensaje, detalles }`. Se actualizó `docs/api-errores.md` y los tests que comparan textos.
+- Rol de `admin` en Equipo & Permisos: se verificó (en solo lectura) que `admin` es un superusuario sin fila en `PerfilUsuario` (creado con `createsuperuser`; no hay signal que cree perfil y `seed_demo` solo crea `duenio_demo`, `encargado_demo` y `cajero_demo`). `UsuarioSerializer` devolvía `rol: null` y la web caía en el fallback `'CAJERO'`. Sin tocar la base de datos ni crear migraciones, `UsuarioSerializer` y `tokens.py` ahora devuelven `ROL_DUENIO` y el catálogo completo de permisos para todo superusuario (tenga perfil `CAJERO` o no tenga perfil) y exponen `is_superuser`; `web/js/app.js` también prioriza `u.is_superuser` para mostrar "Dueño".
+Archivos tocados:
+- `backend-django/apps/comun/excepciones.py`, `backend-django/apps/comun/filtros.py`
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/usuarios/{permissions,serializers,services,tokens,views}.py`
+- `backend-django/apps/ventas/{serializers,services,views}.py`
+- `backend-django/apps/insumos/{serializers,services,views}.py`
+- `backend-django/apps/{comun,caja,usuarios,ventas}/tests/**`
+- `web/js/app.js`, `docs/api-errores.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+Fecha: 2026-11-18
+Tarea: T4 (corrección post-auditoría) — Protección de superusuarios sin perfil, cierre de caja robusto y textos restantes
+Rama: fix/textos-api-vos
+Qué se hizo y por qué:
+- **Protección de superusuarios y ausencia de `PerfilUsuario` (`apps/usuarios/services.py`, `tokens.py`, `web/js/app.js`):** Se evitó `RelatedObjectDoesNotExist` (500) en `actualizar_personal` y `desactivar_personal` usando `getattr(usuario, "perfil", None)`. Se bloqueó con `ErrorReglaNegocio` (`ValidationError` en voseo, HTTP 400) que se modifique el rol o permisos de un superusuario o que un usuario no-superusuario modifique o desactive a un superusuario; `contar_duenios_activos` y `desactivar_personal` ahora contabilizan superusuarios activos en la regla de supervivencia del último dueño/administrador activo. `CustomTokenObtainPairSerializer` incluye `"is_superuser"` en `data["usuario"]` para consistencia con `UsuarioSerializer`, y `web/js/app.js` bloquea la edición de rol/permisos (modal en solo lectura) y acciones de baja/reactivación por no-superusuarios cuando `is_superuser === true`.
+- **Cierre de caja (`apps/caja/views.py`):** `TurnoCajaViewSet.cerrar` captura `(InvalidOperation, ValueError, TypeError)` y valores no finitos al convertir `efectivo_contado` a `Decimal`, devolviendo HTTP 400 con `"Ingresá un monto válido para el efectivo contado."`.
+- **Textos visibles restantes (`apps/usuarios/views.py`):** `LogoutView` ya no expone `str(e)` de SimpleJWT en `detalles` (`"Tu sesión ya venció o no es válida."`, `detalles: None`) y `UsuarioViewSet.destroy` responde `"Usuario desactivado correctamente."` sin jerga técnica.
+- **Tests:** Se agregaron pruebas para refresh de superusuario sin perfil, `is_superuser` en login, logout con token inválido, protección de superusuarios sin perfil en servicios y API, `DELETE /api/usuarios/:id/` y `efectivo_contado` inválido en cierre de caja.
+Archivos tocados:
+- `backend-django/apps/usuarios/{services.py,tokens.py,views.py}`
+- `backend-django/apps/caja/views.py`
+- `backend-django/apps/usuarios/tests/{api/test_api_auth.py,api/test_api_personal.py,unit/test_unit_supervivencia_duenio.py}`
+- `backend-django/apps/caja/tests/api/test_api_turnos_apertura.py`
+- `web/js/app.js`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+Fecha: 2026-11-19
+Tarea: T7 — Datos de demo para grabar el video (`seed_demo --video`) + correcciones post-auditoría
+Rama: chore/datos-demo-video
+Qué se hizo y por qué:
+- Se amplió `backend-django/apps/insumos/management/commands/seed_demo.py` con el flag `--video`, manteniendo compatibilidad e idempotencia total (re-ejecutarlo no duplica registros, no borra usuarios ni cambia contraseñas existentes; todos los montos y cantidades usan `Decimal`).
+- En modo `--video`: asegura 11 productos activos con receta completa (insumos, mano de obra y descartables) mediante `get_or_create` con `defaults` sin sobrescribir `precio_venta` ni `codigo_barras` de productos ya existentes; valida explícitamente que `Brownie Intenso Chocolate 70%` quede con margen crítico (`< 0.30`, ~19,86%) y emite `WARNING` si precios previos en la base superan ese umbral; crea 2 turnos cerrados (`CERRADO`, uno exacto y otro con -$200) y 1 turno abierto (`ABIERTO`) para `cajero_demo` con movimientos de caja chica; distribuye ventas idempotentes (vía `id_operacion` UUID v5 determinístico) en los últimos 14 días usando únicamente medios digitales (`TARJETA`/`TRANSFERENCIA`) en las ventas históricas sin turno (`turno_caja=None`) para no dejar cobros en `EFECTIVO` fuera de arqueo; y registra 1 venta anulada (`ANULADA`) mediante `anular_venta`.
+- Validación y re-ejecución en otro día:
+  - Si `cajero_demo` ya tiene un turno `ABIERTO` de un día anterior al actual, `--video` frena inmediatamente con `CommandError` indicando que debe cerrarse antes para no superponer turnos ni mezclar ventas.
+  - Al volver a ejecutar `seed_demo --video` otro día (una vez cerrado el turno previo), reacomoda las fechas relativas (`fecha`, `apertura`, `cierre`, fechas de movimientos y `anulada_en`) al `ahora` actual sin duplicar registros, y re-vincula las ventas de hoy y la anulada al turno abierto vigente de hoy.
+  - Nota operativa: evitar correr `seed_demo --video` entre las `00:00` y `00:45` hora local porque `_fecha_hoy_pasada` acota las marcas al inicio del día (`00:00`) y las operaciones de hoy quedarían superpuestas a la medianoche.
+- Respaldo obligatorio antes de ejecutar el comando sobre la base local:
+  - `mkdir -p ~/orq/backups && cp backend-django/db.sqlite3 ~/orq/backups/db.sqlite3.antes-seed-video`
+- Comando exacto para poblar la base con datos de demo/video (asegurando `DEBUG=True` vía `DJANGO_DEBUG=True` y contraseña explícita):
+  - `cd backend-django && DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<clave_demo>" .venv/bin/python manage.py seed_demo --video`
+Problemas y decisiones técnicas (incidente primera corrida de T7):
+- Durante la primera corrida de T7 (previa a la ronda post-auditoría), `backend-django/db.sqlite3` recibió los datos de `seed_demo --video` sin borrar usuarios ni modificar contraseñas existentes; el respaldo previo disponible en `~/orq/backups/` data del 17/11. Se deja asentado para que Evilkitty decida si restaurar el backup del 17/11 o conservar la base actual (re-ejecutando luego el comando corregido para actualizar fechas y convertir las ventas históricas sin turno a medios digitales).
+Archivos tocados:
+- `backend-django/apps/insumos/management/commands/seed_demo.py`
+- `backend-django/apps/insumos/tests/unit/test_unit_seed_demo.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `.venv/bin/ruff check backend-django/ ai-service/ && .venv/bin/ruff format --check backend-django/ ai-service/`
+- `node --check web/js/app.js web/js/logicaPwa.js`
+---
+
+Fecha: 2026-11-19
+Tarea: T10 — Ensayo automático E2E del flujo de demostración
+Rama: test/e2e-flujo-demo
+Qué se hizo y por qué:
+- Se crearon `scripts/ensayo_demo.sh` y `scripts/ensayo_demo.py` (stdlib Python, sin dependencias nuevas ni Playwright porque no está instalado en el proyecto) para recorrer por API los 8 pasos del guion de presentación (`docs/PRESENTACION_Y_EVIDENCIAS.md` y T6) contra servidores locales ya levantados sobre una base de prueba poblada con `seed_demo --video` (T7), sin tocar `backend-django/db.sqlite3`.
+- Contraseñas solo por variables de entorno (`SEED_DEMO_PASSWORD` o `DEMO_DUENIO_PASSWORD` + `DEMO_CAJERO_PASSWORD`), nunca escritas en código. Respeta límites de Node (`1` petición autenticada a `/api/snapshots-costeo/` sobre `600/15m` y `2` estáticas/salud en `/health` y `/carta.html` fuera del limitador sobre `100/15m`) y de Django (`2` logins sobre `10/min`).
+- Re-ejecución segura: reutiliza turno abierto si existe o abre uno nuevo (`POST /api/turnos/`), cobra una venta con `id_operacion` UUID v4 fresco, registra y anula una segunda venta de prueba para no romper ventas históricas, cierra el turno verificando arqueo ciego y consulta reportes "últimos 7 días" y la carta pública anónima. Cada corrida deja 1 venta `EMITIDA`, 1 `ANULADA` y el turno cerrado en la base de prueba.
+- Se agregaron tests E2E automatizados en `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py` usando `live_server` sobre base de test aislada (incluyendo doble corrida consecutiva y casos negativos).
+Cómo correrlo:
+- Con servidores locales levantados sobre base de prueba post-T7 (recomendado en puertos de prueba, no contra la base real):
+  `DJANGO_URL="http://127.0.0.1:18000" NODE_URL="http://127.0.0.1:13000" VERIFICAR_NODE=1 SEED_DEMO_PASSWORD="<clave_demo>" ./scripts/ensayo_demo.sh`
+  (por defecto usa `DJANGO_URL=http://localhost:8000`, `NODE_URL=http://localhost:3000`, `VERIFICAR_NODE=auto`).
+Qué tiene que aparecer si sale bien:
+- Resumen con `✅` en los 8 pasos (`✅ Paso 1` a `✅ Paso 8`: login `duenio_demo`/`cajero_demo`, costeo de producto + snapshots Node, turno abierto/reutilizado, cobro POS, anulación, cierre con arqueo ciego + auditoría gerencia, reportes últimos 7 días y carta pública anónima + Node `/health` y `/carta.html`) y cierre final:
+  `✅ Ensayo completo OK (8/8 pasos superados).` (código de salida `0`).
+Archivos tocados:
+- `scripts/ensayo_demo.sh`
+- `scripts/ensayo_demo.py`
+- `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `.venv/bin/ruff check backend-django/ ai-service/ scripts/ensayo_demo.py && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/ensayo_demo.py`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+Fecha: 2026-11-19
+Tarea: T10 — Correcciones post-auditoría del ensayo E2E del flujo demo
+Rama: test/e2e-flujo-demo
+Qué se hizo y por qué:
+- Validación estricta de configuración en `scripts/ensayo_demo.py`: `_validar_url_http` valida `DJANGO_URL` y `NODE_URL` con `urllib.parse.urlsplit` exigiendo `scheme in {"http", "https"}`, `netloc`/host válido y puerto válido (rechaza `file://`, `ftp://`, URLs sin host o malformadas); `_validar_politica_node` exige que `VERIFICAR_NODE` esté en `{"auto", "1", "0"}` sin caer silenciosamente en `"0"`. Ante cualquier valor inválido imprime `❌ Configuración inválida: ...` y retorna `1` sin traceback.
+- Resiliencia de transporte en `ClienteApi.peticion_texto`: captura `(TimeoutError, http.client.HTTPException, OSError, ValueError)` además de `HTTPError`/`URLError` y lanza `ErrorPasoEnsayo` para reportar el paso con `❌` en lugar de abortar con traceback.
+- Aserciones numéricas E2E en `scripts/ensayo_demo.py` y `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py`:
+  - Paso 5 registra la venta de prueba a anular en `EFECTIVO` para ejercitar su exclusión del arqueo; Paso 6 contrasta `efectivo_esperado`, `diferencia` y `ventas_efectivo_total` del turno cerrado (manteniendo idempotencia si el turno reutilizado trae movimientos/ventas previas); Paso 7 verifica `ganancia-diaria > 0`, `>= total_venta_emitida` y consistencia con la suma de `reporte-por-producto`.
+  - En `test_ensayo_demo_completo_y_doble_corrida_contra_live_server` se verifica que `efectivo_esperado` del último turno cerrado coincida exactamente con `efectivo_inicial + venta_emitida.total` (excluyendo la venta anulada) y que `obtener_ganancia_diaria` en los últimos 7 días sea `> 0` y coincida con el neto y cantidad de ventas `EMITIDA`.
+  - Se agregaron tests unitarios rápidos en `TestValidacionesEnsayoDemo` para URLs inválidas, `VERIFICAR_NODE` inválido y captura de timeouts/errores de transporte.
+Archivos tocados:
+- `scripts/ensayo_demo.py`
+- `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `.venv/bin/ruff check backend-django/ ai-service/ scripts/ensayo_demo.py && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/ensayo_demo.py`
+- `bash -n scripts/ensayo_demo.sh`
+---
+
+Fecha: 2026-11-20
+Tarea: T12 — Correcciones post-auditoría de Tanda 2/3 y accesibilidad pre-video (T11)
+Rama: fix/post-auditoria-tanda2 (base `test/e2e-flujo-demo`)
+Qué se hizo y por qué:
+- **Seguridad y robustez de `scripts/ensayo_demo.py` y `scripts/ensayo_demo.sh` (A.4 + revisión Claude):**
+  - Guarda obligatoria contra `backend-django/db.sqlite3`: sin `DJANGO_URL` y `NODE_URL` explícitas (salvo flag `--confirmo-base-real`), el script rechaza ejecutar e indica qué variables o flag pasar; `scripts/ensayo_demo.sh` reenvía `"$@"`.
+  - `correr_paso` captura `(KeyError, AttributeError, TypeError, ValueError)` ante JSON con forma inesperada y lo reporta como fallo controlado del paso.
+  - Limpieza ante falla intermedia: si falla Paso 4 o Paso 5 luego de crear `venta_temp`, intenta anularla en limpieza y evita cerrar el turno si quedó una venta huérfana o falló el cobro.
+  - Rango de últimos 7 días en Paso 7 calculado con `ZoneInfo("America/Argentina/Buenos_Aires")`, bloqueo de redirecciones `3xx` en `ClienteApi` (respetando `monkeypatch` de `urlopen` en tests) y `efectivo_contado` alineado con `10000.00 + total_venta_emitida`.
+  - Tests en `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py` para guarda sin URLs, `--confirmo-base-real`, wrapper `.sh`, JSON malformado/inesperado, fallas intermedias en Pasos 4 y 5, y `VERIFICAR_NODE=1` con servidor HTTP simulado.
+- **Correcciones de `seed_demo.py` (A.1):**
+  - `_asegurar_venta_video` no re-vincula ni altera ventas que ya pertenecen a un `TurnoCaja` `CERRADO` distinto al objetivo (protegiendo `efectivo_esperado`, `diferencia` y `anulada_en` históricos en re-ejecuciones multi-día).
+  - Reactiva productos e insumos demo preexistentes con `estado_activo=False` (y precio `<= 0` en producto) para no abortar `registrar_venta`, y actualiza `unidad_base` de insumos sin compras aunque coincida `costo_unitario`.
+  - Tests agregados en `backend-django/apps/insumos/tests/unit/test_unit_seed_demo.py` (arqueo cerrado multi-día, asserts de `diferencia` 0.00 y -200.00, colisión de `codigo_barras`, producto inactivo, insumo con distinta `unidad_base` y `--video` con `DEBUG=False`).
+- **Correcciones de mapa y carta pública (A.2):**
+  - `web/Dockerfile`: incluye `carta.html` en la imagen Nginx.
+  - `web/js/logicaPwa.js`: `construirUrlsMapaOpenStreetMap` tolera `opciones = null` sin `TypeError`.
+  - `web/sw.js`: fallback offline retorna `Response.error()` / `Response(503)` si no hay caché previa (evita resolver `undefined`).
+  - `web/carta.html`: agrega `sandbox="allow-scripts allow-same-origin"` al `<iframe>` de OpenStreetMap.
+  - `web/nginx.conf` y `vercel.json`: agregan `Content-Security-Policy` coherente con `backend-node/app.js` (`frame-src https://www.openstreetmap.org`) preservando orígenes locales (y Render en `vercel.json`).
+  - Tests agregados en `backend-node/tests/unit/logicaPwa.unit.test.js` y `backend-node/tests/integration/clientePwa.integration.test.js` (bordes de coordenadas/dirección/`opciones=null`, `debeIgnorarPeticionSw` con URL vacía/inválida/subdominios OSM y CSP + `sandbox` en `/app/carta.html` y `/carta.html`).
+- **Accesibilidad y UX pre-video de T11 (ítems #1–#10 marcados "antes del video (24/11)"):**
+  - Sidebar responsive en `<= 768 px` (cajón deslizable `#sidebar`, botón hamburguesa `#btn-toggle-sidebar`, cierre `#btn-cerrar-sidebar`, `#sidebar-backdrop`, `Escape` y autocierre al navegar).
+  - Contraste WCAG AA: `.badge-rol.*` legible en fondos claros manteniendo variante oscura en `.sidebar-comercial`; `.pildora-socket.conectado` (`#065F46`), `.demo-selector-etiqueta` y `.demo-avatar` (`#F4C095`), `.btn-sidebar-logout:hover` (`#FCA5A5`), estados `:disabled` con contraste sólido, bordes de inputs (`--color-borde-control: #8F8278`) y foco visible en buscador de `carta.html` y botones oscuros/primarios.
+  - Operabilidad por teclado: radios de medio de pago accesibles en `<fieldset>` con sincronización bidireccional con `#select-metodo-pago`, tarjetas POS como `<button type="button">`, botón explícito `"Ver receta"` en tabla de Recetas, `#zona-drop-csv` con `role="button" tabindex="0"` y `Enter`/`Espacio`, y `aria-label` / `<label class="sr-only">` en botones de ícono e inputs faltantes.
+  - Responsive móvil (`<= 1024 px` / `640 px` / `480 px`): mantiene `.login-demo-selector` visible bajo el formulario en móvil, evita recorte vertical en `.pantalla-login-overlay`, y adapta `#input-codigo-barras`, `.campos-dos-columnas`, modales, drawer y toasts a `375 px`.
+  - Textos en español: reemplaza `"snapshots de costos unitarios"`, `err.message` crudos en toasts/dictámenes, `"Modo de conexión actualizado a: CLOUD/LOCAL/OFFLINE"` y `"Descargar SVG"` por equivalentes claros para el usuario final.
+- **Ítems de T11 marcados "puede esperar" (anotados sin tocar):**
+  - #11: `role="dialog"`, `aria-modal="true"`, trampa de foco y `inert`/`hidden` en `#panel-monitor-lateral` y modales.
+  - #12: `tabindex="-1"` / `inert` en `.compatibilidad-tests-pwa` (`aria-hidden="true"`).
+  - #13: `aria-live="polite"` en `#contenedor-toasts`, `#mensaje-auth`, `#estado-caja` y `#estado-importacion-ia`.
+  - #14: `role="tab"` / `aria-selected` en pestañas de Trazabilidad y Compras.
+  - #15: anglicismos/abreviaturas menores (`POS`, `ID`, `Email`, `S/C`, `TAB`, estados crudos de IA).
+  - #16: `<h1>` visible al estar logueado, `<label>` explícito en `#carta-buscador`, `flex-wrap` en `.carta-publica-meta`, CSS huérfano (`estilos.css:1920-1928`) y contraste del ícono activo en sidebar oscuro.
+- **Documentación (A.3):**
+  - `docs/MATRIZ_HU.md`: clasifica Abarrotes como condicional Escenario B (`docs/PROPUESTA.md §3`) y expande rutas de tests a rutas literales.
+  - `docs/despliegue.md`, `docs/PRESENTACION_Y_EVIDENCIAS.md` y `README.md`: alinea URLs Docker tras copiar `carta.html` en `web/Dockerfile` y actualiza los conteos reales de tests (`507` Django + `224` Node + `87` AI Service = `818`).
+Archivos tocados:
+- `scripts/ensayo_demo.py`, `scripts/ensayo_demo.sh`, `backend-django/apps/comun/tests/api/test_api_ensayo_demo.py`
+- `backend-django/apps/insumos/management/commands/seed_demo.py`, `backend-django/apps/insumos/tests/unit/test_unit_seed_demo.py`
+- `web/Dockerfile`, `web/nginx.conf`, `vercel.json`, `web/carta.html`, `web/sw.js`, `web/js/logicaPwa.js`, `web/index.html`, `web/css/estilos.css`, `web/js/app.js`
+- `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`
+- `docs/MATRIZ_HU.md`, `docs/despliegue.md`, `docs/PRESENTACION_Y_EVIDENCIAS.md`, `README.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q` (507 passed)
+- `cd backend-node && npm test && npm run lint` (25 suites, 224 tests passed; ESLint sin errores)
+- `cd ai-service && .venv/bin/python -m pytest -q` (87 passed)
+- `.venv/bin/ruff check backend-django/ ai-service/ scripts/ && .venv/bin/ruff format --check backend-django/ ai-service/ scripts/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
+---
+
+## 20/11 — CSP de la web: Google Fonts y hosts de Render (Claude)
+- **Qué:** la CSP que se agregó en T12 a `web/nginx.conf` y `vercel.json` bloqueaba la hoja de Google Fonts (`style-src` sin `fonts.googleapis.com`, sin `font-src` para `fonts.gstatic.com`) y la web caía a Times New Roman. La de Node (`backend-node/app.js`) tenía lo mismo desde antes, y su `connect-src` no incluía los hosts de Render (la web abierta desde `/app` del Node publicado no podía hablar con Django).
+- **Cambio:** las tres CSP permiten `https://fonts.googleapis.com` (estilos) y `https://fonts.gstatic.com` (fuentes), y comparten `connect-src` (Render + localhost). nginx y Vercel quedan idénticas.
+- **Test:** `backend-node/tests/integration/cspConsistencia.integration.test.js` lee `vercel.json`, `web/nginx.conf` y la cabecera real de Node, y verifica fuentes, mapa, `script-src 'self'`, sin comodines e iguales entre sí.
+- **Cómo probarlo:** `npm test` en `backend-node`. A mano: servir `web/` bajo `/app/` con la CSP de nginx y comprobar en la consola del navegador que `getComputedStyle(document.body).fontFamily` empieza con "Plus Jakarta Sans" (verificado por Claude).
+
+## 20/11 — Ensayo de la demo sin romper el turno del video + botones de Equipo (Claude)
+- **Problema encontrado al ensayar sobre una copia de la base:** `scripts/ensayo_demo.py` reutilizaba el turno abierto que deja `seed_demo --video` (el que se prepara para grabar) y lo cerraba al final con un faltante. El historial de Reportes quedaba con un cierre de caja que no se quería mostrar.
+- **Cambio:** el ensayo solo cierra los turnos que abrió él. Si el turno ya estaba abierto, el paso 6 se informa como ✅ "No se cerró el turno #N porque ya estaba abierto antes del ensayo" (queda con 1 venta de prueba y 1 anulada). El test de doble corrida verifica que el turno del video sigue ABIERTO y, para cubrir el arqueo, lo cierra a mano antes de la segunda corrida.
+- **Igual conviene no correr el ensayo sobre la base con la que se graba:** usarlo en una copia (servidores en otros puertos o una copia de `db.sqlite3`).
+- **Antes de `seed_demo --video` en la base local:** hay que cerrar el Turno #1 de cajero_demo (abierto desde el 16/11). El comando se niega a correr mientras haya un turno viejo abierto, y lo explica.
+- **Equipo:** los botones de cada tarjeta ("Permisos", "Dar de baja", "Reactivar") ahora tienen el mismo ancho y no se parten en varios renglones.
+- **Verificado por Claude** sobre una copia de la base (Django 8000 + Node 3000 con Mongo `sapori_ensayo`): `seed_demo --video` dos veces (idempotente), ensayo 8/8 dos veces, el turno del video sigue abierto, y sin URLs el ensayo se niega a correr.

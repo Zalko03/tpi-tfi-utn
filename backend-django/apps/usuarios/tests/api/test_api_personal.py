@@ -50,7 +50,7 @@ class TestApiPersonalEndpoints:
         res_cajero = client.get("/api/usuarios/")
         assert res_cajero.status_code == 403
         data_error = res_cajero.json()
-        assert data_error["mensaje"] == "No tiene permisos para realizar esta acción"
+        assert data_error["mensaje"] == "No tenés permisos para realizar esta acción"
         assert data_error["detalles"] is None
 
         # Dueño tiene personal.ver
@@ -150,3 +150,106 @@ class TestApiPersonalEndpoints:
         assert (
             permiso_checker.has_object_permission(MockRequest(duenio), None, turno_cajero1) is True
         )
+
+    def test_superusuario_sin_perfil_o_con_perfil_cajero_se_serializa_como_duenio(
+        self, client, duenio
+    ):
+        """Un superusuario siempre se expone con rol DUENIO y todos los permisos sin tocar la BD."""
+        from apps.usuarios.constantes import PERMISOS_CATALOGO
+        from apps.usuarios.models import PerfilUsuario
+
+        admin_sin_perfil = User.objects.create_superuser(
+            username="admin_sin_perfil",
+            email="admin_sp@cafe.local",
+            password="claveSegura123!",
+        )
+        admin_con_perfil_cajero = User.objects.create_superuser(
+            username="admin_perfil_cajero",
+            email="admin_pc@cafe.local",
+            password="claveSegura123!",
+        )
+        PerfilUsuario.objects.create(usuario=admin_con_perfil_cajero, rol=ROL_CAJERO)
+
+        client.force_authenticate(user=duenio)
+        res = client.get("/api/usuarios/?limite=50")
+        assert res.status_code == 200
+        usuarios_por_nombre = {u["username"]: u for u in res.json()["datos"]}
+
+        for username in ("admin_sin_perfil", "admin_perfil_cajero"):
+            u = usuarios_por_nombre[username]
+            assert u["is_superuser"] is True
+            assert u["rol"] == ROL_DUENIO
+            assert u["permisos_activos"] == sorted(PERMISOS_CATALOGO)
+
+        client.force_authenticate(user=admin_sin_perfil)
+        res_me = client.get("/api/usuarios/me/")
+        assert res_me.status_code == 200
+        assert res_me.json()["rol"] == ROL_DUENIO
+        assert res_me.json()["is_superuser"] is True
+
+    def test_proteccion_superusuario_sin_perfil_en_endpoints_personal(self, client, duenio):
+        """Editar o desactivar un superusuario sin perfil devuelve 400 (nunca 500)."""
+        admin = User.objects.create_superuser(
+            username="admin_protegido_api",
+            email="admin_prot_api@cafe.local",
+            password="claveSegura123!",
+        )
+
+        # No-superusuario intenta editar datos, rol, permisos o desactivar al superusuario
+        client.force_authenticate(user=duenio)
+        res_patch = client.patch(
+            f"/api/usuarios/{admin.id}/",
+            {"rol": ROL_CAJERO},
+            format="json",
+        )
+        assert res_patch.status_code == 400
+        assert "mensaje" in res_patch.json()
+
+        res_perm = client.post(
+            f"/api/usuarios/{admin.id}/ajustar-permisos/",
+            {"permisos": {"ventas.crear": False}},
+            format="json",
+        )
+        assert res_perm.status_code == 400
+
+        res_baja = client.post(
+            f"/api/usuarios/{admin.id}/desactivar/",
+            {"motivo": "Prueba"},
+            format="json",
+        )
+        assert res_baja.status_code == 400
+
+        # Superusuario tampoco puede alterar su propio rol ni permisos
+        client.force_authenticate(user=admin)
+        res_admin_rol = client.patch(
+            f"/api/usuarios/{admin.id}/",
+            {"rol": ROL_CAJERO},
+            format="json",
+        )
+        assert res_admin_rol.status_code == 400
+
+        res_admin_perm = client.post(
+            f"/api/usuarios/{admin.id}/ajustar-permisos/",
+            {"permisos": {"ventas.crear": False}},
+            format="json",
+        )
+        assert res_admin_perm.status_code == 400
+
+        # Superusuario sí puede editar sus datos básicos sin fallar por falta de perfil
+        res_admin_datos = client.patch(
+            f"/api/usuarios/{admin.id}/",
+            {"first_name": "Principal"},
+            format="json",
+        )
+        assert res_admin_datos.status_code == 200
+        assert res_admin_datos.json()["first_name"] == "Principal"
+
+    def test_delete_usuario_devuelve_mensaje_claro_sin_jerga(self, client, duenio, cajero):
+        """DELETE /api/usuarios/:id/ desactiva y responde sin tecnicismos."""
+        client.force_authenticate(user=duenio)
+        res = client.delete(f"/api/usuarios/{cajero.id}/")
+        assert res.status_code == 200
+        assert res.json() == {
+            "mensaje": "Usuario desactivado correctamente.",
+            "detalles": None,
+        }

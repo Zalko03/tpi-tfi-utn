@@ -68,7 +68,7 @@ class LogoutView(APIView):
         if not refresh_str:
             return Response(
                 {
-                    "mensaje": "El refresh token es obligatorio para cerrar sesión.",
+                    "mensaje": "Falta el dato de sesión para cerrarla.",
                     "detalles": None,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -79,16 +79,16 @@ class LogoutView(APIView):
             token.blacklist()
             return Response(
                 {
-                    "mensaje": "Sesión cerrada y token revocado exitosamente.",
+                    "mensaje": "Sesión cerrada correctamente.",
                     "detalles": None,
                 },
                 status=status.HTTP_200_OK,
             )
-        except Exception as e:
+        except Exception:
             return Response(
                 {
-                    "mensaje": "El refresh token provisto es inválido o ya fue revocado.",
-                    "detalles": str(e),
+                    "mensaje": "Tu sesión ya venció o no es válida.",
+                    "detalles": None,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -168,7 +168,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         )
         return Response(
             {
-                "mensaje": "Usuario desactivado lógicamente exitosamente.",
+                "mensaje": "Usuario desactivado correctamente.",
                 "detalles": None,
             },
             status=status.HTTP_200_OK,

@@ -23,13 +23,13 @@ class ConfiguracionIA:
 
     @property
     def groq_modelo(self) -> str:
-        return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+        return os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
 
     @property
     def groq_vision_modelo(self) -> str:
         return os.getenv(
             "GROQ_VISION_MODEL",
-            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "qwen/qwen3.8-27b",
         ).strip()
 
     @property
@@ -49,7 +49,7 @@ class ConfiguracionIA:
 
     @property
     def gemini_modelo(self) -> str:
-        return os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+        return os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
 
     @property
     def gemini_base_url(self) -> str:
@@ -72,11 +72,11 @@ class ConfiguracionIA:
 
     @property
     def timeout_segundos(self) -> float:
-        valor = os.getenv("AI_TIMEOUT_SECONDS", "10.0")
+        valor = os.getenv("AI_TIMEOUT_SECONDS", "25.0")
         try:
             return max(0.1, float(valor))
         except ValueError:
-            return 10.0
+            return 25.0
 
     @property
     def max_reintentos(self) -> int:

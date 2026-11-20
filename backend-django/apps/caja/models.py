@@ -76,7 +76,7 @@ class TurnoCaja(models.Model):
         Transferencias y tarjetas se computan por separado.
         """
         ventas_efectivo = sum(
-            (v.total for v in self.ventas.filter(medio_pago="EFECTIVO")),
+            (v.total for v in self.ventas.filter(medio_pago="EFECTIVO", estado="EMITIDA")),
             Decimal("0.00"),
         )
         entradas = sum(

@@ -131,12 +131,15 @@ flowchart TD
 | `/api/ventas/punto-equilibrio/` | `GET`/`POST` | `reportes.ver_financieros` | Punto de equilibrio y metas diaria y semanal (Exclusivo Dueño, HU11) |
 | `/api/caja/turnos/` | `POST` | `caja.abrir_turno` | Solo si no tiene un turno previo sin cerrar |
 | `/api/caja/turnos/:id/cerrar/`| `POST` | `caja.cerrar_turno` | Cajero solo puede cerrar su propio turno |
-| `/api/caja/movimientos/` | `POST` | `caja.registrar_movimiento` | Registrar extracciones o ingresos |
+| `/api/caja/movimientos/` | `GET` | `caja.registrar_movimiento` o `caja.gestionar_turnos_ajenos` | Cajero: filtra solo movimientos de sus turnos (404 en detalle ajeno). Con `caja.gestionar_turnos_ajenos`: lista global |
+| `/api/caja/movimientos/` | `POST` | `caja.registrar_movimiento` | Solo sobre turnos `ABIERTO` (400 si está cerrado); sin `caja.gestionar_turnos_ajenos` solo en turno propio (403 en turno ajeno) |
+| `/api/caja/movimientos/:id/` | `PATCH`/`DELETE` | `caja.gestionar_turnos_ajenos` | Cajero sin permiso recibe 403 |
 | `/api/insumos/` | `POST`/`PUT` | `insumos.crear` / `insumos.editar` | CRUD operativo |
 | `/api/compras/` | `POST` | `compras.registrar` | Alta de facturas y prorrateo |
 | `/api/compras/confirmar-importacion/` | `POST` | `compras.registrar` | Registro atómico de compras aprobadas por revisión humana |
 | `/api/recetas/` | `POST`/`PUT` | `recetas.crear` / `recetas.editar` | Modificación de fórmulas |
 | `/api/productos/:id/costo/`| `GET` | `recetas.ver_costos` | Protege desglose de costos y márgenes |
+| `/api/carta-publica/` | `GET` | `AllowAny` (público) | Solo productos activos (`id`, `nombre`, `precio_venta`) con `CartaPublicaRateThrottle`; jamás expone costos ni recetas |
 | `/api/usuarios/` | `CRUD` | `personal.*` | Exclusivo Dueño |
 
 ### 5.2 Backend Node (Consultas y Tiempo Real)
@@ -190,3 +193,4 @@ Ambos backends aplican límites por ventana y devuelven `HTTP 429` con el format
 - **`DJANGO_THROTTLE_ANON`:** `200/day` para peticiones anónimas.
 - **`DJANGO_THROTTLE_LOGIN`:** `10/minute` en autenticación (`/api/auth/token/`).
 - **`DJANGO_THROTTLE_RECALCULAR`:** `20/minute` en recálculo masivo de costos.
+- **`DJANGO_THROTTLE_CARTA_PUBLICA`:** `60/minute` en el endpoint anónimo `GET /api/carta-publica/`.

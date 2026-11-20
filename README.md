@@ -1,77 +1,55 @@
-# cafe-gestion
+# cafe-gestion (Sapori Stock)
 
-Sistema de gestión comercial y contable integral para cafetería de especialidad y panadería artesanal: costeo dinámico de recetas por lote y porción, control de arqueo ciego y caja diaria, punto de venta (POS) de alto rendimiento con interfaz editorial **Impeccable UI**, cola de ventas offline en `localStorage`, importación híbrida de listas de precios con inteligencia artificial (Groq LPU / Gemini) y contingencia determinista en CSV, y consultoría gerencial de stock crítico y auditoría en tiempo real.
+Sistema de gestión comercial y contable para cafetería de especialidad y panadería artesanal: costeo dinámico de recetas por unidad base (`g`, `ml`, `un`), prorrateo de envíos en compras, punto de venta (POS) con lectura de códigos de barras, arqueo ciego de caja, cola de ventas offline en `localStorage`, importación híbrida de listas de precios con IA (Groq LPU / Gemini / Ollama) y contingencia CSV, consultor IA de rendimiento semanal, reportes por fecha y Carta Digital pública por QR con mapa embebido de OpenStreetMap.
 
 Trabajo Final Integrador (TFI) — Programación IV, UTN FRRe.
 
 ---
 
-## Estado del Proyecto y Capacidades Implementadas
-
-* **TP 0:** Fundaciones del monorepo, convenciones y arquitectura base políglota.
-* **TP 1:** Núcleo contable transaccional (Django 5 + PostgreSQL 16) y subdominio documental de auditoría (Node 20 + MongoDB 7).
-* **TP 2:** Autenticación asimétrica con JWT RS256, roles granulares (Dueño, Encargado, Cajero), arqueo ciego y endurecimiento perimetral.
-* **TP 3:** Microservicio de IA (`ai-service` FastAPI + Pydantic v2 + GroqAdapter / Gemini / Ollama), eventos en vivo con Socket.IO y cliente PWA offline-first.
-* **TP 4 & Entrega Final TFI:**
-  * **Punto de Venta Comercial (POS) de Alta Velocidad:** Búsqueda reactiva instantánea por nombre/código, soporte nativo de lector de código de barras (HID / EAN-13 / UPC), atajos de teclado para mostrador y estética visual editorial **Impeccable UI**.
-  * **Modo Sin Internet y Cola Offline (`localStorage`):** Resguardo local transaccional (`sapori_cola_ventas_offline`) ante cortes de red o caídas de servidor y sincronización automática con confirmación individual al recuperar conectividad (`window.ononline`).
-  * **Importador Híbrido de Listas de Precios:** Extracción multimodal con IA para listas desestructuradas (Groq / Gemini) combinado con importador CSV determinista de contingencia.
-  * **Consultor IA de Stock Crítico y Auditoría de Cierre de Caja:** Diagnóstico en tiempo real para el Propietario mediante `GroqAdapter` (LPU Cloud ultrarrápido sin consumo local de CPU/RAM) con fallback determinista inmediato ante cortes o falta de credenciales.
-  * **Endurecimiento, Observabilidad y Calidad:** Trazabilidad distribuida (`X-Request-ID`), logging estructurado JSON con sanitización de credenciales, respaldo automatizado y **580+ tests automatizados pasando en verde**.
-
----
-
 ## Arquitectura de Servicios
 
-| Servicio | Tecnología | Rol Principal | Puerto Local |
+| Servicio | Tecnología | Rol Principal | Puerto |
 |---|---|---|---|
-| `web` (PWA) | HTML5, CSS3, JS ES Modules, `localStorage`, Service Worker | POS comercial editorial **Impeccable UI**, cola offline transaccional, lector HID, tablero en vivo y consultoría IA | 80 (vía Nginx) |
-| `web-proxy` | Nginx 1.27 Alpine (no-root) | Reverse proxy perimetral, compresión Gzip, enrutamiento semántico y entrega de la PWA estática | 80 |
-| `backend-django` | Django 5 + DRF + PostgreSQL 16 + Gunicorn 23 | Núcleo transaccional: insumos, recetas, compras, ventas, arqueos de caja y emisor maestro de JWT RS256 | 8000 (interno) |
-| `backend-node` | Express 5 + Mongoose + MongoDB 7 + Socket.IO 4 | Subdominio documental (`historial_precios`, `snapshots_costeo`), salas WebSocket y orquestación de IA | 3000 (interno) |
-| `ai-service` | FastAPI + Pydantic v2 + Groq LPU / Gemini / Ollama | Inferencia ultrarrápida con `GroqAdapter` (LPU Cloud), extracción de listas, diagnóstico de stock y fallback | 8001 (interno) |
-| `postgres` | PostgreSQL 16 Alpine | Base de datos relacional ACID para contabilidad y stock (volumen persistente `postgres_data`) | 5432 (interno) |
-| `mongodb` | MongoDB 7.0 (WiredTiger 0.25GB) | Base de datos documental para auditoría e historial cronológico (volumen `mongo_data`) | 27017 (interno) |
+| `web` / `web-proxy` | HTML5, CSS3, JS ES Modules, Service Worker + Nginx 1.27 Alpine | PWA comercial (POS, recetas, compras, caja, reportes), Carta Digital pública (`carta.html`) con QR SVG ISO/IEC 18004 y mapa OpenStreetMap, y reverse proxy en Docker | `80` (Docker) / servido en `/app/` por Node en modo local |
+| `backend-django` | Django 5 + DRF + PostgreSQL 16 (SQLite opcional en dev) + Gunicorn 23 | Núcleo transaccional: insumos, compras, recetas, ventas, turnos/movimientos de caja, roles/permisos, emisor JWT RS256 y `GET /api/carta-publica/` | `8000` |
+| `backend-node` | Express 5 + Mongoose + MongoDB 7 + Socket.IO 4 | Subdominio documental (`historial_precios`, `snapshots_costeo`, `importaciones_ia`), salas Socket.IO autenticadas y orquestación hacia `ai-service` y Django | `3000` |
+| `ai-service` | FastAPI + Pydantic v2 + Groq / Gemini / Ollama | `POST /v1/extraer-precios` (texto/foto) y `POST /v1/resumen-semanal`, con validación tipada y respuesta de contingencia | `8001` |
+| `postgres` | PostgreSQL 16 Alpine | Base relacional ACID (volumen `postgres_data`) | `5432` (interno) |
+| `mongodb` | MongoDB 7.0 (`--wiredTigerCacheSizeGB 0.25`) | Base documental para historial, snapshots e importaciones IA (volumen `mongo_data`) | `27017` (interno) |
 
 ---
 
-## Características Destacadas del Sistema
+## Requisitos Previos
 
-### 1. Punto de Venta (POS) Comercial e Impeccable UI
-- **Estética Editorial Impeccable:** Jerarquía tipográfica refinada, paleta de café de especialidad cálida y contrastes conformes a estándares de accesibilidad WCAG AA.
-- **Operación Rápida en Mostrador:** Búsqueda en vivo de productos, disparo de venta con escáner de código de barras físico o manual, y catálogo categorizado (Cafetería, Pastelería, Almacén).
-- **Atajos de Teclado:** Foco directo en barra de búsqueda/lector (`F4`), agregado de ítem buscado (`Enter` en el buscador), cobro rápido (`F2`), y cierre de modales/paneles (`Esc`).
-
-### 2. Resiliencia Offline con Cola en `localStorage`
-- Ante cortes de conexión a Internet o indisponibilidad del servidor, el sistema conmuta automáticamente al **Modo Sin Internet Activo**.
-- Las ventas se resguardan de forma segura en `localStorage` bajo la clave `sapori_cola_ventas_offline`, preservando productos, cantidades y medio de pago (requiere sesión JWT vigente previamente autenticada).
-- Al restaurarse la conexión (`online`), el cliente sincroniza la cola confirmando y eliminando cada venta individualmente para evitar cobros duplicados ante cortes intermedios.
-
-### 3. Importador Híbrido de Precios y Contingencia
-- **Vía Inteligente (IA Multimodal):** Ingesta listas desestructuradas de proveedores (PDF/texto) reconociendo nombres, marcas, presentaciones y precios unitarios.
-- **Vía Determinista (CSV Contingente):** En caso de corte de red externa o agotamiento de cuota, el importador CSV procesa las planillas de contingencia aplicando normalización de unidades y prorrateo de fletes de forma 100% determinista.
-
-### 4. Consultor IA de Stock Crítico y Auditoría de Cierre de Caja
-- **GroqAdapter (LPU Cloud):** Inferencia de baja latencia mediante modelos de última generación (Llama 3.3 70B Versatile) sin sobrecargar de cómputo el hardware del local.
-- **Diagnóstico de Stock:** Identificación de insumos críticos con mayor desvío de costo o quiebre de stock, y cálculo de impacto directo en márgenes de recetas.
-- **Auditoría de Caja:** Análisis del arqueo ciego, cotejo de ventas por medio de pago (Efectivo, Transferencia, Tarjeta) y detección automática de sobrantes o faltantes.
-- **Fallback Determinista Local:** Si el servicio de IA no responde, el sistema genera inmediatamente un dictamen analítico en base a reglas de negocio puras.
+- **Con Docker (recomendado para levantar toda la pila):** Docker Engine 24+ y Docker Compose v2.20+, OpenSSL y Git.
+- **Sin Docker (modo desarrollo local):** Python 3.11+ (3.13 en CI), Node.js 20 LTS, OpenSSL, MongoDB 7 (para `backend-node`) y PostgreSQL 16 (o `USE_SQLITE=True` para desarrollo local con SQLite en Django).
 
 ---
 
-## Puesta en Marcha con Docker Compose (Un solo comando)
+## 1. Puesta en Marcha con Docker Compose
 
-Modalidad oficial para producción (PC local o nube, respaldada por la sección 3.5 de la Guía y ADR 0003):
+Modalidad oficial para PC local o despliegue completo (ver [docs/despliegue.md](docs/despliegue.md)):
 
-### 1. Clonar el repositorio y preparar variables de entorno
+### Paso 1 — Clonar e inicializar variables de entorno
 ```bash
-git clone https://github.com/tu-usuario/tpi-tfi-utn.git
+git clone <URL_DEL_REPOSITORIO>
 cd tpi-tfi-utn
 cp .env.example .env
 ```
-*(Configurar `GROQ_API_KEY` o `GEMINI_API_KEY` en `.env` para habilitar el Consultor IA y la extracción de listas).*
+Editá `.env` con tus claves locales (por ejemplo `DJANGO_SECRET_KEY`, `POSTGRES_PASSWORD`, y `GROQ_API_KEY` o `GEMINI_API_KEY` si vas a usar IA en la nube; sin API key el sistema opera en modo contingencia).
 
-### 2. Ejecutar el script automatizado de despliegue
+### Paso 2 — Claves JWT RS256 (comportamiento actual en Docker)
+`backend-django` firma los tokens con su clave privada RS256 (`config/keys/private.pem`) y `backend-node` valida con la clave pública. Según `docker-compose.yml`, `backend-django/Dockerfile` y `backend-node/Dockerfile`:
+
+- **En `backend-django`:** `docker-compose.yml` no monta volúmenes ni define `DJANGO_JWT_PRIVATE_KEY*` / `DJANGO_JWT_PUBLIC_KEY*`, pero `backend-django/Dockerfile` copia todo el contexto (`COPY . /app`, incluyendo `config/keys/` si existe en el host). Generá el par de claves **antes** de `docker compose up -d --build` para que quede embebido en `/app/config/keys/` dentro de la imagen (si no existe al construir, Django genera un par RSA efímero en memoria por worker):
+  ```bash
+  mkdir -p backend-django/config/keys
+  openssl genrsa -out backend-django/config/keys/private.pem 2048
+  openssl rsa -in backend-django/config/keys/private.pem -pubout -out backend-django/config/keys/public.pem
+  ```
+- **En `backend-node`:** `backend-node/Dockerfile` solo copia `package.json`, `server.js`, `app.js` y `src/` (no copia `config/keys/`), y `docker-compose.yml` no monta `public.pem` ni pasa `JWT_PUBLIC_KEY` / `JWT_PUBLIC_KEY_PATH`. Por esta limitación del Compose actual, el contenedor `backend-node` arranca sin clave pública RS256 (la validación JWT contra Node en Docker requiere montar `public.pem` o inyectar `JWT_PUBLIC_KEY` mediante un override local de Compose).
+
+### Paso 3 — Construir y levantar los servicios
 ```bash
 ./scripts/desplegar.sh
 ```
@@ -80,86 +58,155 @@ O directamente con Docker Compose:
 docker compose up -d --build
 ```
 
-### 3. Acceder al sistema
-* **PWA / Tablero y POS:** [http://localhost](http://localhost) (o dominio / IP pública asignada).
-* **Diagnóstico de salud general:** [http://localhost/healthz](http://localhost/healthz)
-* **Diagnóstico profundo Django:** [http://localhost/api/health/profundo/](http://localhost/api/health/profundo/)
-* **Diagnóstico profundo Node:** [http://localhost/health/profundo/](http://localhost/health/profundo/)
+### Paso 4 — URLs de acceso y verificación (Docker)
+- **PWA / POS:** [http://localhost](http://localhost)
+- **Carta Digital Pública (`carta.html`):** [http://localhost/carta.html](http://localhost/carta.html) (también [http://localhost/app/carta.html](http://localhost/app/carta.html); en local con Node en [http://localhost:3000/carta.html](http://localhost:3000/carta.html))
+- **Salud Nginx:** [http://localhost/healthz](http://localhost/healthz)
+- **Salud Django:** [http://localhost/api/health/](http://localhost/api/health/) y [http://localhost/api/health/profundo/](http://localhost/api/health/profundo/)
+- **Salud Node:** `web/nginx.conf` no proxea `/health` ni `/health/profundo` hacia `backend-node` (si se consultan en `:80` caen en `index.html`). En Docker se verifica con `docker compose ps` o internamente en el contenedor:
+  ```bash
+  docker compose exec backend-node node -e "fetch('http://localhost:3000/health').then(r=>r.text()).then(console.log)"
+  ```
+  En modo local sí están expuestos en `http://localhost:3000/health` y `http://localhost:3000/health/profundo`.
+
+Para cargar datos de demo dentro del contenedor de Django (solo en entorno de prueba/demo, pasando `SEED_DEMO_PASSWORD` al invocar el comando):
+```bash
+docker compose exec -e SEED_DEMO_PASSWORD="<tu-clave-demo>" backend-django \
+  python manage.py seed_demo --video --force-production
+```
 
 ---
 
-## Puesta en Marcha para Desarrollo Local (Sin Docker)
+## 2. Puesta en Marcha en Modo Local (Sin Docker)
 
-### 1. Variables de entorno locales
+### Paso 1 — Preparar `.env` y claves JWT RS256
 ```bash
 cp .env.example .env
-echo "USE_SQLITE=True" >> .env
+```
+Si querés correr Django sin PostgreSQL local, activá `USE_SQLITE=True` en `.env` (o pasalo por variable de entorno). Asegurate también de tener MongoDB corriendo en `MONGO_URI` (`mongodb://localhost:27017/cafe_gestion`) y generá las claves RS256:
+```bash
+mkdir -p backend-django/config/keys backend-node/config/keys
+openssl genrsa -out backend-django/config/keys/private.pem 2048
+openssl rsa -in backend-django/config/keys/private.pem -pubout -out backend-django/config/keys/public.pem
+cp backend-django/config/keys/public.pem backend-node/config/keys/public.pem
 ```
 
-### 2. backend-django
+### Paso 2 — Terminal 1: `backend-django` (`:8000`)
 ```bash
 cd backend-django
-source .venv/bin/activate
-pip install -r requirements.txt
-python manage.py migrate
-# Solo en desarrollo (DJANGO_DEBUG=True), definiendo SEED_DEMO_PASSWORD en el entorno:
-SEED_DEMO_PASSWORD="<clave-demo-local>" python manage.py seed_demo
-python manage.py runserver 8000
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py runserver 8000
 ```
 
-### 3. backend-node
+### Paso 3 — Terminal 2: `backend-node` (`:3000`)
 ```bash
 cd backend-node
 npm ci
 npm run dev
 ```
 
-### 4. ai-service
+### Paso 4 — Terminal 3: `ai-service` (`:8001`)
 ```bash
 cd ai-service
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --port 8001 --reload
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
----
-
-## Suites de Pruebas y Calidad de Código
-
-El proyecto cuenta con **582 tests automatizados** distribuidos entre pruebas unitarias puras, integración y ensayos de resiliencia en el pipeline de GitHub Actions (`.github/workflows/ci.yml`):
-
-* **backend-django:** **375 tests pasando** (pytest + pytest-django)
-  ```bash
-  backend-django/.venv/bin/pytest backend-django/
-  ```
-* **backend-node:** **140 tests pasando** (Jest con soporte nativo de ES Modules)
-  ```bash
-  cd backend-node && npm test
-  ```
-* **ai-service:** **67 tests pasando** (pytest + anyio/asyncio)
-  ```bash
-  ai-service/.venv/bin/pytest ai-service/
-  ```
-* **Total:** **582 tests automatizados pasando 100% en verde.**
-
-### Verificación de Linters y Estilo
-* **Python (Ruff):** `.venv/bin/ruff check backend-django/ ai-service/`
-* **Node.js (ESLint):** `cd backend-node && npm run lint`
+### Paso 5 — Accesos locales
+- **Aplicación comercial (PWA):** [http://localhost:3000/app/](http://localhost:3000/app/)
+- **Carta Digital Pública (QR):** [http://localhost:3000/carta.html](http://localhost:3000/carta.html) (también [http://localhost:3000/app/carta.html](http://localhost:3000/app/carta.html))
+- **Configuración del mapa en carta pública:** editar `window.__SAPORI_CONFIG__.ubicacionLocal` en `web/js/config.js` (si `latitud` o `longitud` quedan en `null`, la sección de mapa se oculta).
 
 ---
 
-## Operación y Mantenimiento
+## 3. Variables de Entorno (`.env.example`)
 
-* **Poblar catálogo demo (exclusivo para desarrollo local con `DJANGO_DEBUG=True`):**
-  ```bash
-  SEED_DEMO_PASSWORD="<clave-demo-local>" python backend-django/manage.py seed_demo
-  ```
-* **Generar respaldo consistente (PostgreSQL + MongoDB):**
-  ```bash
-  ./scripts/backup.sh
-  ```
-* **Restaurar respaldo:**
-  ```bash
-  ./scripts/restore.sh backups/backup_cafe_gestion_YYYYMMDD_HHMMSS.tar.gz
-  ```
-* **Manual de Despliegue y Arquitectura:** Consultar `docs/despliegue.md`.
+El repositorio incluye la plantilla [`.env.example`](.env.example) (y [`ai-service/.env.example`](ai-service/.env.example)). Nunca subas `.env` ni claves reales a Git.
+
+| Grupo | Variables en `.env.example` | Propósito (valores de referencia sin secretos reales) |
+|---|---|---|
+| **Django** | `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_LOG_LEVEL` | Clave secreta de Django, modo debug (`True` en local), hosts permitidos y nivel de log (`INFO`) |
+| **Base de datos Django** | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `USE_SQLITE` *(opcional)* | Conexión a PostgreSQL (`cafe_gestion` / `cafe_user` / `localhost:5432`) o `USE_SQLITE=True` para desarrollo local sin Postgres |
+| **JWT RS256** | `DJANGO_JWT_PRIVATE_KEY_PATH`, `DJANGO_JWT_PUBLIC_KEY_PATH`, `DJANGO_JWT_PRIVATE_KEY` *(opc.)*, `DJANGO_JWT_PUBLIC_KEY` *(opc.)*, `DJANGO_ACCESS_TOKEN_MINUTES`, `DJANGO_REFRESH_TOKEN_DAYS`, `JWT_PUBLIC_KEY_PATH`, `JWT_PUBLIC_KEY` *(opc.)* | Rutas o contenido PEM para firma RS256 en Django (`config/keys/private.pem` y `public.pem`), validación en Node y vigencia (`15` min / `1` día) |
+| **CORS y Throttling** | `CORS_ALLOWED_ORIGINS`, `CLIENT_ORIGIN` *(opc.)*, `DJANGO_THROTTLE_LOGIN`, `DJANGO_THROTTLE_RECALCULAR`, `DJANGO_THROTTLE_CARTA_PUBLICA`, `DJANGO_THROTTLE_ANON`, `DJANGO_THROTTLE_USER` | Lista blanca de orígenes CORS (sin `*`) y límites de tasa (`10/minute` login, `20/minute` recálculo, `60/minute` carta pública, `200/day` anónimos, `10000/day` autenticados) |
+| **Node / Express** | `NODE_ENV`, `NODE_PORT`, `NODE_TRUST_PROXY_SALTOS` *(opc.)*, `MONGO_URI`, `DJANGO_BASE_URL`, `AI_SERVICE_URL` | Entorno Node (`development` en `:3000`), saltos de proxy confiables, URI de MongoDB (`mongodb://localhost:27017/cafe_gestion`), URL interna de Django (`http://localhost:8000/api`) y de `ai-service` (`http://localhost:8001`) |
+| **AI Service** | `AI_SERVICE_PORT`, `AI_PROVIDER`, `AI_PROMPT_VERSION`, `AI_TIMEOUT_SECONDS`, `AI_MAX_RETRIES`, `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_VISION_MODEL`, `GROQ_BASE_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | Puerto (`8001`), adaptador activo (`groq`, `gemini` u `ollama`), prompt (`v1`), timeouts/reintentos (`25.0` s / `2`) y credenciales/modelos de cada proveedor |
+| **Docker** | `COMPOSE_PROJECT_NAME` *(opc.)* | Nombre opcional del proyecto en Docker Compose (`cafe-gestion`) |
+
+> **Nota sobre variables de demo (`seed_demo`):** `SEED_DEMO_PASSWORD` y `SEED_DEMO_ALLOW_PRODUCTION` no forman parte de `.env.example` ni de `ai-service/.env.example`; se pasan como variables de entorno puntuales al invocar `manage.py seed_demo` (nunca se hardcodean en el código).
+
+---
+
+## 4. Datos de Demostración (T7) y Usuarios Demo
+
+El comando `seed_demo` (`backend-django/apps/insumos/management/commands/seed_demo.py`) está bloqueado si `DJANGO_DEBUG=False` (salvo `--force-production` o `SEED_DEMO_ALLOW_PRODUCTION=true`) y es **idempotente**: no borra datos ni sobrescribe contraseñas de usuarios existentes.
+
+Si usás SQLite local, conviene respaldar la base antes de poblarla:
+```bash
+mkdir -p backups
+cp backend-django/db.sqlite3 backups/db.sqlite3.antes-seed
+```
+
+### Modo estándar (catálogo base + turno abierto del día)
+Pasá la contraseña deseada en `SEED_DEMO_PASSWORD` al invocar el comando (si se omite, los usuarios nuevos se crean sin contraseña usable):
+```bash
+cd backend-django
+DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<tu-clave-demo>" .venv/bin/python manage.py seed_demo
+```
+
+### Modo `--video` (escenario completo de demostración y reportes — T7)
+Genera o actualiza de forma idempotente:
+- 3 usuarios demo (1 por rol), 5 proveedores, 12 insumos y 11 productos activos con receta completa (incluyendo `Brownie Intenso Chocolate 70%` con margen crítico `< 30 %`).
+- 2 turnos cerrados históricos (uno con arqueo exacto y otro con diferencia `-$200,00`), 1 turno abierto actual con movimientos de caja chica, ventas distribuidas en los últimos 14 días y 1 venta anulada (`ANULADA`).
+- Si `cajero_demo` tiene un turno `ABIERTO` de un día anterior, frena con `CommandError` para evitar superponer turnos entre jornadas.
+
+```bash
+cd backend-django
+DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<tu-clave-demo>" .venv/bin/python manage.py seed_demo --video
+```
+
+### Usuarios Demo
+
+| Usuario | Rol plantilla | Contraseña | Alcance en la demo |
+|---|---|---|---|
+| `duenio_demo` | `DUENIO` | Definida vía `SEED_DEMO_PASSWORD` al invocar `seed_demo` | Acceso completo: costeo, importación IA, reportes financieros, equipo/permisos y auditoría |
+| `encargado_demo` | `ENCARGADO` | Definida vía `SEED_DEMO_PASSWORD` al invocar `seed_demo` | Insumos, compras, recetas, QR de carta pública, turnos/movimientos de caja y anulación |
+| `cajero_demo` | `CAJERO` | Definida vía `SEED_DEMO_PASSWORD` al invocar `seed_demo` | POS, ventas y apertura/cierre de su propio turno con arqueo ciego estricto |
+
+---
+
+## 5. Suites de Pruebas y Linters
+
+Resultados verificados en la rama actual (`fix/post-auditoria-tanda2`):
+
+| Componente | Comando de verificación | Resultado verificado |
+|---|---|---|
+| **backend-django** | `cd backend-django && .venv/bin/python -m pytest -q` | **507 tests pasando** |
+| **backend-node** | `cd backend-node && npm test` | **25 suites, 224 tests pasando** |
+| **ai-service** | `cd ai-service && .venv/bin/python -m pytest -q` | **87 tests pasando** |
+| **Total automatizado** | — | **818 tests en verde** |
+| **Lint Python (Ruff)** | `.venv/bin/ruff check backend-django/ ai-service/ scripts/` y `.venv/bin/ruff format --check backend-django/ ai-service/ scripts/` | Sin errores (`All checks passed!`) |
+| **Lint Node (ESLint)** | `cd backend-node && npm run lint` | `0` errores |
+| **Sintaxis Web (`web/`)** | `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/js/config.js && node --check web/sw.js` | Exit `0` en los 5 archivos |
+
+---
+
+## 6. Operación, Respaldo y Documentación
+
+- **Generar respaldo (Docker PostgreSQL + MongoDB):** `./scripts/backup.sh`
+- **Restaurar respaldo:** `./scripts/restore.sh backups/backup_cafe_gestion_YYYYMMDD_HHMMSS.tar.gz`
+- **Matriz de Historias de Usuario verificada en código:** [docs/MATRIZ_HU.md](docs/MATRIZ_HU.md)
+- **Propuesta y alcance MoSCoW:** [docs/PROPUESTA.md](docs/PROPUESTA.md)
+- **Plan de implementación y reglas de negocio:** [docs/PLAN_IMPLEMENTACION.md](docs/PLAN_IMPLEMENTACION.md)
+- **Despliegue y observabilidad:** [docs/despliegue.md](docs/despliegue.md)
+- **Contrato único de errores de API:** [docs/api-errores.md](docs/api-errores.md)
+- **Seguridad, roles y permisos:** [docs/seguridad.md](docs/seguridad.md)
+- **Conexiones entre servicios:** [docs/CONNECTIONS.md](docs/CONNECTIONS.md)
+- **Presentación, evidencias y guion de video:** [docs/PRESENTACION_Y_EVIDENCIAS.md](docs/PRESENTACION_Y_EVIDENCIAS.md)
+- **Bitácora de sesiones:** [docs/bitacora.md](docs/bitacora.md)
+
+### Declaración de uso de IA en el desarrollo
+Conforme a [docs/PLAN_IMPLEMENTACION.md](docs/PLAN_IMPLEMENTACION.md) (§0.4) y [docs/PROPUESTA.md](docs/PROPUESTA.md) (§5), durante la construcción del proyecto se utilizó asistencia de inteligencia artificial (Antigravity) bajo flujo de una tarea por sesión, commits incrementales, pruebas automatizadas y registro en [docs/bitacora.md](docs/bitacora.md).
