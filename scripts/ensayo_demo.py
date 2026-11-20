@@ -9,6 +9,7 @@ reportes de los últimos 7 días y carta digital pública.
 
 from __future__ import annotations
 
+import argparse
 import http.client
 import json
 import os
@@ -18,8 +19,14 @@ import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
+
+ZONA_ARGENTINA = ZoneInfo("America/Argentina/Buenos_Aires")
+URL_DJANGO_POR_DEFECTO = "http://localhost:8000"
+URL_NODE_POR_DEFECTO = "http://localhost:3000"
+_URLOPEN_ORIGINAL = urllib.request.urlopen
 
 
 class ErrorPasoEnsayo(RuntimeError):
@@ -36,6 +43,13 @@ class ResultadoPaso:
     detalle: str
 
 
+class _SinRedirecciones(urllib.request.HTTPRedirectHandler):
+    """Evita seguir redirecciones 3xx automáticamente para no degradar POST a GET."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+
 class ClienteApi:
     """Cliente HTTP mínimo sobre stdlib para interactuar con Django y Node."""
 
@@ -43,6 +57,7 @@ class ClienteApi:
         self.timeout_segundos = timeout_segundos
         self.peticiones_node_anon = 0
         self.peticiones_node_auth = 0
+        self._opener = urllib.request.build_opener(_SinRedirecciones())
 
     def peticion_json(
         self,
@@ -101,7 +116,11 @@ class ClienteApi:
                 headers=cabeceras,
                 method=metodo.upper(),
             )
-            with urllib.request.urlopen(req, timeout=self.timeout_segundos) as resp:
+            if urllib.request.urlopen is _URLOPEN_ORIGINAL:
+                resp_cm = self._opener.open(req, timeout=self.timeout_segundos)
+            else:
+                resp_cm = urllib.request.urlopen(req, timeout=self.timeout_segundos)
+            with resp_cm as resp:
                 estado = resp.status
                 texto = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
@@ -147,9 +166,21 @@ def _a_decimal(valor: object, nombre_campo: str) -> Decimal:
         ) from exc
 
 
-def _validar_url_http(valor: str | None, nombre_variable: str, por_defecto: str) -> str:
-    """Valida que la URL base use esquema http/https y tenga un host válido."""
-    if valor is None or valor == "":
+def _validar_url_http(
+    valor: str | None,
+    nombre_variable: str,
+    por_defecto: str,
+    permitir_por_defecto: bool = False,
+) -> str:
+    """Valida que la URL base esté definida (o confirmada), use http/https y tenga host válido."""
+    if valor is None or valor.strip() == "":
+        if not permitir_por_defecto:
+            raise ErrorPasoEnsayo(
+                f"Falta definir {nombre_variable}. Para no mutar por accidente la base real "
+                "backend-django/db.sqlite3, indicá explícitamente DJANGO_URL y NODE_URL "
+                "(por ejemplo hacia servidores de prueba aislados) o pasá --confirmo-base-real "
+                "si querés usar los valores por defecto (http://localhost:8000 y http://localhost:3000)."
+            )
         return por_defecto
 
     candidata = valor.strip()
@@ -392,6 +423,7 @@ def _paso_anular_otra_venta(
     token_duenio: str,
     turno_id: int,
     prod_id: int,
+    estado_limpieza: dict[str, int] | None = None,
 ) -> str:
     """Paso 5: Registrar una segunda venta de prueba en efectivo y anularla con permiso de dueño."""
     _, venta_temp = cliente.peticion_json(
@@ -409,15 +441,43 @@ def _paso_anular_otra_venta(
     )
     venta_id = int(venta_temp["id"])
 
-    _, anulada = cliente.peticion_json(
-        "POST",
-        f"{django_url}/api/ventas/{venta_id}/anular/",
-        cuerpo={"motivo": "Ensayo automático E2E: anulación de ticket de prueba"},
-        token=token_duenio,
-        estados_esperados=(200,),
-    )
-    if anulada.get("estado") != "ANULADA":
-        raise ErrorPasoEnsayo(f"La venta #{venta_id} no quedó en estado ANULADA.")
+    try:
+        _, anulada = cliente.peticion_json(
+            "POST",
+            f"{django_url}/api/ventas/{venta_id}/anular/",
+            cuerpo={"motivo": "Ensayo automático E2E: anulación de ticket de prueba"},
+            token=token_duenio,
+            estados_esperados=(200,),
+        )
+        if anulada.get("estado") != "ANULADA":
+            raise ErrorPasoEnsayo(f"La venta #{venta_id} no quedó en estado ANULADA.")
+    except (ErrorPasoEnsayo, KeyError, AttributeError, TypeError, ValueError) as exc:
+        limpiada = False
+        try:
+            _, resp_limpieza = cliente.peticion_json(
+                "POST",
+                f"{django_url}/api/ventas/{venta_id}/anular/",
+                cuerpo={"motivo": "Limpieza automática tras falla parcial en Paso 5"},
+                token=token_duenio,
+                estados_esperados=(200,),
+            )
+            limpiada = isinstance(resp_limpieza, dict) and resp_limpieza.get("estado") == "ANULADA"
+        except (ErrorPasoEnsayo, KeyError, AttributeError, TypeError, ValueError):
+            limpiada = False
+
+        if estado_limpieza is not None:
+            estado_limpieza["venta_huerfana_id"] = 0 if limpiada else venta_id
+        sufijo = (
+            f" (se anuló venta temporal #{venta_id} en limpieza)"
+            if limpiada
+            else f" (venta temporal #{venta_id} quedó sin anular; se evita cerrar el turno)"
+        )
+        if isinstance(exc, ErrorPasoEnsayo):
+            raise ErrorPasoEnsayo(f"{exc}{sufijo}") from exc
+        raise ErrorPasoEnsayo(
+            f"Respuesta JSON inesperada al anular venta #{venta_id} "
+            f"({type(exc).__name__}: {exc}){sufijo}"
+        ) from exc
     return f"Venta #{venta_id} anulada correctamente por duenio_demo"
 
 
@@ -430,10 +490,11 @@ def _paso_cerrar_turno(
     total_venta_emitida: Decimal,
 ) -> str:
     """Paso 6: Cerrar el turno como cajero (arqueo ciego) y validar auditoría como dueño."""
+    efectivo_declarado = f"{(Decimal('10000.00') + total_venta_emitida):.2f}"
     _, cierre = cliente.peticion_json(
         "POST",
         f"{django_url}/api/turnos/{turno_id}/cerrar/",
-        cuerpo={"efectivo_contado": "10000.00"},
+        cuerpo={"efectivo_contado": efectivo_declarado},
         token=token_cajero,
         estados_esperados=(200,),
     )
@@ -510,7 +571,7 @@ def _paso_reportes_ultimos_7_dias(
     total_venta_emitida: Decimal,
 ) -> str:
     """Paso 7: Consultar reportes financieros, ranking, trazabilidad y punto de equilibrio."""
-    hoy = date.today()
+    hoy = datetime.now(ZONA_ARGENTINA).date()
     hace_6_dias = hoy - timedelta(days=6)
     query = urllib.parse.urlencode(
         {
@@ -658,18 +719,21 @@ def ejecutar_ensayo(
     django_url: str | None = None,
     node_url: str | None = None,
     modo_node: str | None = None,
+    confirmo_base_real: bool = False,
 ) -> int:
     """Ejecuta el flujo completo e imprime el resumen con ✅ / ❌ por paso."""
     try:
         django_base = _validar_url_http(
             django_url if django_url is not None else os.environ.get("DJANGO_URL"),
             "DJANGO_URL",
-            "http://localhost:8000",
+            URL_DJANGO_POR_DEFECTO,
+            permitir_por_defecto=confirmo_base_real,
         )
         node_base = _validar_url_http(
             node_url if node_url is not None else os.environ.get("NODE_URL"),
             "NODE_URL",
-            "http://localhost:3000",
+            URL_NODE_POR_DEFECTO,
+            permitir_por_defecto=confirmo_base_real,
         )
         politica_node = _validar_politica_node(
             modo_node if modo_node is not None else os.environ.get("VERIFICAR_NODE")
@@ -718,6 +782,16 @@ def ejecutar_ensayo(
         except ErrorPasoEnsayo as exc:
             resultados.append(ResultadoPaso(numero, nombre, False, str(exc)))
             return False
+        except (KeyError, AttributeError, TypeError, ValueError) as exc:
+            resultados.append(
+                ResultadoPaso(
+                    numero,
+                    nombre,
+                    False,
+                    f"Respuesta JSON inesperada del servidor ({type(exc).__name__}: {exc}).",
+                )
+            )
+            return False
 
     # 1. Login de duenio_demo y cajero_demo
     def _step1() -> str:
@@ -759,6 +833,7 @@ def ejecutar_ensayo(
                 return msg
 
             if correr_paso(4, "Cobrar una venta en POS", _step4):
+                estado_limpieza = {"venta_huerfana_id": 0}
                 # 5. Anular otra venta
                 correr_paso(
                     5,
@@ -770,22 +845,43 @@ def ejecutar_ensayo(
                         token_duenio,
                         turno_id,
                         prod_pos_id,
+                        estado_limpieza=estado_limpieza,
                     ),
                 )
 
-            # 6. Cerrar el turno
-            correr_paso(
-                6,
-                "Cerrar el turno (arqueo ciego + auditoría dueño)",
-                lambda: _paso_cerrar_turno(
-                    cliente,
-                    django_base,
-                    token_cajero,
-                    token_duenio,
-                    turno_id,
-                    total_venta_emitida,
-                ),
-            )
+                # 6. Cerrar el turno solo si no quedó venta huérfana sin anular
+                if estado_limpieza["venta_huerfana_id"]:
+                    resultados.append(
+                        ResultadoPaso(
+                            6,
+                            "Cerrar el turno (arqueo ciego + auditoría dueño)",
+                            False,
+                            f"Omitido para no cerrar el turno #{turno_id} con la venta huérfana "
+                            f"#{estado_limpieza['venta_huerfana_id']} sin anular.",
+                        )
+                    )
+                else:
+                    correr_paso(
+                        6,
+                        "Cerrar el turno (arqueo ciego + auditoría dueño)",
+                        lambda: _paso_cerrar_turno(
+                            cliente,
+                            django_base,
+                            token_cajero,
+                            token_duenio,
+                            turno_id,
+                            total_venta_emitida,
+                        ),
+                    )
+            else:
+                resultados.append(
+                    ResultadoPaso(
+                        6,
+                        "Cerrar el turno (arqueo ciego + auditoría dueño)",
+                        False,
+                        f"Omitido porque falló el cobro en Paso 4 (el turno #{turno_id} permanece abierto).",
+                    )
+                )
 
         # 7. Reportes "últimos 7 días"
         correr_paso(
@@ -812,7 +908,8 @@ def ejecutar_ensayo(
     print("-----------------------------------------------------------------")
     print(
         f"Peticiones a Node en esta corrida: {cliente.peticiones_node_auth} autenticadas "
-        f"(límite 600/15m) + {cliente.peticiones_node_anon} sin sesión/estáticas (límite 100/15m)."
+        f"(límite 600/15m) + {cliente.peticiones_node_anon} a rutas públicas/salud "
+        "(sin cupo de limitadorGeneral)."
     )
     print(
         "Aviso de idempotencia: cada corrida deja 1 venta EMITIDA, 1 venta ANULADA y "
@@ -829,5 +926,19 @@ def ejecutar_ensayo(
     return 0
 
 
+def main(argv: list[str] | None = None) -> int:
+    """Punto de entrada CLI con guarda explícita contra la base local por defecto."""
+    parser = argparse.ArgumentParser(
+        description="Ensayo automático E2E del flujo demo contra servidores levantados."
+    )
+    parser.add_argument(
+        "--confirmo-base-real",
+        action="store_true",
+        help="Permite usar http://localhost:8000 y http://localhost:3000 sin definir DJANGO_URL ni NODE_URL.",
+    )
+    args = parser.parse_args(argv)
+    return ejecutar_ensayo(confirmo_base_real=args.confirmo_base_real)
+
+
 if __name__ == "__main__":
-    sys.exit(ejecutar_ensayo())
+    sys.exit(main())

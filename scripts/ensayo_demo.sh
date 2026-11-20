@@ -7,11 +7,12 @@
 #
 # Variables requeridas:
 #   SEED_DEMO_PASSWORD (o DEMO_DUENIO_PASSWORD y DEMO_CAJERO_PASSWORD)
+#   DJANGO_URL         (requerida salvo --confirmo-base-real; ej. http://127.0.0.1:8001)
+#   NODE_URL           (requerida salvo --confirmo-base-real; ej. http://127.0.0.1:3001)
 #
 # Variables opcionales:
-#   DJANGO_URL      (por defecto: http://localhost:8000)
-#   NODE_URL        (por defecto: http://localhost:3000)
-#   VERIFICAR_NODE  (auto | 1 | 0; por defecto: auto)
+#   VERIFICAR_NODE     (auto | 1 | 0; por defecto: auto)
+#   --confirmo-base-real (flag para confirmar uso de http://localhost:8000 y :3000)
 # ==============================================================================
 
 set -euo pipefail
@@ -20,7 +21,7 @@ DIRECTORIO_RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ -z "${SEED_DEMO_PASSWORD:-}" ]] && { [[ -z "${DEMO_DUENIO_PASSWORD:-}" ]] || [[ -z "${DEMO_CAJERO_PASSWORD:-}" ]]; }; then
     echo "❌ Falta configurar las contraseñas en variables de entorno." >&2
-    echo "   Ejemplo: SEED_DEMO_PASSWORD=\"<tu-clave-demo>\" ./scripts/ensayo_demo.sh" >&2
+    echo "   Ejemplo: SEED_DEMO_PASSWORD=\"<tu-clave-demo>\" DJANGO_URL=http://127.0.0.1:8001 NODE_URL=http://127.0.0.1:3001 ./scripts/ensayo_demo.sh" >&2
     exit 1
 fi
 
@@ -36,4 +37,4 @@ if [[ -z "${PYTHON_BIN}" ]]; then
     fi
 fi
 
-exec "${PYTHON_BIN}" "${DIRECTORIO_RAIZ}/scripts/ensayo_demo.py"
+exec "${PYTHON_BIN}" "${DIRECTORIO_RAIZ}/scripts/ensayo_demo.py" "$@"
