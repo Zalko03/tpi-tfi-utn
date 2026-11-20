@@ -131,6 +131,21 @@ class TestUnitSeedDemo:
         assert all(t.movimientos.exists() for t in turnos_cerrados)
         assert turnos_abiertos.first().movimientos.exists()
 
+        turno_1 = (
+            turnos_cerrados.filter(movimientos__motivo="Fondo de cambio inicial - Turno mañana")
+            .distinct()
+            .get()
+        )
+        turno_2 = (
+            turnos_cerrados.filter(movimientos__motivo="Refuerzo de efectivo para fin de semana")
+            .distinct()
+            .get()
+        )
+        assert turno_1.efectivo_esperado == turno_1.calcular_efectivo_esperado()
+        assert turno_1.diferencia == Decimal("0.00")
+        assert turno_2.efectivo_esperado == turno_2.calcular_efectivo_esperado()
+        assert turno_2.diferencia == Decimal("-200.00")
+
         assert Venta.objects.filter(estado="EMITIDA").count() == 20
         assert Venta.objects.filter(estado="ANULADA").count() == 1
         assert Venta.objects.count() == 21
@@ -287,12 +302,24 @@ class TestUnitSeedDemo:
         assert conteos_base[3] == 20
         assert conteos_base[4] == 1
 
-        # Se cierra el turno abierto del ensayo del día 1 antes de volver a correr el día 6
+        # Se cierra el turno abierto del ensayo del día 1 con su arqueo completo antes de volver a correr el día 6
         cajero = User.objects.get(username="cajero_demo")
         turno_ensayo = TurnoCaja.objects.get(usuario=cajero, estado="ABIERTO")
+        esperado_ensayo = turno_ensayo.calcular_efectivo_esperado()
+        turno_ensayo.efectivo_esperado = esperado_ensayo
+        turno_ensayo.efectivo_contado = esperado_ensayo
+        turno_ensayo.diferencia = Decimal("0.00")
         turno_ensayo.estado = "CERRADO"
         turno_ensayo.cierre = dia_1 + timedelta(hours=2)
-        turno_ensayo.save(update_fields=["estado", "cierre"])
+        turno_ensayo.save(
+            update_fields=[
+                "efectivo_esperado",
+                "efectivo_contado",
+                "diferencia",
+                "estado",
+                "cierre",
+            ]
+        )
 
         fecha_simulada["actual"] = dia_2
         call_command("seed_demo", video=True)
@@ -342,32 +369,42 @@ class TestUnitSeedDemo:
             timezone.localtime(turno_demo_1.apertura).date() == (dia_2 - timedelta(days=11)).date()
         )
         assert timezone.localtime(turno_demo_1.cierre).date() == (dia_2 - timedelta(days=11)).date()
+        assert turno_demo_1.diferencia == Decimal("0.00")
+        assert turno_demo_1.efectivo_esperado == turno_demo_1.calcular_efectivo_esperado()
         assert (
             timezone.localtime(turno_demo_2.apertura).date() == (dia_2 - timedelta(days=4)).date()
         )
         assert timezone.localtime(turno_demo_2.cierre).date() == (dia_2 - timedelta(days=4)).date()
+        assert turno_demo_2.diferencia == Decimal("-200.00")
+        assert turno_demo_2.efectivo_esperado == turno_demo_2.calcular_efectivo_esperado()
         assert all(
             timezone.localtime(m.fecha).date() == (dia_2 - timedelta(days=4)).date()
             for m in turno_demo_2.movimientos.all()
         )
 
-        # Las ventas de hoy y la anulada quedan en el nuevo turno abierto y con fecha de dia_2
+        # Las ventas que pertenecían al turno cerrado previo NO se re-vinculan al turno nuevo,
+        # preservando la consistencia contable de turno_ensayo.
+        turno_ensayo.refresh_from_db()
+        assert turno_ensayo.efectivo_esperado == esperado_ensayo
+        assert turno_ensayo.efectivo_esperado == turno_ensayo.calcular_efectivo_esperado()
+        assert (
+            turno_ensayo.diferencia
+            == turno_ensayo.efectivo_contado - turno_ensayo.efectivo_esperado
+        )
         for clave_hoy in ("hoy-v1", "hoy-v2", "hoy-v3", "hoy-anulada"):
             venta = Venta.objects.get(id_operacion=_uuid_seed_video(clave_hoy))
-            assert venta.turno_caja_id == turno_hoy.id
-            assert timezone.localtime(venta.fecha).date() == dia_2.date()
+            assert venta.turno_caja_id == turno_ensayo.id
+            assert timezone.localtime(venta.fecha).date() == dia_1.date()
 
         venta_anulada = Venta.objects.get(id_operacion=_uuid_seed_video("hoy-anulada"))
         assert venta_anulada.estado == "ANULADA"
-        assert timezone.localtime(venta_anulada.anulada_en).date() == dia_2.date()
+        assert timezone.localtime(venta_anulada.anulada_en).date() == dia_1.date()
 
-        # Las ventas históricas se reacomodan respecto a dia_2 para poblar "Hoy" y "Últimos 7 días"
+        # Las ventas históricas se reacomodan respecto a dia_2 para poblar "Últimos 7 días"
         inicio_hoy_2 = timezone.localtime(dia_2).replace(hour=0, minute=0, second=0, microsecond=0)
         hace_7_dias_2 = inicio_hoy_2 - timedelta(days=6)
-        resumen_hoy_2 = obtener_ganancia_diaria(fecha_inicio=inicio_hoy_2, fecha_fin=dia_2)
         resumen_7d_2 = obtener_ganancia_diaria(fecha_inicio=hace_7_dias_2, fecha_fin=dia_2)
-        assert resumen_hoy_2["cantidad_tickets"] == 3
-        assert resumen_7d_2["cantidad_tickets"] > 3
+        assert resumen_7d_2["cantidad_tickets"] > 0
         assert Decimal(resumen_7d_2["ingresos_totales"]) > Decimal("0")
 
     @override_settings(DEBUG=True)
@@ -406,3 +443,64 @@ class TestUnitSeedDemo:
         assert brownie_previo.codigo_barras == "7799999000002"
         assert brownie_previo.margen_bruto >= Decimal("0.30")
         assert "Brownie Intenso Chocolate 70%" in salida.getvalue()
+
+    @override_settings(DEBUG=False)
+    def test_seed_demo_video_bloqueado_en_produccion(self, monkeypatch):
+        """Con DEBUG=False, seed_demo --video también debe bloquearse salvo autorización explícita."""
+        monkeypatch.delenv("SEED_DEMO_ALLOW_PRODUCTION", raising=False)
+        with pytest.raises(CommandError, match="DEBUG=False"):
+            call_command("seed_demo", video=True)
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_tolera_colision_codigo_barras_con_producto_externo(self, monkeypatch):
+        """Si otro producto ya usa el código de barras demo, crea el producto demo con None."""
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        externo = Producto.objects.create(
+            nombre="Producto Externo Preexistente",
+            codigo_barras="7790001000011",
+            precio_venta=Decimal("1500.00"),
+            estado_activo=True,
+        )
+
+        call_command("seed_demo")
+
+        externo.refresh_from_db()
+        espresso = Producto.objects.get(nombre="Café Espresso")
+        assert externo.codigo_barras == "7790001000011"
+        assert espresso.codigo_barras is None
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_video_reactiva_producto_preexistente_inactivo(self, monkeypatch):
+        """Un producto demo preexistente con estado_activo=False se reactiva para no romper ventas."""
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        espresso_inactivo = Producto.objects.create(
+            nombre="Café Espresso",
+            codigo_barras="7790001000011",
+            precio_venta=Decimal("2200.00"),
+            estado_activo=False,
+        )
+
+        call_command("seed_demo", video=True)
+
+        espresso_inactivo.refresh_from_db()
+        assert espresso_inactivo.estado_activo is True
+        assert Venta.objects.filter(estado="EMITIDA").count() == 20
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_actualiza_unidad_base_de_insumo_sin_compras_aunque_coincida_costo(
+        self, monkeypatch
+    ):
+        """Si un insumo sin compras coincide en costo_unitario pero no en unidad_base, la corrige."""
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        insumo = Insumo.objects.create(
+            nombre="Café Especialidad Colombia",
+            unidad_base="un",
+            costo_unitario=Decimal("28.0000"),
+            estado_activo=False,
+        )
+
+        call_command("seed_demo")
+
+        insumo.refresh_from_db()
+        assert insumo.unidad_base == "g"
+        assert insumo.estado_activo is True

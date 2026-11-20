@@ -122,14 +122,21 @@ def _asegurar_insumos_y_compras() -> dict[str, Insumo]:
             nombre=nombre_insumo,
             defaults={"unidad_base": unidad_base, "costo_unitario": costo_inicial},
         )
-        if (
-            not creado
-            and insumo.costo_unitario != costo_inicial
-            and not Compra.objects.filter(insumo=insumo).exists()
-        ):
-            insumo.costo_unitario = costo_inicial
-            insumo.unidad_base = unidad_base
-            insumo.save(update_fields=["costo_unitario", "unidad_base", "actualizado_en"])
+        if not creado:
+            campos_insumo = []
+            if not Compra.objects.filter(insumo=insumo).exists():
+                if insumo.costo_unitario != costo_inicial:
+                    insumo.costo_unitario = costo_inicial
+                    campos_insumo.append("costo_unitario")
+                if insumo.unidad_base != unidad_base:
+                    insumo.unidad_base = unidad_base
+                    campos_insumo.append("unidad_base")
+            if not insumo.estado_activo:
+                insumo.estado_activo = True
+                campos_insumo.append("estado_activo")
+            if campos_insumo:
+                campos_insumo.append("actualizado_en")
+                insumo.save(update_fields=campos_insumo)
         insumos_dict[nombre_insumo] = insumo
 
     compras_a_registrar = [
@@ -417,6 +424,17 @@ def _asegurar_productos_y_recetas(
                 "estado_activo": True,
             },
         )
+        if not creado:
+            campos_prod = []
+            if not prod.estado_activo:
+                prod.estado_activo = True
+                campos_prod.append("estado_activo")
+            if prod.precio_venta <= Decimal("0"):
+                prod.precio_venta = p_data["precio_venta"]
+                campos_prod.append("precio_venta")
+            if campos_prod:
+                campos_prod.append("actualizado_en")
+                prod.save(update_fields=campos_prod)
 
         if creado or not prod.receta_items.exists():
             for ins, cantidad, unidad in p_data["receta"]:
@@ -523,9 +541,11 @@ def _asegurar_venta_video(
     """
     Crea una venta idempotente por id_operacion o reacomoda su fecha, turno y medio de pago
     cuando se vuelve a ejecutar seed_demo --video en otra fecha.
+    Si la venta ya pertenece a un TurnoCaja CERRADO distinto al objetivo, se deja intacta
+    para no alterar el arqueo cerrado persistido.
     """
     id_op = _uuid_seed_video(clave)
-    venta_existente = Venta.objects.filter(id_operacion=id_op).first()
+    venta_existente = Venta.objects.select_related("turno_caja").filter(id_operacion=id_op).first()
     if venta_existente is None:
         return registrar_venta(
             items_data=items,
@@ -535,11 +555,18 @@ def _asegurar_venta_video(
             id_operacion=id_op,
         )
 
+    turno_id_objetivo = turno_caja.id if turno_caja is not None else None
+    if (
+        venta_existente.turno_caja is not None
+        and venta_existente.turno_caja.estado == "CERRADO"
+        and venta_existente.turno_caja_id != turno_id_objetivo
+    ):
+        return venta_existente
+
     campos_actualizar = []
     if venta_existente.fecha != fecha_venta:
         venta_existente.fecha = fecha_venta
         campos_actualizar.append("fecha")
-    turno_id_objetivo = turno_caja.id if turno_caja is not None else None
     if venta_existente.turno_caja_id != turno_id_objetivo:
         venta_existente.turno_caja = turno_caja
         campos_actualizar.append("turno_caja")
@@ -934,8 +961,8 @@ def _poblar_escenario_video(
         )
 
     # 4. Ventas de hoy en el turno abierto vigente de cajero_demo (idempotentes por id_operacion).
-    # Si un ensayo previo cerró el turno anterior y hoy se creó uno nuevo, _asegurar_venta_video
-    # re-vincula estas ventas al turno abierto vigente y reacomoda sus fechas.
+    # Si un ensayo previo cerró el turno anterior y hoy se creó uno nuevo, las ventas ya
+    # asociadas a ese turno CERRADO no se re-vinculan para proteger su arqueo cerrado.
     ventas_hoy = [
         (
             "hoy-v1",
@@ -983,7 +1010,10 @@ def _poblar_escenario_video(
             permiso_verificado=True,
         )
         venta_a_anular.refresh_from_db()
-    if venta_a_anular.anulada_en != fecha_anulacion:
+    if (
+        venta_a_anular.turno_caja_id == turno_abierto.id
+        and venta_a_anular.anulada_en != fecha_anulacion
+    ):
         venta_a_anular.anulada_en = fecha_anulacion
         venta_a_anular.save(update_fields=["anulada_en"])
 
