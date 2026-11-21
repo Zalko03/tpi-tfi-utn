@@ -224,6 +224,14 @@ else:
         }
     }
 
+# Comunicación interna hacia backend-node para eventos en tiempo real (HU8)
+NODE_BASE_URL = os.environ.get("NODE_BASE_URL", "").strip().rstrip("/")
+EVENTOS_INTERNOS_CLAVE = os.environ.get("EVENTOS_INTERNOS_CLAVE", "").strip()
+try:
+    NODE_EVENTOS_TIMEOUT_SECONDS = float(os.environ.get("NODE_EVENTOS_TIMEOUT_SECONDS", "2.0"))
+except (TypeError, ValueError):
+    NODE_EVENTOS_TIMEOUT_SECONDS = 2.0
+
 LANGUAGE_CODE = "es-ar"
 TIME_ZONE = "America/Argentina/Buenos_Aires"
 USE_I18N = True

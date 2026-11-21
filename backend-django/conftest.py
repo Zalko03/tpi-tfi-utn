@@ -10,3 +10,5 @@ if str(BASE_DIR) not in sys.path:
 
 os.environ.setdefault("USE_SQLITE", "True")
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
+# Evita que pytest envíe notificaciones HTTP reales al servidor Node local si .env define clave.
+os.environ.setdefault("EVENTOS_INTERNOS_CLAVE", "")
