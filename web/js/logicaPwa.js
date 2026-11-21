@@ -3699,3 +3699,59 @@ export const describirAcotamientoSugerido = (sugerencia = {}) => {
     return `Redondeado a múltiplos de $${multiplo}`;
 };
 
+// ============================================================
+// CONTROL DE STOCK REAL Y ALERTAS DE MÍNIMO (HU12)
+// ============================================================
+/**
+ * Evalúa el estado de stock de un insumo según su stock_actual y stock_minimo.
+ */
+export const evaluarEstadoStockInsumo = (insumo = {}) => {
+    if (!insumo || typeof insumo !== 'object') {
+        return { nivel: 'sin_minimo', etiqueta: 'Sin mínimo', esBajo: false };
+    }
+    if (insumo.estado_activo === false) {
+        return { nivel: 'inactivo', etiqueta: 'Inactivo', esBajo: false };
+    }
+
+    const actual = Number(String(insumo.stock_actual ?? 0).replace(',', '.'));
+    const minimo = Number(String(insumo.stock_minimo ?? 0).replace(',', '.'));
+    const actualVal = Number.isFinite(actual) ? actual : 0;
+    const minimoVal = Number.isFinite(minimo) ? minimo : 0;
+
+    if (minimoVal <= 0) {
+        return { nivel: 'sin_minimo', etiqueta: 'Sin mínimo', esBajo: false };
+    }
+    if (actualVal < minimoVal || insumo.stock_bajo === true) {
+        return { nivel: 'bajo', etiqueta: 'Stock bajo', esBajo: true };
+    }
+    return { nivel: 'ok', etiqueta: 'Normal', esBajo: false };
+};
+
+/**
+ * Formatea una cantidad de stock junto a su unidad base para mostrar al usuario.
+ */
+export const formatearCantidadStock = (cantidad, unidadBase = '') => {
+    const num = Number(String(cantidad ?? 0).replace(',', '.'));
+    const cantTxt = Number.isFinite(num)
+        ? num.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+        : String(cantidad ?? '0');
+    const unidad = String(unidadBase || '').trim();
+    return unidad ? `${cantTxt} ${unidad}` : cantTxt;
+};
+
+/**
+ * Resume cuántos insumos activos están por debajo de su stock mínimo.
+ */
+export const obtenerResumenStockBajo = (insumos = []) => {
+    const lista = Array.isArray(insumos) ? insumos : [];
+    const insumosBajos = lista.filter((ins) => {
+        if (!ins || ins.estado_activo === false) return false;
+        return evaluarEstadoStockInsumo(ins).esBajo;
+    });
+    return {
+        totalBajos: insumosBajos.length,
+        insumosBajos,
+    };
+};
+
+

@@ -21,8 +21,10 @@ import {
     consultarDisponibilidadDemoApi,
     describirAcotamientoSugerido,
     evaluarAvisoCondicionFiscal,
+    evaluarEstadoStockInsumo,
     fechaIsoATexto,
     fechaTextoAIso,
+    formatearCantidadStock,
     formatearEntradaFecha,
     formatearEtiquetaCondicionFiscal,
     crearFetchConSesion,
@@ -62,6 +64,7 @@ import {
     obtenerContenidoPlantillaCsv,
     obtenerPermisosInicialesEmpleado,
     obtenerPlantillaRol,
+    obtenerResumenStockBajo,
     obtenerSonidoParaEvento,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
@@ -607,6 +610,9 @@ export const sincronizarVentasPendientes = async () => {
             }
             await cargarTurnoActivo();
             await cargarCatalogo();
+            if (usuarioTienePermiso(estadoApp.usuario, 'insumos.ver')) {
+                await cargarInsumos();
+            }
             if (estadoApp.usuario?.rol !== 'CAJERO') {
                 await cargarFinanzas();
             }
@@ -1112,6 +1118,10 @@ export const conectarSocketTiempoReal = () => {
 
     socket.on('stock.bajo', (payload) => {
         registrarEventoEnFeed('stock.bajo', payload);
+        mostrarToast(
+            `Stock bajo: ${payload?.nombre || 'Insumo'} (${payload?.stockActual ?? '0'} ${payload?.unidadBase || ''})`.trim(),
+            'advertencia'
+        );
         cargarInsumos();
     });
 
@@ -1511,6 +1521,9 @@ const cobrarTicketVenta = async () => conCargando($('btn-cobrar-ticket'), async 
             estadoApp.carrito = [];
             renderizarCarritoTicket();
             cargarTurnoActivo();
+            if (usuarioTienePermiso(estadoApp.usuario, 'insumos.ver')) {
+                cargarInsumos();
+            }
         } else {
             const err = data.mensaje || data.detail || 'No se pudo registrar la venta';
             mostrarToast(err, 'peligro');
@@ -1810,25 +1823,106 @@ export const cargarProveedores = async () => {
     }
 };
 
+const abrirModalAjustarStock = (insumo) => {
+    const modal = $('modal-ajustar-stock');
+    if (!modal || !insumo) return;
+    if ($('input-ajustar-stock-insumo-id')) $('input-ajustar-stock-insumo-id').value = String(insumo.id);
+    if ($('ajustar-stock-insumo-nombre')) $('ajustar-stock-insumo-nombre').textContent = insumo.nombre;
+    if ($('ajustar-stock-actual-texto')) {
+        $('ajustar-stock-actual-texto').textContent = formatearCantidadStock(
+            insumo.stock_actual,
+            insumo.unidad_base
+        );
+    }
+    if ($('label-unidad-stock-minimo')) $('label-unidad-stock-minimo').textContent = insumo.unidad_base || 'un';
+    if ($('label-unidad-ajuste-stock')) $('label-unidad-ajuste-stock').textContent = insumo.unidad_base || 'un';
+    if ($('input-insumo-stock-minimo')) {
+        $('input-insumo-stock-minimo').value = String(Number(insumo.stock_minimo ?? 0));
+    }
+    if ($('input-ajuste-stock-cantidad')) $('input-ajuste-stock-cantidad').value = '';
+    if ($('input-ajuste-stock-motivo')) $('input-ajuste-stock-motivo').value = '';
+    if ($('select-ajuste-stock-tipo')) $('select-ajuste-stock-tipo').value = 'INGRESO';
+    modal.style.display = 'flex';
+};
+
 const renderizarTablaInsumos = () => {
     const tbody = $('tabla-insumos-body');
+    const avisoBanner = $('aviso-stock-bajo-insumos');
+    const thAcciones = $('th-insumos-acciones');
+    const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'insumos.editar');
+    if (thAcciones) thAcciones.style.display = puedeEditar ? '' : 'none';
+
+    if (avisoBanner) {
+        const resumen = obtenerResumenStockBajo(estadoApp.insumos);
+        if (resumen.totalBajos > 0) {
+            const nombres = resumen.insumosBajos
+                .slice(0, 4)
+                .map((i) => `${escaparHtml(i.nombre)} (${escaparHtml(formatearCantidadStock(i.stock_actual, i.unidad_base))})`)
+                .join(', ');
+            const extra = resumen.totalBajos > 4 ? ` y ${resumen.totalBajos - 4} más` : '';
+            avisoBanner.style.display = 'block';
+            avisoBanner.innerHTML =
+                resumen.totalBajos === 1
+                    ? `Alerta de stock bajo: ${nombres}.`
+                    : `${resumen.totalBajos} insumos por debajo del mínimo: ${nombres}${escaparHtml(extra)}.`;
+        } else {
+            avisoBanner.style.display = 'none';
+            avisoBanner.innerHTML = '';
+        }
+    }
+
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    const columnas = puedeEditar ? 7 : 6;
     if (estadoApp.insumos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="col-centro text-muted py-4">No hay insumos registrados.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${columnas}" class="col-centro text-muted py-4">No hay insumos registrados.</td></tr>`;
         return;
     }
 
     for (const ins of estadoApp.insumos) {
+        const estadoStock = evaluarEstadoStockInsumo(ins);
+        const stockActualTxt = formatearCantidadStock(ins.stock_actual, ins.unidad_base);
+        const stockMinTxt =
+            Number(ins.stock_minimo || 0) > 0
+                ? formatearCantidadStock(ins.stock_minimo, ins.unidad_base)
+                : 'Sin definir';
+
+        let badgeEstadoHtml = '<span class="badge-estado-verde">Normal</span>';
+        if (estadoStock.nivel === 'bajo') {
+            badgeEstadoHtml = '<span class="badge-traza peligro">Stock bajo</span>';
+        } else if (estadoStock.nivel === 'sin_minimo') {
+            badgeEstadoHtml = '<span class="text-muted">Sin mínimo</span>';
+        } else if (estadoStock.nivel === 'inactivo') {
+            badgeEstadoHtml = '<span class="badge-traza advertencia">Inactivo</span>';
+        }
+
         const tr = document.createElement('tr');
+        if (estadoStock.esBajo) {
+            tr.classList.add('fila-stock-bajo');
+        }
+        const accionHtml = puedeEditar
+            ? `<td class="col-centro">
+                    <button type="button" class="btn-refrescar-mini btn-ajustar-stock-insumo" data-id="${escaparHtml(ins.id)}">
+                        Ajustar / Mínimo
+                    </button>
+               </td>`
+            : '';
+
         tr.innerHTML = `
-            <td class="col-centro">#${ins.id}</td>
+            <td class="col-centro">#${escaparHtml(ins.id)}</td>
             <td class="col-texto"><strong>${escaparHtml(ins.nombre)}</strong></td>
-            <td class="col-centro"><span class="producto-codigo-badge">${escaparHtml(ins.unidad_base)}</span></td>
+            <td class="col-numero"><strong>${escaparHtml(stockActualTxt)}</strong></td>
+            <td class="col-numero">${escaparHtml(stockMinTxt)}</td>
             <td class="col-numero"><strong>${formatearMoneda(ins.costo_unitario)}</strong> / ${escaparHtml(ins.unidad_base)}</td>
-            <td class="col-centro"><span class="badge-estado-verde">Activo</span></td>
+            <td class="col-centro">${badgeEstadoHtml}</td>
+            ${accionHtml}
         `;
+        if (puedeEditar) {
+            tr.querySelector('.btn-ajustar-stock-insumo')?.addEventListener('click', () => {
+                abrirModalAjustarStock(ins);
+            });
+        }
         tbody.appendChild(tr);
     }
 };
@@ -3889,10 +3983,14 @@ const consultarDiagnosticoStockIA = async () => {
             }
         }
 
+        const insumosConStockBajo = insumos.filter((i) => evaluarEstadoStockInsumo(i).esBajo);
         const insumosOrdenadosPorCosto = [...insumos].sort(
             (a, b) => Number(b.costo_unitario || 0) - Number(a.costo_unitario || 0)
         );
-        const insumosCriticos = insumosOrdenadosPorCosto.slice(0, 5);
+        const insumosCriticos =
+            insumosConStockBajo.length > 0
+                ? insumosConStockBajo.slice(0, 5)
+                : insumosOrdenadosPorCosto.slice(0, 5);
 
         const productosConReceta = catalogo.filter(
             (p) => Array.isArray(p.receta_items) && p.receta_items.length > 0
@@ -3961,8 +4059,10 @@ const consultarDiagnosticoStockIA = async () => {
                     ganancia_bruta_total: String(Number(gananciaData?.ganancia_bruta_diaria || 0).toFixed(2)),
                     cantidad_tickets: Number(gananciaData?.cantidad_tickets || 0),
                     productos: productosPayload,
-                    alertas_insumos: insumosCriticos.map(
-                        (i) => `Insumo ${i.nombre}: costo unitario $${i.costo_unitario} por ${i.unidad_base}`
+                    alertas_insumos: insumosCriticos.map((i) =>
+                        evaluarEstadoStockInsumo(i).esBajo
+                            ? `Stock bajo de ${i.nombre}: disponible ${i.stock_actual} ${i.unidad_base} (mínimo ${i.stock_minimo} ${i.unidad_base})`
+                            : `Insumo ${i.nombre}: costo unitario $${i.costo_unitario} por ${i.unidad_base}`
                     ),
                     version_prompt: 'v1',
                 };
@@ -5371,6 +5471,67 @@ Flete y entrega a local: $4500`;
                 }
             } catch (err) {
                 console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    // 17c. Ajuste de stock y mínimo por insumo (HU12)
+    $('form-stock-minimo')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const insumoId = $('input-ajustar-stock-insumo-id')?.value;
+        const stockMinimo = $('input-insumo-stock-minimo')?.value;
+        if (!insumoId) return;
+
+        await conCargando($('btn-guardar-stock-minimo'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/insumos/${insumoId}/`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stock_minimo: stockMinimo }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    mostrarToast('Stock mínimo actualizado.', 'exito');
+                    await cargarInsumos();
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    $('form-ajustar-stock')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const insumoId = $('input-ajustar-stock-insumo-id')?.value;
+        const tipo = $('select-ajuste-stock-tipo')?.value || 'INGRESO';
+        const cantidad = $('input-ajuste-stock-cantidad')?.value;
+        const motivo = ($('input-ajuste-stock-motivo')?.value || '').trim();
+        if (!insumoId) return;
+
+        await conCargando($('btn-confirmar-ajuste-stock'), async () => {
+            try {
+                const res = await fetchConSesion(
+                    `${estadoApp.djangoUrl}/api/insumos/${insumoId}/ajustar-stock/`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tipo, cantidad, motivo }),
+                    }
+                );
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    mostrarToast(data.mensaje || 'Stock actualizado correctamente.', 'exito');
+                    if ($('modal-ajustar-stock')) $('modal-ajustar-stock').style.display = 'none';
+                    await cargarInsumos();
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
                 mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
