@@ -356,7 +356,7 @@ def obtener_sugerencia_precio_producto(
     multiplo_eff = producto.redondeo_multiplo if redondeo_multiplo is None else redondeo_multiplo
 
     cache_prefetch = getattr(producto, "_prefetched_objects_cache", {})
-    if "precios_competencia" in cache_prefetch:
+    if isinstance(cache_prefetch, dict) and "precios_competencia" in cache_prefetch:
         items_comp = producto.precios_competencia.all()
     else:
         items_comp = producto.precios_competencia.order_by("precio", "nombre_competidor", "id")

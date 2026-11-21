@@ -136,11 +136,14 @@ class ProductoSerializer(serializers.ModelSerializer):
         ]
 
     def _obtener_sugerencia_cache(self, obj) -> dict:
-        cache = getattr(obj, "_sugerencia_precio_cache", None)
-        if cache is None:
-            cache = obtener_sugerencia_precio_producto(obj)
-            obj._sugerencia_precio_cache = cache
-        return cache
+        cache_mapa = getattr(self, "_sugerencia_cache_por_obj", None)
+        if cache_mapa is None:
+            cache_mapa = {}
+            self._sugerencia_cache_por_obj = cache_mapa
+        clave = id(obj)
+        if clave not in cache_mapa:
+            cache_mapa[clave] = obtener_sugerencia_precio_producto(obj)
+        return cache_mapa[clave]
 
     def get_precio_sugerido(self, obj) -> str:
         return self._obtener_sugerencia_cache(obj)["precio_sugerido"]
