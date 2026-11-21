@@ -3,6 +3,7 @@ import { registrarCambioPrecio } from './historialPrecio.service.js';
 import { guardarSnapshot } from './snapshotCosteo.service.js';
 import {
     emitirCostoActualizado,
+    emitirStockBajo,
     emitirVentaAnulada,
     emitirVentaRegistrada,
 } from '../sockets/emitter.js';
@@ -58,6 +59,7 @@ const DESPACHADORES_POR_EVENTO = {
     'venta.registrada': emitirVentaRegistrada,
     'venta.anulada': emitirVentaAnulada,
     'costos.recalculados': procesarCostosRecalculados,
+    'stock.bajo': emitirStockBajo,
 };
 
 /**

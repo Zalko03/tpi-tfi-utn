@@ -6,7 +6,12 @@ import { validarCampos } from '../middlewares/validarCampos.middleware.js';
 
 const router = Router();
 
-const EVENTOS_INTERNOS_PERMITIDOS = ['venta.registrada', 'venta.anulada', 'costos.recalculados'];
+const EVENTOS_INTERNOS_PERMITIDOS = [
+    'venta.registrada',
+    'venta.anulada',
+    'costos.recalculados',
+    'stock.bajo',
+];
 
 const esEventoVenta = (req) =>
     ['venta.registrada', 'venta.anulada'].includes(req.body?.evento);
@@ -38,6 +43,20 @@ const checksEventoInterno = [
         .bail()
         .isArray()
         .withMessage('La lista de productos recalculados debe ser un arreglo.'),
+    check('datos.insumoId')
+        .if((_valor, { req }) => req.body?.evento === 'stock.bajo')
+        .exists()
+        .withMessage('El identificador del insumo es obligatorio.')
+        .bail()
+        .isInt({ min: 1 })
+        .withMessage('El identificador del insumo debe ser un entero positivo.'),
+    check('datos.nombre')
+        .if((_valor, { req }) => req.body?.evento === 'stock.bajo')
+        .exists({ checkFalsy: true })
+        .withMessage('El nombre del insumo es obligatorio.')
+        .bail()
+        .isString()
+        .withMessage('El nombre del insumo debe ser un texto.'),
     validarCampos,
 ];
 
