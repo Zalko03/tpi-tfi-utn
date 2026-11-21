@@ -432,4 +432,87 @@ describe('Integración: POST /api/internos/eventos y emisión filtrada en vivo (
         await new Promise((r) => setTimeout(r, 150));
         expect(cajeroRecibio).toBe(false);
     });
+
+    it('valida datos y emite stock.bajo solo a DUENIO y ENCARGADO (HU12 / CA12.2)', async () => {
+        const resInvalido = await request(app)
+            .post('/api/internos/eventos')
+            .set('X-Clave-Interna', 'clave-interna-test-hu8-segura')
+            .send({ evento: 'stock.bajo', datos: { nombre: 'Leche' } });
+
+        expect(resInvalido.status).toBe(400);
+        expect(resInvalido.body).toHaveProperty('mensaje');
+        expect(resInvalido.body).toHaveProperty('detalles');
+
+        const clienteDuenio = conectarCliente(
+            generarTokenTest({
+                user_id: 30,
+                username: 'duenio_stock_sock',
+                rol: 'DUENIO',
+                permisos: ['insumos.ver'],
+            })
+        );
+        const clienteEncargado = conectarCliente(
+            generarTokenTest({
+                user_id: 31,
+                username: 'encargado_stock_sock',
+                rol: 'ENCARGADO',
+                permisos: ['insumos.ver'],
+            })
+        );
+        const clienteCajero = conectarCliente(
+            generarTokenTest({
+                user_id: 32,
+                username: 'cajero_stock_sock',
+                rol: 'CAJERO',
+                permisos: ['ventas.cobrar_ticket'],
+            })
+        );
+
+        await Promise.all([
+            esperarConexion(clienteDuenio),
+            esperarConexion(clienteEncargado),
+            esperarConexion(clienteCajero),
+        ]);
+
+        const pDuenio = esperarEvento(clienteDuenio, 'stock.bajo');
+        const pEncargado = esperarEvento(clienteEncargado, 'stock.bajo');
+        let cajeroRecibio = false;
+        clienteCajero.once('stock.bajo', () => {
+            cajeroRecibio = true;
+        });
+
+        const res = await request(app)
+            .post('/api/internos/eventos')
+            .set('X-Clave-Interna', 'clave-interna-test-hu8-segura')
+            .send({
+                evento: 'stock.bajo',
+                datos: {
+                    insumoId: 14,
+                    nombre: 'Leche Barista Entera',
+                    stockActual: '450.0000',
+                    stockMinimo: '1000.0000',
+                    unidadBase: 'ml',
+                },
+            });
+
+        expect(res.status).toBe(202);
+        expect(res.body).toEqual({
+            recibido: true,
+            evento: 'stock.bajo',
+            emitido: true,
+        });
+
+        const [evDuenio, evEncargado] = await Promise.all([pDuenio, pEncargado]);
+        expect(evDuenio).toMatchObject({
+            insumoId: 14,
+            nombre: 'Leche Barista Entera',
+            stockActual: '450.0000',
+            stockMinimo: '1000.0000',
+            unidadBase: 'ml',
+        });
+        expect(evEncargado.insumoId).toBe(14);
+
+        await new Promise((r) => setTimeout(r, 150));
+        expect(cajeroRecibio).toBe(false);
+    });
 });

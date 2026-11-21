@@ -21,6 +21,33 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-21
+Tarea: F5 — HU12: Stock real por insumo, descuento por receta, devolución al anular y alertas de stock bajo
+Rama: feat/hu12-stock
+Cambios realizados:
+- **Django (`apps/insumos/`, `apps/ventas/`):** Se agregaron `stock_actual`, `stock_minimo` y `stock_bajo` en `Insumo`, junto con el modelo auditable `MovimientoStock` y la migración `0003_movimientostock_insumo_stock_actual_and_more.py` (sin aplicar sobre `db.sqlite3`). `registrar_compra_y_actualizar_costo` suma stock convertido a unidad base; `registrar_venta` descuenta de forma atómica cada insumo de la receta (`descontar_stock_por_venta`, bloqueando insumos en orden determinístico de ID) y emite `stock.bajo` hacia Node cuando `stock_actual < stock_minimo` (con `stock_minimo > 0`); `anular_venta` devuelve el stock descontado (`devolver_stock_por_anulacion_venta`). Se expusieron `POST /api/insumos/:id/ajustar-stock/`, `GET /api/insumos/stock-bajo/` y `GET /api/insumos/movimientos-stock/`, además de `stock_minimo` inicial en `seed_demo`.
+- **Node (`backend-node/src/routes/eventosInternos.routes.js`, `src/services/eventosInternos.service.js`):** Se habilitó el evento interno `'stock.bajo'` validando `insumoId` y `nombre` y conectándolo con `emitirStockBajo` hacia la sala `rol:stock_alertas` (`DUENIO` / `ENCARGADO`).
+- **Web (`web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`):** Se mostró el stock actual, stock mínimo, estado y banner de alertas en Insumos; se sumó el modal `#modal-ajustar-stock` (`insumos.editar`); se reactivó el contador `#metrica-alertas-stock` en el Tablero en Tiempo Real y se integraron alertas de stock bajo al diagnóstico de reposición IA.
+- **Tests y docs:** Se agregaron pruebas unitarias y de API en Django (`test_unit_stock_services.py`, `test_unit_stock_ventas.py`, `test_api_stock.py`) y pruebas en Node/Jest (`eventosInternos.integration.test.js`, `logicaPwa.unit.test.js`), actualizando `docs/CONNECTIONS.md` y `docs/ARCHITECTURE.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `backend-django` → `backend-node` (`POST /api/internos/eventos` con `evento: 'stock.bajo'` hacia `emitirStockBajo`).
+- `web/` → `backend-django` (`/api/insumos/:id/ajustar-stock/`, `/api/insumos/stock-bajo/`, `/api/insumos/movimientos-stock/`).
+Problemas y decisiones técnicas:
+- Se permitió `stock_actual` negativo (con `stock_minimo >= 0`) para no bloquear ventas en mostrador cuando falta cargar una factura y para que al anular una venta la devolución restituya exactamente el saldo previo; los ajustes manuales y descuentos quedan auditados en `MovimientoStock`.
+Archivos tocados:
+- `backend-django/apps/insumos/{models.py,services.py,serializers.py,views.py,management/commands/seed_demo.py,migrations/0003_movimientostock_insumo_stock_actual_and_more.py}`
+- `backend-django/apps/ventas/services.py`
+- `backend-django/apps/insumos/tests/{unit/test_unit_stock_services.py,api/test_api_stock.py}`, `backend-django/apps/ventas/tests/unit/test_unit_stock_ventas.py`
+- `backend-node/src/{routes/eventosInternos.routes.js,services/eventosInternos.service.js}`, `backend-node/tests/{integration/eventosInternos.integration.test.js,unit/logicaPwa.unit.test.js}`
+- `web/{index.html,css/estilos.css,js/logicaPwa.js,js/app.js}`
+- `docs/{CONNECTIONS.md,ARCHITECTURE.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+---
 Fecha: 2026-11-20
 Tarea: Acceso rápido de demostración (1 clic en login solo en demo local)
 Rama: feat/demo-acceso-rapido

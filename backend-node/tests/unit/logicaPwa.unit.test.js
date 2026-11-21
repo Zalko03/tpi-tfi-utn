@@ -43,6 +43,7 @@ import {
     evaluarCsvPlantillaDirecta,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
+    evaluarEstadoStockInsumo,
     evaluarTextoComoCsvDirecto,
     evaluarTextoExtraidoPdf,
     extraerBase64DeDataUrl,
@@ -53,6 +54,7 @@ import {
     extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
+    formatearCantidadStock,
     formatearEtiquetaCondicionFiscal,
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
@@ -74,6 +76,7 @@ import {
     obtenerContenidoPlantillaCsv,
     obtenerPermisosInicialesEmpleado,
     obtenerPlantillaRol,
+    obtenerResumenStockBajo,
     obtenerSonidoParaEvento,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
@@ -2660,6 +2663,55 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(
                 describirAcotamientoSugerido({ acotado_por: 'NINGUNO', redondeo_multiplo: 100 })
             ).toContain('$100');
+        });
+    });
+
+    describe('Control de stock real y alertas de mínimo (HU12)', () => {
+        it('evaluarEstadoStockInsumo clasifica bajo, normal, sin_minimo e inactivo', () => {
+            expect(
+                evaluarEstadoStockInsumo({
+                    stock_actual: '216.0000',
+                    stock_minimo: '300.0000',
+                    estado_activo: true,
+                })
+            ).toEqual({ nivel: 'bajo', etiqueta: 'Stock bajo', esBajo: true });
+
+            expect(
+                evaluarEstadoStockInsumo({
+                    stock_actual: '500.0000',
+                    stock_minimo: '300.0000',
+                    estado_activo: true,
+                })
+            ).toEqual({ nivel: 'ok', etiqueta: 'Normal', esBajo: false });
+
+            expect(
+                evaluarEstadoStockInsumo({
+                    stock_actual: '0.0000',
+                    stock_minimo: '0.0000',
+                    estado_activo: true,
+                })
+            ).toEqual({ nivel: 'sin_minimo', etiqueta: 'Sin mínimo', esBajo: false });
+
+            expect(
+                evaluarEstadoStockInsumo({
+                    stock_actual: '10.0000',
+                    stock_minimo: '50.0000',
+                    estado_activo: false,
+                })
+            ).toEqual({ nivel: 'inactivo', etiqueta: 'Inactivo', esBajo: false });
+        });
+
+        it('formatearCantidadStock y obtenerResumenStockBajo resumen insumos críticos', () => {
+            expect(formatearCantidadStock('1500.5', 'g')).toContain('1.500,5');
+            expect(formatearCantidadStock('1500.5', 'g')).toContain('g');
+
+            const resumen = obtenerResumenStockBajo([
+                { id: 1, nombre: 'Café', stock_actual: '100', stock_minimo: '300', estado_activo: true },
+                { id: 2, nombre: 'Leche', stock_actual: '5000', stock_minimo: '2000', estado_activo: true },
+                { id: 3, nombre: 'Inactivo', stock_actual: '0', stock_minimo: '100', estado_activo: false },
+            ]);
+            expect(resumen.totalBajos).toBe(1);
+            expect(resumen.insumosBajos[0].nombre).toBe('Café');
         });
     });
 });
