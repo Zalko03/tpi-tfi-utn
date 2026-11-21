@@ -32,6 +32,10 @@ services:
         sync: false
       - key: DJANGO_JWT_PUBLIC_KEY
         sync: false
+      - key: NODE_BASE_URL
+        sync: false
+      - key: EVENTOS_INTERNOS_CLAVE
+        sync: false
 
   # 2. Backend Tiempo Real & Proyecciones (Express + Socket.IO + MongoDB Atlas)
   - type: web
@@ -56,6 +60,8 @@ services:
       - key: CORS_ALLOWED_ORIGINS
         sync: false
       - key: JWT_PUBLIC_KEY
+        sync: false
+      - key: EVENTOS_INTERNOS_CLAVE
         sync: false
 
   # 3. Microservicio de Inteligencia Artificial (FastAPI + Groq LPU)

@@ -10,6 +10,7 @@ import snapshotCosteoRoutes from './src/routes/snapshotCosteo.routes.js';
 import productoResumenRoutes from './src/routes/productoResumen.routes.js';
 import importacionIARoutes from './src/routes/importacionIA.routes.js';
 import resumenSemanalRoutes from './src/routes/resumenSemanal.routes.js';
+import eventosInternosRoutes from './src/routes/eventosInternos.routes.js';
 import { corsRestringido } from './src/middlewares/cors.middleware.js';
 import { sanitizarNoSql } from './src/middlewares/nosqlSanitize.middleware.js';
 import { limitadorGeneral } from './src/middlewares/rateLimit.middleware.js';
@@ -94,6 +95,7 @@ app.use('/api/productos', productoResumenRoutes);
 app.use('/api/importaciones', importacionIARoutes);
 app.use('/importaciones', importacionIARoutes);
 app.use('/v1/resumen-semanal', resumenSemanalRoutes);
+app.use('/api/internos', eventosInternosRoutes);
 
 // Manejador centralizado de errores con formato único (docs/api-errores.md)
 app.use(errorHandler);

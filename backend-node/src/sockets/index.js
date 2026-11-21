@@ -6,6 +6,7 @@ import {
     SALA_LOCAL,
     SALA_VER_ARQUEO,
     SALA_VER_COSTOS,
+    SALA_VER_VENTAS_COMPLETAS,
 } from './emitter.js';
 import { autenticarSocketJwt } from './middleware/auth.socket.middleware.js';
 
@@ -155,6 +156,9 @@ export const inicializarSocketIO = (servidorHttp) => {
                 usuario.permisos.includes('caja.ver_efectivo_esperado'));
         if (tieneVerArqueo) {
             socket.join(SALA_VER_ARQUEO);
+        }
+        if (tieneVerArqueo && tieneVerCostos) {
+            socket.join(SALA_VER_VENTAS_COMPLETAS);
         }
 
         // 3. Registro de presencia en vivo
