@@ -3340,6 +3340,91 @@ textarea:focus {
     color: #92400E;
 }
 
+/* Configuración fiscal del local (HU14) */
+.configuracion-modulo-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.aviso-fiscal-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    background: #FFFBEB;
+    border: 1px solid #F59E0B;
+    border-left: 4px solid #D97706;
+    border-radius: var(--radio-md);
+    padding: 0.9rem 1.15rem;
+    color: #92400E;
+    font-size: 0.92rem;
+    font-weight: 500;
+}
+
+.aviso-fiscal-banner-texto {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    flex: 1 1 280px;
+}
+
+.fiscal-opciones-fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.fiscal-opciones-grilla {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+}
+
+.fiscal-opcion-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem 1.1rem;
+    border: 1.5px solid var(--color-borde-suave, #E5E7EB);
+    border-radius: var(--radio-md);
+    background: #FAF8F6;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.fiscal-opcion-card:has(input:checked) {
+    border-color: var(--color-ambar, #C87D28);
+    background: #FFFDF9;
+}
+
+.fiscal-opcion-card input[type="radio"] {
+    margin-top: 0.25rem;
+    accent-color: var(--color-ambar, #C87D28);
+}
+
+.fiscal-opcion-contenido {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.fiscal-opcion-titulo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.fiscal-form-acciones {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1.25rem;
+}
+
 .preview-foto-lista-ia {
     display: flex;
     align-items: center;

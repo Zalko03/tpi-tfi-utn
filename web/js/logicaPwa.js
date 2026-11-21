@@ -3523,3 +3523,66 @@ export const consultarDisponibilidadDemoApi = async ({ fetchFn, djangoUrl }) => 
     }
 };
 
+// ============================================================
+// CONFIGURACIÓN FISCAL DEL LOCAL (HU14)
+// ============================================================
+export const ETIQUETAS_CONDICION_FISCAL = {
+    NO_DECLARADA: 'Sin declarar',
+    RESPONSABLE_INSCRIPTO: 'Responsable Inscripto',
+    MONOTRIBUTISTA: 'Monotributista',
+    EXENTO: 'IVA Exento',
+};
+
+/**
+ * Solo el Dueño (o superusuario) puede ver y modificar la pantalla de configuración del local.
+ */
+export const puedeConfigurarLocal = (usuario) => {
+    if (!usuario || typeof usuario !== 'object') {
+        return false;
+    }
+    return Boolean(usuario.is_superuser) || String(usuario.rol || '').toUpperCase() === 'DUENIO';
+};
+
+/**
+ * Devuelve la etiqueta legible en español de una condición fiscal.
+ */
+export const formatearEtiquetaCondicionFiscal = (codigo = 'NO_DECLARADA') => {
+    const clave = String(codigo || 'NO_DECLARADA')
+        .trim()
+        .toUpperCase();
+    return ETIQUETAS_CONDICION_FISCAL[clave] || 'Sin declarar';
+};
+
+/**
+ * Evalúa si corresponde mostrar el aviso por falta de declaración fiscal y si el
+ * usuario actual puede ir a declararla.
+ */
+export const evaluarAvisoCondicionFiscal = (configFiscal, usuario = null) => {
+    if (!configFiscal || typeof configFiscal !== 'object') {
+        return { mostrarAviso: false, puedeDeclarar: false, mensaje: '' };
+    }
+    const declarada =
+        configFiscal.declarada !== undefined
+            ? Boolean(configFiscal.declarada)
+            : String(configFiscal.condicion_fiscal || 'NO_DECLARADA').toUpperCase() !==
+              'NO_DECLARADA';
+
+    if (declarada) {
+        return { mostrarAviso: false, puedeDeclarar: false, mensaje: '' };
+    }
+
+    const puedeDeclarar = puedeConfigurarLocal(usuario);
+    const mensajeDefecto = puedeDeclarar
+        ? 'Todavía no declaraste la condición fiscal del local. Por ahora los costos se calculan incluyendo IVA (lo que realmente pagás).'
+        : 'El dueño todavía no declaró la condición fiscal del local. Por ahora los costos se calculan incluyendo IVA (lo que realmente se paga).';
+
+    return {
+        mostrarAviso: true,
+        puedeDeclarar,
+        mensaje:
+            puedeDeclarar && configFiscal.aviso
+                ? String(configFiscal.aviso)
+                : mensajeDefecto,
+    };
+};
+

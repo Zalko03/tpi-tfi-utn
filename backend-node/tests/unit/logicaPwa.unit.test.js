@@ -37,6 +37,7 @@ import {
     esCargaVigente,
     escaparHtml,
     estaFechaEnRango,
+    evaluarAvisoCondicionFiscal,
     evaluarCsvPlantillaDirecta,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
@@ -50,6 +51,7 @@ import {
     extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
+    formatearEtiquetaCondicionFiscal,
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
@@ -78,6 +80,7 @@ import {
     PERMISOS_POR_SECCION,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    puedeConfigurarLocal,
     puedeGestionarQrCarta,
     reconstruirLineasDeItemsPdf,
     renderizarUbicacionCarta,
@@ -2567,6 +2570,45 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                     djangoUrl: 'http://localhost:8000',
                 })
             ).toBe(false);
+        });
+    });
+
+    describe('Configuración fiscal del local (HU14)', () => {
+        it('puedeConfigurarLocal habilita la pantalla únicamente para Dueño o superusuario', () => {
+            expect(puedeConfigurarLocal({ rol: 'DUENIO' })).toBe(true);
+            expect(puedeConfigurarLocal({ rol: 'CAJERO', is_superuser: true })).toBe(true);
+            expect(puedeConfigurarLocal({ rol: 'ENCARGADO' })).toBe(false);
+            expect(puedeConfigurarLocal({ rol: 'CAJERO' })).toBe(false);
+            expect(puedeConfigurarLocal(null)).toBe(false);
+        });
+
+        it('formatearEtiquetaCondicionFiscal traduce cada código a texto legible', () => {
+            expect(formatearEtiquetaCondicionFiscal('RESPONSABLE_INSCRIPTO')).toBe(
+                'Responsable Inscripto'
+            );
+            expect(formatearEtiquetaCondicionFiscal('MONOTRIBUTISTA')).toBe('Monotributista');
+            expect(formatearEtiquetaCondicionFiscal('EXENTO')).toBe('IVA Exento');
+            expect(formatearEtiquetaCondicionFiscal('NO_DECLARADA')).toBe('Sin declarar');
+        });
+
+        it('evaluarAvisoCondicionFiscal muestra aviso con botón solo al Dueño si no está declarada', () => {
+            const sinDeclarar = { declarada: false, condicion_fiscal: 'NO_DECLARADA' };
+            const resDuenio = evaluarAvisoCondicionFiscal(sinDeclarar, { rol: 'DUENIO' });
+            expect(resDuenio.mostrarAviso).toBe(true);
+            expect(resDuenio.puedeDeclarar).toBe(true);
+            expect(resDuenio.mensaje).toContain('Todavía no declaraste');
+
+            const resEncargado = evaluarAvisoCondicionFiscal(sinDeclarar, { rol: 'ENCARGADO' });
+            expect(resEncargado.mostrarAviso).toBe(true);
+            expect(resEncargado.puedeDeclarar).toBe(false);
+            expect(resEncargado.mensaje).toContain('El dueño todavía no declaró');
+
+            const declarada = { declarada: true, condicion_fiscal: 'RESPONSABLE_INSCRIPTO' };
+            expect(evaluarAvisoCondicionFiscal(declarada, { rol: 'DUENIO' })).toEqual({
+                mostrarAviso: false,
+                puedeDeclarar: false,
+                mensaje: '',
+            });
         });
     });
 });

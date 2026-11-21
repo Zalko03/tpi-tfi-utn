@@ -210,6 +210,11 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                     <span>Equipo & Permisos</span>
                 </button>
+
+                <button type="button" class="nav-item" data-seccion="configuracion" style="display: none;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    <span>Configuración del local</span>
+                </button>
             </nav>
 
             <!-- Sección Inferior: Usuario Activo y Logout -->
@@ -567,6 +572,7 @@
                      3. MÓDULO COMPRAS E IMPORTACIÓN DE LISTAS (CSV / IA)
                      ============================================================ -->
                 <section id="vista-compras" class="vista-modulo">
+                    <div id="aviso-condicion-fiscal-compras" class="aviso-fiscal-banner" role="status" style="display: none;"></div>
                     <div class="modulo-compras-tabs">
                         <button type="button" class="tab-compras-btn activa" data-tab="ia">
                             <span>Listas de precios de proveedores</span>
@@ -782,6 +788,7 @@ Envío: $2000</textarea>
                      ============================================================ -->
                 <section id="vista-recetas" class="vista-modulo">
                     <div class="recetas-layout-grilla">
+                        <div id="aviso-condicion-fiscal-recetas" class="aviso-fiscal-banner" role="status" style="display: none;"></div>
                         <div class="tarjeta-panel-blanca">
                             <div class="panel-cabecera-linea">
                                 <div>
@@ -1157,6 +1164,99 @@ Envío: $2000</textarea>
                     </div>
                 </section>
 
+                <!-- ============================================================
+                     7. MÓDULO CONFIGURACIÓN DEL LOCAL (EXCLUSIVO DUEÑO · HU14)
+                     ============================================================ -->
+                <section id="vista-configuracion" class="vista-modulo">
+                    <div class="configuracion-modulo-layout">
+                        <div class="tarjeta-panel-blanca">
+                            <div class="panel-cabecera-linea">
+                                <div>
+                                    <h3>Condición fiscal del local</h3>
+                                    <p class="text-muted">Indicá tu categoría frente al IVA para que el sistema calcule los costos de insumos y recetas con o sin IVA automáticamente.</p>
+                                </div>
+                                <span id="badge-estado-condicion-fiscal" class="badge-alerta-amarilla">Sin declarar</span>
+                            </div>
+
+                            <div id="aviso-condicion-fiscal-config" class="aviso-fiscal-banner mb-4" role="status" style="display: none;"></div>
+
+                            <form id="form-configuracion-fiscal" class="form-configuracion-fiscal">
+                                <fieldset class="fiscal-opciones-fieldset">
+                                    <legend class="sr-only">Elegí la condición fiscal del local</legend>
+                                    <div class="fiscal-opciones-grilla">
+                                        <label class="fiscal-opcion-card">
+                                            <input type="radio" name="condicion_fiscal" value="RESPONSABLE_INSCRIPTO" />
+                                            <div class="fiscal-opcion-contenido">
+                                                <div class="fiscal-opcion-titulo">
+                                                    <strong>Responsable Inscripto</strong>
+                                                    <span class="badge-rol duenio">Costea sin IVA</span>
+                                                </div>
+                                                <p class="text-muted">Calculamos tus costos descontando el IVA, porque lo tomás como crédito fiscal.</p>
+                                            </div>
+                                        </label>
+
+                                        <label class="fiscal-opcion-card">
+                                            <input type="radio" name="condicion_fiscal" value="MONOTRIBUTISTA" />
+                                            <div class="fiscal-opcion-contenido">
+                                                <div class="fiscal-opcion-titulo">
+                                                    <strong>Monotributista</strong>
+                                                    <span class="badge-rol encargado">Costea con IVA</span>
+                                                </div>
+                                                <p class="text-muted">Calculamos tus costos con el IVA incluido, porque es lo que pagás al proveedor.</p>
+                                            </div>
+                                        </label>
+
+                                        <label class="fiscal-opcion-card">
+                                            <input type="radio" name="condicion_fiscal" value="EXENTO" />
+                                            <div class="fiscal-opcion-contenido">
+                                                <div class="fiscal-opcion-titulo">
+                                                    <strong>IVA Exento</strong>
+                                                    <span class="badge-rol encargado">Costea con IVA</span>
+                                                </div>
+                                                <p class="text-muted">Calculamos tus costos con el IVA incluido, porque forma parte de tu gasto real.</p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </fieldset>
+
+                                <div class="fiscal-form-acciones">
+                                    <button type="submit" id="btn-guardar-condicion-fiscal" class="btn-primario-comercial">
+                                        <span>Guardar condición fiscal y recalcular recetas</span>
+                                    </button>
+                                    <span id="texto-ultimo-cambio-fiscal" class="text-muted"></span>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="tarjeta-panel-blanca">
+                            <div class="panel-cabecera-linea">
+                                <div>
+                                    <h3>Historial de cambios de condición fiscal</h3>
+                                    <p class="text-muted">Registro de cada cambio guardado y cuántas recetas se recalcularon.</p>
+                                </div>
+                            </div>
+                            <div class="tabla-contenedor-responsive">
+                                <table class="tabla-comercial">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-centro">Fecha</th>
+                                            <th class="col-texto">Condición anterior</th>
+                                            <th class="col-texto">Condición nueva</th>
+                                            <th class="col-centro">Insumos / Recetas</th>
+                                            <th class="col-texto">Responsable</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tabla-historial-fiscal-body">
+                                        <tr>
+                                            <td colspan="5" class="col-centro text-muted py-4">Todavía no registraste cambios de condición fiscal.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
             </main>
         </div>
 
@@ -1398,6 +1498,24 @@ Envío: $2000</textarea>
                         <input id="input-compra-envio" type="number" step="0.01" min="0" value="0.00" />
                     </div>
                 </div>
+                <div class="campos-dos-columnas">
+                    <div class="campo-grupo">
+                        <label class="permiso-casilla-item">
+                            <input id="check-compra-iva-incluido" type="checkbox" checked />
+                            <span>El precio ya incluye IVA</span>
+                        </label>
+                    </div>
+                    <div class="campo-grupo">
+                        <label for="select-compra-alicuota">Alícuota de IVA (%)</label>
+                        <select id="select-compra-alicuota">
+                            <option value="21.00" selected>21%</option>
+                            <option value="10.50">10,5%</option>
+                            <option value="27.00">27%</option>
+                            <option value="0.00">0% (Exento / sin IVA)</option>
+                        </select>
+                    </div>
+                </div>
+                <p id="texto-compra-criterio-iva" class="text-muted" style="font-size: 0.84rem; margin-top: -0.25rem;"></p>
                 <div class="modal-footer-acciones">
                     <button type="button" class="btn-secundario-comercial" data-cerrar="modal-nueva-compra">Cancelar</button>
                     <button type="submit" id="btn-confirmar-nueva-compra" class="btn-primario-comercial">Guardar Compra y Recalcular Costo Base</button>

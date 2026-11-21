@@ -18,9 +18,11 @@ import {
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
     consultarDisponibilidadDemoApi,
+    evaluarAvisoCondicionFiscal,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
+    formatearEtiquetaCondicionFiscal,
     crearFetchConSesion,
     construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
@@ -64,6 +66,7 @@ import {
     parsearCsvProveedor,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    puedeConfigurarLocal,
     puedeGestionarQrCarta,
     resolverPerfilDemoDesdeBoton,
     seccionesVisiblesParaUsuario,
@@ -166,6 +169,7 @@ export const estadoApp = {
     ultimoOrigenArchivo: 'texto',
     insumos: [],
     proveedores: [],
+    configuracionFiscal: null,
     turnosHistorial: [],
     usuariosEquipo: [],
     empleadoEditandoPermisos: null,
@@ -752,8 +756,16 @@ const aplicarAccionesCajaVisibles = () => {
     }
 };
 
+const obtenerSeccionesPermitidas = (usuario) => {
+    const secciones = [...seccionesVisiblesParaUsuario(usuario)];
+    if (puedeConfigurarLocal(usuario) && !secciones.includes('configuracion')) {
+        secciones.push('configuracion');
+    }
+    return secciones;
+};
+
 const configurarVisibilidadPorRol = (rol) => {
-    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
+    const seccionesVisibles = obtenerSeccionesPermitidas(estadoApp.usuario);
     const esCajero = rol === 'CAJERO';
 
     const btnConfigHeader = $('btn-config-servidor-header');
@@ -4250,12 +4262,210 @@ const abrirModalConfigServidor = () => {
 };
 
 // ============================================================
+// CONFIGURACIÓN FISCAL DEL LOCAL (EXCLUSIVO DUEÑO · HU14)
+// ============================================================
+const renderizarAvisosCondicionFiscal = () => {
+    const evaluacion = evaluarAvisoCondicionFiscal(estadoApp.configuracionFiscal, estadoApp.usuario);
+    const contenedores = [
+        $('aviso-condicion-fiscal-compras'),
+        $('aviso-condicion-fiscal-recetas'),
+        $('aviso-condicion-fiscal-config'),
+    ].filter(Boolean);
+
+    for (const el of contenedores) {
+        if (!evaluacion.mostrarAviso) {
+            el.style.display = 'none';
+            el.innerHTML = '';
+            continue;
+        }
+        const esPanelConfig = el.id === 'aviso-condicion-fiscal-config';
+        const botonHtml =
+            evaluacion.puedeDeclarar && !esPanelConfig
+                ? `<button type="button" class="btn-secundario-comercial btn-ir-config-fiscal">Declarar ahora</button>`
+                : '';
+        el.style.display = 'flex';
+        el.innerHTML = `
+            <div class="aviso-fiscal-banner-texto">
+                ${SVG_ICONOS.alerta}
+                <span>${escaparHtml(evaluacion.mensaje)}</span>
+            </div>
+            ${botonHtml}
+        `;
+        el.querySelector('.btn-ir-config-fiscal')?.addEventListener('click', () => {
+            cambiarSeccion('configuracion');
+        });
+    }
+
+    const textoCompraIva = $('texto-compra-criterio-iva');
+    if (textoCompraIva) {
+        const cfg = estadoApp.configuracionFiscal;
+        if (!cfg) {
+            textoCompraIva.textContent = '';
+        } else if (cfg.costear_con_iva === false) {
+            textoCompraIva.textContent =
+                'Tu local es Responsable Inscripto: calculamos el costo unitario descontando el IVA.';
+        } else {
+            textoCompraIva.textContent = cfg.declarada
+                ? `Tu local es ${formatearEtiquetaCondicionFiscal(cfg.condicion_fiscal)}: el costo unitario incluye IVA.`
+                : 'Sin condición fiscal declarada: por defecto el costo incluye IVA (lo realmente pagado).';
+        }
+    }
+};
+
+const renderizarVistaConfiguracionFiscal = () => {
+    renderizarAvisosCondicionFiscal();
+    if (!puedeConfigurarLocal(estadoApp.usuario)) return;
+
+    const cfg = estadoApp.configuracionFiscal || {
+        condicion_fiscal: 'NO_DECLARADA',
+        declarada: false,
+        costear_con_iva: true,
+        historial: [],
+    };
+
+    const badge = $('badge-estado-condicion-fiscal');
+    if (badge) {
+        const etiqueta =
+            cfg.condicion_fiscal_etiqueta || formatearEtiquetaCondicionFiscal(cfg.condicion_fiscal);
+        badge.textContent = etiqueta;
+        badge.className = cfg.declarada ? 'badge-estado-verde' : 'badge-alerta-amarilla';
+    }
+
+    document
+        .querySelectorAll('#form-configuracion-fiscal input[name="condicion_fiscal"]')
+        .forEach((radio) => {
+            radio.checked = radio.value === cfg.condicion_fiscal;
+        });
+
+    const ultimoEl = $('texto-ultimo-cambio-fiscal');
+    if (ultimoEl) {
+        if (cfg.actualizado_en && cfg.declarada) {
+            const fechaTxt = new Date(cfg.actualizado_en).toLocaleString('es-AR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+            ultimoEl.textContent = `Última actualización: ${fechaTxt}${cfg.actualizado_por_username ? ` por @${cfg.actualizado_por_username}` : ''}`;
+        } else {
+            ultimoEl.textContent = '';
+        }
+    }
+
+    const tbody = $('tabla-historial-fiscal-body');
+    if (!tbody) return;
+    const historial = Array.isArray(cfg.historial) ? cfg.historial : [];
+    if (historial.length === 0) {
+        tbody.innerHTML =
+            '<tr><td colspan="5" class="col-centro text-muted py-4">Todavía no registraste cambios de condición fiscal.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = '';
+    for (const reg of historial) {
+        const tr = document.createElement('tr');
+        const fechaTxt = reg.fecha
+            ? new Date(reg.fecha).toLocaleString('es-AR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+              })
+            : '-';
+        const antEtiqueta =
+            reg.condicion_anterior_etiqueta ||
+            formatearEtiquetaCondicionFiscal(reg.condicion_anterior);
+        const nuevaEtiqueta =
+            reg.condicion_nueva_etiqueta || formatearEtiquetaCondicionFiscal(reg.condicion_nueva);
+        tr.innerHTML = `
+            <td class="col-centro">${escaparHtml(fechaTxt)}</td>
+            <td class="col-texto">${escaparHtml(antEtiqueta)}</td>
+            <td class="col-texto"><strong>${escaparHtml(nuevaEtiqueta)}</strong></td>
+            <td class="col-centro">${escaparHtml(String(reg.insumos_recalculados ?? 0))} insumos · ${escaparHtml(String(reg.productos_recalculados ?? 0))} recetas</td>
+            <td class="col-texto">${escaparHtml(reg.modificado_por_username ? `@${reg.modificado_por_username}` : 'Dueño')}</td>
+        `;
+        tbody.appendChild(tr);
+    }
+};
+
+export const cargarConfiguracionFiscal = async () => {
+    if (!estadoApp.tokenJwt || !estadoApp.usuario) return;
+
+    const esDuenio = puedeConfigurarLocal(estadoApp.usuario);
+    const puedeVerEstado =
+        esDuenio ||
+        usuarioTienePermiso(estadoApp.usuario, 'insumos.ver') ||
+        usuarioTienePermiso(estadoApp.usuario, 'compras.ver') ||
+        usuarioTienePermiso(estadoApp.usuario, 'recetas.ver_costos');
+
+    if (!puedeVerEstado) return;
+
+    const ruta = esDuenio
+        ? `${estadoApp.djangoUrl}/api/configuracion-fiscal/`
+        : `${estadoApp.djangoUrl}/api/configuracion-fiscal/estado/`;
+
+    try {
+        const res = await fetchConSesion(ruta, {
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        if (res.ok) {
+            estadoApp.configuracionFiscal = await res.json();
+            renderizarVistaConfiguracionFiscal();
+        }
+    } catch {
+        // Fallback offline
+    }
+};
+
+const guardarCondicionFiscal = async () => {
+    if (!puedeConfigurarLocal(estadoApp.usuario)) return;
+    const seleccionado = document.querySelector(
+        '#form-configuracion-fiscal input[name="condicion_fiscal"]:checked'
+    );
+    if (!seleccionado) {
+        mostrarToast('Elegí una condición fiscal antes de guardar.', 'advertencia');
+        return;
+    }
+
+    try {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/configuracion-fiscal/`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ condicion_fiscal: seleccionado.value }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            estadoApp.configuracionFiscal = data;
+            renderizarVistaConfiguracionFiscal();
+            mostrarToast(
+                data.mensaje || 'Condición fiscal guardada y costos actualizados.',
+                'exito'
+            );
+            await cargarInsumos();
+            await cargarCatalogo();
+        } else {
+            const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+            mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+        }
+    } catch {
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+    }
+};
+
+// ============================================================
 // CARGA INICIAL Y NAVEGACIÓN
 // ============================================================
 const cargarDatosIniciales = async () => {
-    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
+    const seccionesVisibles = obtenerSeccionesPermitidas(estadoApp.usuario);
     await cargarTurnoActivo();
     await cargarCatalogo();
+    await cargarConfiguracionFiscal();
     if (seccionesVisibles.includes('compras') || seccionesVisibles.includes('recetas')) {
         await cargarInsumos();
         await cargarProveedores();
@@ -4270,7 +4480,7 @@ const cargarDatosIniciales = async () => {
 };
 
 const cambiarSeccion = (nombreSeccion) => {
-    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
+    const seccionesVisibles = obtenerSeccionesPermitidas(estadoApp.usuario);
     let destino = nombreSeccion;
     if (estadoApp.usuario) {
         if (seccionesVisibles.length === 0) {
@@ -4297,6 +4507,7 @@ const cambiarSeccion = (nombreSeccion) => {
         recetas: { titulo: 'Ingeniería de Recetas & Rentabilidad', sub: 'Costeo dinámico por insumos, descartables y mano de obra' },
         finanzas: { titulo: 'Reportes, Trazabilidad & Finanzas', sub: 'Trazabilidad por fechas, facturación real, margen bruto y punto de equilibrio' },
         personal: { titulo: 'Equipo & Permisos', sub: 'Sumá personas al equipo y elegí qué puede hacer cada una' },
+        configuracion: { titulo: 'Configuración del local', sub: 'Definí tu condición fiscal para calcular costos con o sin IVA' },
     };
 
     if (titulos[destino]) {
@@ -4309,6 +4520,8 @@ const cambiarSeccion = (nombreSeccion) => {
         if (input) setTimeout(() => input.focus(), 100);
     } else if (destino === 'finanzas' && estadoApp.tokenJwt && seccionesVisibles.includes('finanzas')) {
         cargarFinanzas();
+    } else if (destino === 'configuracion' && estadoApp.tokenJwt && puedeConfigurarLocal(estadoApp.usuario)) {
+        cargarConfiguracionFiscal();
     }
 };
 
@@ -4887,6 +5100,9 @@ Flete y entrega a local: $4500`;
 
     // 17. Compra Manual de Insumos
     $('btn-modal-nueva-compra')?.addEventListener('click', () => {
+        renderizarAvisosCondicionFiscal();
+        if ($('check-compra-iva-incluido')) $('check-compra-iva-incluido').checked = true;
+        if ($('select-compra-alicuota')) $('select-compra-alicuota').value = '21.00';
         if ($('modal-nueva-compra')) $('modal-nueva-compra').style.display = 'flex';
     });
     $('form-nueva-compra')?.addEventListener('submit', async (e) => {
@@ -4897,6 +5113,10 @@ Flete y entrega a local: $4500`;
         const unidad = $('select-compra-unidad').value;
         const precioTotal = $('input-compra-total').value;
         const envio = $('input-compra-envio').value || '0.00';
+        const ivaIncluido = $('check-compra-iva-incluido')
+            ? $('check-compra-iva-incluido').checked
+            : true;
+        const alicuota = $('select-compra-alicuota')?.value || '21.00';
 
         const btnSubmit = e.submitter || $('btn-confirmar-nueva-compra');
         await conCargando(btnSubmit, async () => {
@@ -4914,23 +5134,37 @@ Flete y entrega a local: $4500`;
                         unidad,
                         precio_total: precioTotal,
                         envio,
-                        iva_incluido: true,
+                        iva_incluido: ivaIncluido,
+                        alicuota,
                     }),
                 });
+                const data = await res.json().catch(() => ({}));
                 if (res.ok) {
-                    mostrarToast('Compra registrada y costo base ponderado recalculado.', 'exito');
+                    mostrarToast('Compra registrada y costo base recalculado.', 'exito');
+                    if (data.aviso_fiscal) {
+                        mostrarToast(data.aviso_fiscal, 'advertencia');
+                    }
                     if ($('modal-nueva-compra')) $('modal-nueva-compra').style.display = 'none';
                     $('form-nueva-compra').reset();
+                    if ($('check-compra-iva-incluido')) $('check-compra-iva-incluido').checked = true;
+                    if ($('select-compra-alicuota')) $('select-compra-alicuota').value = '21.00';
                     cargarInsumos();
                     cargarCatalogo();
                 } else {
-                    mostrarToast('Error al registrar compra.', 'peligro');
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi || 'Error al registrar compra.'), 'peligro');
                 }
             } catch (err) {
                 console.error('Error al registrar movimiento:', err);
                 mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
+    });
+
+    // 17b. Configuración fiscal del local (exclusivo Dueño)
+    $('form-configuracion-fiscal')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await conCargando($('btn-guardar-condicion-fiscal'), guardarCondicionFiscal);
     });
 
     // 18. Recalcular toda la carta y Gestión de Productos / Recetas
