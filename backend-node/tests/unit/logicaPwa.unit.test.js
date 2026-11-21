@@ -2369,8 +2369,8 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(mostrado).toBe(true);
             expect(elementos.seccion.hidden).toBe(false);
             expect(elementos.direccionEl.hidden).toBe(false);
-            expect(elementos.direccionEl.textContent).toContain('Plaza 25 de Mayo');
-            expect(elementos.direccionEl.textContent).toContain('Resistencia, Chaco');
+            expect(elementos.direccionEl.textContent).toContain('Mariano I. Loza 475');
+            expect(elementos.direccionEl.textContent).toContain('Goya, Corrientes');
             expect(elementos.iframe.src).toMatch(
                 /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html\?bbox=.*&layer=mapnik&marker=/
             );

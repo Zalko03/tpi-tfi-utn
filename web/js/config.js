@@ -5,8 +5,10 @@
 window.__SAPORI_CONFIG__ = {
     ...(window.__SAPORI_CONFIG__ || {}),
     ubicacionLocal: {
-        direccion: 'Av. 25 de Mayo 100 (frente a Plaza 25 de Mayo), Resistencia, Chaco',
-        latitud: -27.4514,
-        longitud: -58.9867,
+        // Dirección real del local (Google Maps: "Sapori Café, Mariano I. Loza 475, Goya").
+        // Coordenadas de OpenStreetMap para el número 475.
+        direccion: 'Mariano I. Loza 475, Goya, Corrientes',
+        latitud: -29.1437,
+        longitud: -59.264,
     },
 };

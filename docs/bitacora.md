@@ -2226,3 +2226,18 @@ Cómo probarlo:
 - **Antes de `seed_demo --video` en la base local:** hay que cerrar el Turno #1 de cajero_demo (abierto desde el 16/11). El comando se niega a correr mientras haya un turno viejo abierto, y lo explica.
 - **Equipo:** los botones de cada tarjeta ("Permisos", "Dar de baja", "Reactivar") ahora tienen el mismo ancho y no se parten en varios renglones.
 - **Verificado por Claude** sobre una copia de la base (Django 8000 + Node 3000 con Mongo `sapori_ensayo`): `seed_demo --video` dos veces (idempotente), ensayo 8/8 dos veces, el turno del video sigue abierto, y sin URLs el ensayo se niega a correr.
+
+
+
+Fecha: 2026-11-21
+Tarea: Dirección real del local en el ticket y en la carta pública
+Rama: fix/direccion-real-local
+Qué se hizo y por qué:
+- Evilkitty pasó la ubicación real del local (Google Maps: "Sapori Café, Mariano I. Loza 475, Goya, Corrientes") para que figure en el ticket, la carta y cualquier lugar con dirección. Coordenadas del número 475 tomadas de OpenStreetMap (Nominatim): -29.1437, -59.264.
+- Ticket (`web/index.html`): "Mariano I. Loza 475 · Goya, Corrientes". Se sacó la línea con un CUIT inventado y "IVA Responsable Inscripto", porque no son datos reales del local.
+- Carta pública (`web/js/config.js`): dirección y coordenadas del mapa.
+- Test de `renderizarUbicacionCarta` actualizado (lee la configuración real).
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (230 tests).
+- Abrir `/app/carta.html`: la sección de ubicación muestra la dirección nueva y el mapa centrado en Goya.
+---
