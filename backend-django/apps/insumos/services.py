@@ -1,8 +1,57 @@
-"""Servicios de lógica de negocio para conversión de unidades, costeo de insumos y compras."""
+"""Servicios de lógica de negocio para conversión de unidades, costeo de insumos, compras y condición fiscal."""
 
+import logging
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
+from django.db.models import Prefetch
+from django.utils import timezone
+
+from apps.comun.notificaciones_node import notificar_evento_node
+from apps.insumos.models import (
+    CONDICION_EXENTO,
+    CONDICION_MONOTRIBUTISTA,
+    CONDICION_NO_DECLARADA,
+    CONDICION_RESPONSABLE_INSCRIPTO,
+    CONDICIONES_FISCALES_CHOICES,
+    CONDICIONES_FISCALES_DECLARABLES,
+)
+
+logger = logging.getLogger(__name__)
+
+MENSAJE_AVISO_CONDICION_NO_DECLARADA = (
+    "Todavía no declaraste la condición fiscal del local. "
+    "Por ahora los costos se calculan incluyendo IVA (lo que realmente pagás)."
+)
+
+ETIQUETAS_CONDICION_FISCAL = dict(CONDICIONES_FISCALES_CHOICES)
+
+OPCIONES_CONDICION_FISCAL = [
+    {
+        "valor": CONDICION_RESPONSABLE_INSCRIPTO,
+        "etiqueta": "Responsable Inscripto",
+        "costear_con_iva": False,
+        "descripcion": (
+            "Calculamos tus costos sin IVA, porque el IVA de las compras te queda como crédito fiscal."
+        ),
+    },
+    {
+        "valor": CONDICION_MONOTRIBUTISTA,
+        "etiqueta": "Monotributista",
+        "costear_con_iva": True,
+        "descripcion": (
+            "Calculamos tus costos con IVA incluido, porque es lo que pagás al proveedor."
+        ),
+    },
+    {
+        "valor": CONDICION_EXENTO,
+        "etiqueta": "IVA Exento",
+        "costear_con_iva": True,
+        "descripcion": (
+            "Calculamos tus costos con IVA incluido, porque no se discrimina ni recupera."
+        ),
+    },
+]
 
 FACTORES_CONVERSION = {
     # Masa -> base 'g'
@@ -150,6 +199,83 @@ def prorratear_envio(lineas: list[dict], costo_envio_total: Decimal) -> list[Dec
     return prorrateos
 
 
+def resolver_costear_con_iva_por_condicion(condicion_fiscal: str | None) -> bool:
+    """
+    Determina si los costos unitarios deben incluir IVA según la condición fiscal (HU14):
+    - Responsable Inscripto: False (excluye IVA).
+    - Monotributista, IVA Exento o Sin declarar (por defecto §0 2b): True (incluye IVA).
+    """
+    return condicion_fiscal != CONDICION_RESPONSABLE_INSCRIPTO
+
+
+def obtener_criterio_iva_vigente() -> dict:
+    """
+    Consulta la configuración fiscal vigente del local (solo lectura).
+    Si aún no fue declarada, aplica el criterio por defecto (costear_con_iva=True)
+    e incluye el aviso obligatorio (CA14.2).
+    """
+    from apps.insumos.models import ConfiguracionLocal
+
+    config = ConfiguracionLocal.objects.select_related("actualizado_por").order_by("id").first()
+    condicion = config.condicion_fiscal if config else CONDICION_NO_DECLARADA
+    declarada = condicion != CONDICION_NO_DECLARADA
+    costear_con_iva = resolver_costear_con_iva_por_condicion(condicion)
+
+    return {
+        "condicion_fiscal": condicion,
+        "condicion_fiscal_etiqueta": ETIQUETAS_CONDICION_FISCAL.get(condicion, "Sin declarar"),
+        "declarada": declarada,
+        "costear_con_iva": costear_con_iva,
+        "aviso": None if declarada else MENSAJE_AVISO_CONDICION_NO_DECLARADA,
+        "actualizado_en": config.actualizado_en.isoformat()
+        if (config and config.actualizado_en)
+        else None,
+        "actualizado_por_username": (
+            config.actualizado_por.username if (config and config.actualizado_por) else None
+        ),
+    }
+
+
+def listar_historial_condicion_fiscal(limite: int = 20) -> list[dict]:
+    """Devuelve el historial de cambios de condición fiscal ordenado del más reciente al más antiguo."""
+    from apps.insumos.models import HistorialCondicionFiscal
+
+    registros = HistorialCondicionFiscal.objects.select_related("modificado_por").all()[:limite]
+    return [
+        {
+            "id": reg.id,
+            "condicion_anterior": reg.condicion_anterior,
+            "condicion_anterior_etiqueta": ETIQUETAS_CONDICION_FISCAL.get(
+                reg.condicion_anterior, reg.condicion_anterior
+            ),
+            "condicion_nueva": reg.condicion_nueva,
+            "condicion_nueva_etiqueta": ETIQUETAS_CONDICION_FISCAL.get(
+                reg.condicion_nueva, reg.condicion_nueva
+            ),
+            "costear_con_iva_anterior": reg.costear_con_iva_anterior,
+            "costear_con_iva_nuevo": reg.costear_con_iva_nuevo,
+            "insumos_recalculados": reg.insumos_recalculados,
+            "productos_recalculados": reg.productos_recalculados,
+            "detalles": reg.detalles or {},
+            "modificado_por_username": (
+                reg.modificado_por.username if reg.modificado_por else None
+            ),
+            "fecha": reg.fecha.isoformat() if reg.fecha else None,
+        }
+        for reg in registros
+    ]
+
+
+def obtener_detalle_configuracion_fiscal(limite_historial: int = 20) -> dict:
+    """Retorna la configuración fiscal completa, opciones disponibles e historial reciente."""
+    estado = obtener_criterio_iva_vigente()
+    return {
+        **estado,
+        "opciones": OPCIONES_CONDICION_FISCAL,
+        "historial": listar_historial_condicion_fiscal(limite=limite_historial),
+    }
+
+
 def registrar_compra_y_actualizar_costo(
     proveedor,
     insumo,
@@ -159,14 +285,24 @@ def registrar_compra_y_actualizar_costo(
     envio: Decimal = Decimal("0.00"),
     iva_incluido: bool = True,
     alicuota: Decimal = Decimal("21.00"),
-    costear_con_iva: bool = True,
+    costear_con_iva: bool | None = None,
     fecha=None,
 ):
     """
     Persiste una Compra, actualiza el costo_unitario vigente del Insumo
     y propaga el recálculo a las recetas afectadas.
+    Si no se especifica costear_con_iva, aplica la condición fiscal vigente del local.
     """
     from apps.insumos.models import Compra
+
+    criterio_fiscal = None
+    if costear_con_iva is None:
+        criterio_fiscal = obtener_criterio_iva_vigente()
+        costear_con_iva_aplicado = criterio_fiscal["costear_con_iva"]
+        aviso_fiscal = criterio_fiscal["aviso"]
+    else:
+        costear_con_iva_aplicado = bool(costear_con_iva)
+        aviso_fiscal = None
 
     costo_unit = calcular_costo_unitario(
         precio_total=precio_total,
@@ -176,7 +312,7 @@ def registrar_compra_y_actualizar_costo(
         envio=envio,
         iva_incluido=iva_incluido,
         alicuota=alicuota,
-        costear_con_iva=costear_con_iva,
+        costear_con_iva=costear_con_iva_aplicado,
     )
 
     datos = {
@@ -209,6 +345,8 @@ def registrar_compra_y_actualizar_costo(
         pass
 
     compra._productos_recalculados = productos_recalculados
+    compra._costear_con_iva_aplicado = costear_con_iva_aplicado
+    compra._aviso_fiscal = aviso_fiscal
     return compra
 
 
@@ -273,13 +411,13 @@ def registrar_lote_compras_importacion(
     proveedor_id: int | None = None,
     proveedor_nombre: str | None = None,
     envio_total: Decimal = Decimal("0.00"),
-    costear_con_iva: bool = True,
+    costear_con_iva: bool | None = None,
 ) -> dict:
     """
     Registra de forma atómica un lote de compras aprobadas por el humano (T3.3):
     1. Resuelve el proveedor y cada insumo.
     2. Prorratea el envío total proporcionalmente al precio de cada línea (§3).
-    3. Crea cada Compra y actualiza el costo_unitario del Insumo.
+    3. Crea cada Compra y actualiza el costo_unitario del Insumo según la condición fiscal vigente.
     4. Recalcula todas las recetas afectadas y retorna tanto las compras como el
        desglose completo de productos recalculados para que Node persista
        historial_precios y snapshots_costeo.
@@ -290,6 +428,11 @@ def registrar_lote_compras_importacion(
     envio_dec = Decimal(str(envio_total or "0.00"))
     if envio_dec < Decimal("0"):
         raise ValueError("El costo de envío no puede ser negativo.")
+
+    criterio_fiscal = obtener_criterio_iva_vigente()
+    costear_con_iva_aplicado = (
+        criterio_fiscal["costear_con_iva"] if costear_con_iva is None else bool(costear_con_iva)
+    )
 
     proveedor = _resolver_proveedor_importacion(
         proveedor_id=proveedor_id, proveedor_nombre=proveedor_nombre
@@ -318,7 +461,7 @@ def registrar_lote_compras_importacion(
             envio=envio_linea,
             iva_incluido=iva_incluido,
             alicuota=alicuota,
-            costear_con_iva=costear_con_iva,
+            costear_con_iva=costear_con_iva_aplicado,
         )
 
         productos_recalculados.extend(getattr(compra, "_productos_recalculados", []))
@@ -344,8 +487,265 @@ def registrar_lote_compras_importacion(
         "proveedor_id": proveedor.id,
         "proveedor_nombre": proveedor.nombre,
         "envio_total": str(envio_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        "condicion_fiscal": criterio_fiscal["condicion_fiscal"],
+        "costear_con_iva": costear_con_iva_aplicado,
+        "aviso_fiscal": criterio_fiscal["aviso"] if costear_con_iva is None else None,
         "compras_creadas": compras_creadas,
         "productos_recalculados": productos_recalculados,
+    }
+
+
+def _recalcular_costos_por_condicion_fiscal(costear_con_iva: bool) -> dict:
+    """
+    Recalcula el costo_unitario de cada insumo activo a partir de su última compra
+    según el criterio de IVA vigente y propaga el recálculo a los productos afectados.
+    """
+    from apps.insumos.models import Compra, Insumo
+    from apps.recetas.models import Producto, RecetaItem
+    from apps.recetas.services import calcular_margen_y_ganancia, obtener_desglose_costeo_producto
+
+    ahora = timezone.now()
+    ultimas_compras_por_insumo = {}
+    compras_qs = (
+        Compra.objects.filter(insumo__estado_activo=True)
+        .select_related("insumo")
+        .order_by("insumo_id", "-fecha", "-id")
+    )
+    for compra in compras_qs:
+        if compra.insumo_id not in ultimas_compras_por_insumo:
+            ultimas_compras_por_insumo[compra.insumo_id] = compra
+
+    insumos_a_actualizar = []
+    insumos_detalle = []
+
+    for insumo_id, compra in ultimas_compras_por_insumo.items():
+        insumo = compra.insumo
+        try:
+            nuevo_costo = calcular_costo_unitario(
+                precio_total=compra.precio_total,
+                cantidad=compra.cantidad,
+                unidad=compra.unidad,
+                unidad_base=insumo.unidad_base,
+                envio=compra.envio,
+                iva_incluido=compra.iva_incluido,
+                alicuota=compra.alicuota,
+                costear_con_iva=costear_con_iva,
+            )
+        except ValueError:
+            continue
+
+        if nuevo_costo != insumo.costo_unitario:
+            costo_anterior = insumo.costo_unitario
+            insumo.costo_unitario = nuevo_costo
+            insumo.actualizado_en = ahora
+            insumos_a_actualizar.append(insumo)
+            insumos_detalle.append(
+                {
+                    "insumo_id": insumo_id,
+                    "nombre": insumo.nombre,
+                    "costo_anterior": str(costo_anterior),
+                    "costo_nuevo": str(nuevo_costo),
+                }
+            )
+
+    if insumos_a_actualizar:
+        Insumo.objects.bulk_update(insumos_a_actualizar, ["costo_unitario", "actualizado_en"])
+
+    if not insumos_a_actualizar:
+        return {"insumos": [], "productos": []}
+
+    ids_insumos = [ins.id for ins in insumos_a_actualizar]
+    productos_afectados = list(
+        Producto.objects.filter(
+            receta_items__insumo_id__in=ids_insumos,
+            estado_activo=True,
+        )
+        .prefetch_related(
+            Prefetch(
+                "receta_items",
+                queryset=RecetaItem.objects.select_related("insumo").order_by("id"),
+            )
+        )
+        .distinct()
+    )
+
+    productos_detalle = []
+    if productos_afectados:
+        for prod in productos_afectados:
+            costo_anterior = prod.costo_total_calculado
+            desglose = obtener_desglose_costeo_producto(prod)
+            ganancia, margen = calcular_margen_y_ganancia(
+                prod.precio_venta, desglose["costo_total"]
+            )
+            prod.costo_total_calculado = desglose["costo_total"]
+            prod.ganancia_bruta = ganancia
+            prod.margen_bruto = margen
+            prod.actualizado_en = ahora
+
+            productos_detalle.append(
+                {
+                    "producto_id": prod.id,
+                    "nombre": prod.nombre,
+                    "costo_anterior": str(costo_anterior),
+                    "costo_nuevo": str(prod.costo_total_calculado),
+                    "margen_nuevo": str(prod.margen_bruto),
+                    "costo_mano_obra": desglose["costo_mano_obra"],
+                    "costo_descartables": desglose["costo_descartables"],
+                    "desglose_insumos": desglose["desglose_insumos"],
+                }
+            )
+
+        Producto.objects.bulk_update(
+            productos_afectados,
+            [
+                "costo_total_calculado",
+                "ganancia_bruta",
+                "margen_bruto",
+                "actualizado_en",
+            ],
+        )
+
+    return {"insumos": insumos_detalle, "productos": productos_detalle}
+
+
+@transaction.atomic
+def _persistir_cambio_condicion_fiscal(condicion_nueva: str, usuario=None) -> dict:
+    """Guarda la condición fiscal del local, recalcula insumos/recetas y registra historial."""
+    from apps.insumos.models import ConfiguracionLocal, HistorialCondicionFiscal
+
+    if condicion_nueva not in CONDICIONES_FISCALES_DECLARABLES:
+        raise ValueError(
+            "Elegí una condición fiscal válida (Responsable Inscripto, Monotributista o IVA Exento)."
+        )
+
+    config = ConfiguracionLocal.objects.select_for_update().order_by("id").first()
+    if config is None:
+        config = ConfiguracionLocal.objects.create(
+            condicion_fiscal=CONDICION_NO_DECLARADA,
+        )
+
+    condicion_anterior = config.condicion_fiscal
+    costear_anterior = config.costear_con_iva
+
+    if condicion_nueva == condicion_anterior:
+        return {
+            "cambio_realizado": False,
+            "condicion_anterior": condicion_anterior,
+            "condicion_nueva": condicion_nueva,
+            "costear_con_iva": costear_anterior,
+            "insumos_recalculados": [],
+            "productos_recalculados": [],
+        }
+
+    config.condicion_fiscal = condicion_nueva
+    config.actualizado_por = (
+        usuario if (usuario and getattr(usuario, "is_authenticated", False)) else None
+    )
+    config.save(update_fields=["condicion_fiscal", "actualizado_por", "actualizado_en"])
+    costear_nuevo = config.costear_con_iva
+
+    if costear_nuevo != costear_anterior:
+        recalculo = _recalcular_costos_por_condicion_fiscal(costear_nuevo)
+    else:
+        recalculo = {"insumos": [], "productos": []}
+
+    insumos_recalculados = recalculo["insumos"]
+    productos_recalculados = recalculo["productos"]
+
+    HistorialCondicionFiscal.objects.create(
+        condicion_anterior=condicion_anterior,
+        condicion_nueva=condicion_nueva,
+        costear_con_iva_anterior=costear_anterior,
+        costear_con_iva_nuevo=costear_nuevo,
+        insumos_recalculados=len(insumos_recalculados),
+        productos_recalculados=len(productos_recalculados),
+        detalles={
+            "insumos": insumos_recalculados,
+            "productos": [
+                {
+                    "producto_id": p["producto_id"],
+                    "nombre": p["nombre"],
+                    "costo_anterior": p["costo_anterior"],
+                    "costo_nuevo": p["costo_nuevo"],
+                    "margen_nuevo": p["margen_nuevo"],
+                }
+                for p in productos_recalculados
+            ],
+        },
+        modificado_por=config.actualizado_por,
+    )
+
+    return {
+        "cambio_realizado": True,
+        "condicion_anterior": condicion_anterior,
+        "condicion_nueva": condicion_nueva,
+        "costear_con_iva": costear_nuevo,
+        "insumos_recalculados": insumos_recalculados,
+        "productos_recalculados": productos_recalculados,
+    }
+
+
+def _notificar_recalculo_fiscal_node(resultado_cambio: dict) -> None:
+    """Notifica a backend-node los productos recalculados tras un cambio fiscal (best-effort)."""
+    productos = resultado_cambio.get("productos_recalculados") or []
+    if not productos:
+        return
+
+    etiqueta_ant = ETIQUETAS_CONDICION_FISCAL.get(
+        resultado_cambio["condicion_anterior"], resultado_cambio["condicion_anterior"]
+    )
+    etiqueta_nueva = ETIQUETAS_CONDICION_FISCAL.get(
+        resultado_cambio["condicion_nueva"], resultado_cambio["condicion_nueva"]
+    )
+    payload = {
+        "motivo": f"Cambio de condición fiscal ({etiqueta_ant} → {etiqueta_nueva})",
+        "condicionFiscal": resultado_cambio["condicion_nueva"],
+        "costearConIva": resultado_cambio["costear_con_iva"],
+        "productosRecalculados": [
+            {
+                "productoId": p["producto_id"],
+                "nombre": p["nombre"],
+                "costoAnterior": p["costo_anterior"],
+                "costoNuevo": p["costo_nuevo"],
+                "margenNuevo": p["margen_nuevo"],
+                "costoManoObra": p["costo_mano_obra"],
+                "costoDescartables": p["costo_descartables"],
+                "desgloseInsumos": [
+                    {
+                        "insumoId": d["insumo_id"],
+                        "nombre": d["nombre"],
+                        "cantidad": d["cantidad"],
+                        "unidad": d["unidad"],
+                        "costoUnitario": d["costo_unitario"],
+                        "costoLinea": d["costo_linea"],
+                    }
+                    for d in p["desglose_insumos"]
+                ],
+            }
+            for p in productos
+        ],
+    }
+    try:
+        notificar_evento_node("costos.recalculados", payload)
+    except Exception:
+        logger.exception("Error inesperado al notificar recálculo fiscal a backend-node")
+
+
+def actualizar_condicion_fiscal(condicion_nueva: str, usuario=None) -> dict:
+    """
+    Actualiza la condición fiscal del local, recalcula insumos/productos afectados,
+    registra el historial en PostgreSQL y notifica a Node tras confirmar la transacción (HU14).
+    """
+    resultado = _persistir_cambio_condicion_fiscal(condicion_nueva=condicion_nueva, usuario=usuario)
+    if resultado["cambio_realizado"] and resultado["productos_recalculados"]:
+        _notificar_recalculo_fiscal_node(resultado)
+
+    detalle = obtener_detalle_configuracion_fiscal()
+    return {
+        **detalle,
+        "cambio_realizado": resultado["cambio_realizado"],
+        "insumos_recalculados": len(resultado["insumos_recalculados"]),
+        "productos_recalculados": len(resultado["productos_recalculados"]),
     }
 
 

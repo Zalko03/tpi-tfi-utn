@@ -1,24 +1,35 @@
-"""ViewSets delgados para proveedores, insumos y compras."""
+"""ViewSets y vistas delgadas para proveedores, insumos, compras y configuración fiscal."""
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.comun.filtros import extraer_rango_fechas, filtrar_queryset_por_rango_fechas
 from apps.insumos.models import Compra, Insumo, Proveedor
 from apps.insumos.serializers import (
     CompraSerializer,
+    ConfiguracionFiscalActualizarSerializer,
     ConfirmarImportacionComprasSerializer,
     InsumoSerializer,
     ProveedorSerializer,
 )
 from apps.insumos.services import (
+    actualizar_condicion_fiscal,
+    listar_historial_condicion_fiscal,
+    obtener_criterio_iva_vigente,
+    obtener_detalle_configuracion_fiscal,
     obtener_movimientos_stock_trazabilidad,
     registrar_lote_compras_importacion,
 )
-from apps.usuarios.permissions import TienePermiso, usuario_tiene_permiso
+from apps.usuarios.permissions import (
+    EsDuenio,
+    TieneAlgunPermiso,
+    TienePermiso,
+    usuario_tiene_permiso,
+)
 
 
 class ProveedorViewSet(viewsets.ModelViewSet):
@@ -164,3 +175,75 @@ class CompraViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class ConfiguracionFiscalView(APIView):
+    """
+    Configuración fiscal del local exclusiva del Dueño (HU14):
+    - GET: devuelve condición actual, si está declarada, criterio de IVA e historial reciente.
+    - PUT/PATCH: declara o cambia la condición fiscal, recalcula insumos/recetas y registra historial.
+    """
+
+    permission_classes = [EsDuenio]
+
+    def get(self, request):
+        return Response(obtener_detalle_configuracion_fiscal(), status=status.HTTP_200_OK)
+
+    def _actualizar(self, request):
+        serializer = ConfiguracionFiscalActualizarSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            resultado = actualizar_condicion_fiscal(
+                condicion_nueva=serializer.validated_data["condicion_fiscal"],
+                usuario=request.user,
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+        if resultado["cambio_realizado"]:
+            mensaje = (
+                f"Condición fiscal actualizada a {resultado['condicion_fiscal_etiqueta']}. "
+                f"Se recalcularon {resultado['insumos_recalculados']} insumos y "
+                f"{resultado['productos_recalculados']} recetas."
+            )
+        else:
+            mensaje = (
+                f"La condición fiscal ya estaba configurada como "
+                f"{resultado['condicion_fiscal_etiqueta']}."
+            )
+
+        return Response(
+            {
+                "mensaje": mensaje,
+                **resultado,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def put(self, request):
+        return self._actualizar(request)
+
+    def patch(self, request):
+        return self._actualizar(request)
+
+
+class ConfiguracionFiscalEstadoView(APIView):
+    """
+    Consulta de solo lectura del estado fiscal vigente (aviso si no está declarada)
+    para operadores con permisos sobre insumos, compras o costos de recetas (CA14.2).
+    """
+
+    permission_classes = [TieneAlgunPermiso("insumos.ver", "compras.ver", "recetas.ver_costos")]
+
+    def get(self, request):
+        return Response(obtener_criterio_iva_vigente(), status=status.HTTP_200_OK)
+
+
+class ConfiguracionFiscalHistorialView(APIView):
+    """Historial de cambios de condición fiscal exclusivo del Dueño (CA14.3)."""
+
+    permission_classes = [EsDuenio]
+
+    def get(self, request):
+        datos = listar_historial_condicion_fiscal(limite=50)
+        return Response({"datos": datos, "total": len(datos)}, status=status.HTTP_200_OK)

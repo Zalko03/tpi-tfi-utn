@@ -651,3 +651,31 @@ class TestApiPermisosNegativosSistematicos:
         detalle = res_detalle.json()
         assert detalle["ventas_efectivo_total"] == "3200.00"
         assert detalle["efectivo_esperado"] is not None
+
+    # ==========================================
+    # CONFIGURACIÓN FISCAL DEL LOCAL (HU14)
+    # ==========================================
+
+    def test_configuracion_fiscal_rechaza_encargado_y_cajero(self, client, encargado, cajero):
+        """Solo el Dueño puede consultar o modificar /api/configuracion-fiscal/ y su historial."""
+        for usuario in (encargado, cajero):
+            client.force_authenticate(user=usuario)
+            self._verificar_403(client.get("/api/configuracion-fiscal/"))
+            self._verificar_403(
+                client.put(
+                    "/api/configuracion-fiscal/",
+                    {"condicion_fiscal": "RESPONSABLE_INSCRIPTO"},
+                    format="json",
+                )
+            )
+            self._verificar_403(
+                client.patch(
+                    "/api/configuracion-fiscal/",
+                    {"condicion_fiscal": "MONOTRIBUTISTA"},
+                    format="json",
+                )
+            )
+            self._verificar_403(client.get("/api/configuracion-fiscal/historial/"))
+
+        client.force_authenticate(user=cajero)
+        self._verificar_403(client.get("/api/configuracion-fiscal/estado/"))

@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.comun.throttling import CartaPublicaRateThrottle, RecalculoRateThrottle
+from apps.insumos.services import obtener_criterio_iva_vigente
 from apps.recetas.models import RecetaItem
 from apps.recetas.serializers import (
     CartaPublicaProductoSerializer,
@@ -96,10 +97,13 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     "margen_bruto": str(producto.margen_bruto),
                 }
             )
+        criterio = obtener_criterio_iva_vigente()
         return Response(
             {
                 "mensaje": f"Se recalcularon {len(resultados)} recetas exitosamente.",
                 "total_recalculados": len(resultados),
+                "costear_con_iva": criterio["costear_con_iva"],
+                "aviso_fiscal": criterio["aviso"],
                 "productos": resultados,
             },
             status=status.HTTP_200_OK,
@@ -115,12 +119,15 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """Fuerza el recálculo de costos y márgenes del producto (con rate limiting de T2.5)."""
         producto = self.get_object()
         actualizar_costo_y_margen_producto(producto)
+        criterio = obtener_criterio_iva_vigente()
         return Response(
             {
                 "mensaje": f"Costo recalculado exitosamente para {producto.nombre}",
                 "costo_total": str(producto.costo_total_calculado),
                 "ganancia_bruta": str(producto.ganancia_bruta),
                 "margen_bruto": str(producto.margen_bruto),
+                "costear_con_iva": criterio["costear_con_iva"],
+                "aviso_fiscal": criterio["aviso"],
             },
             status=status.HTTP_200_OK,
         )
