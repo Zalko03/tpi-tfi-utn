@@ -4,8 +4,12 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.recetas.models import Producto, RecetaItem
-from apps.recetas.services import actualizar_costo_y_margen_producto
+from apps.recetas.models import PrecioCompetencia, Producto, RecetaItem
+from apps.recetas.services import (
+    MULTIPLOS_REDONDEO_PERMITIDOS,
+    actualizar_costo_y_margen_producto,
+    obtener_sugerencia_precio_producto,
+)
 
 
 class CartaPublicaProductoSerializer(serializers.ModelSerializer):
@@ -55,8 +59,47 @@ class RecetaItemSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class PrecioCompetenciaSerializer(serializers.ModelSerializer):
+    producto_nombre = serializers.ReadOnlyField(source="producto.nombre")
+
+    class Meta:
+        model = PrecioCompetencia
+        fields = [
+            "id",
+            "producto",
+            "producto_nombre",
+            "nombre_competidor",
+            "precio",
+            "observacion",
+            "creado_en",
+            "actualizado_en",
+        ]
+        read_only_fields = ["id", "creado_en", "actualizado_en"]
+
+    def validate_nombre_competidor(self, value):
+        limpio = str(value or "").strip()
+        return limpio or "Referencia de mercado"
+
+    def validate_precio(self, value):
+        if Decimal(str(value)) <= Decimal("0"):
+            raise serializers.ValidationError("El precio de competencia debe ser mayor a cero.")
+        return value
+
+    def validate(self, attrs):
+        if self.instance is not None and "producto" in attrs:
+            producto_nuevo = attrs["producto"]
+            if producto_nuevo is None or producto_nuevo.pk != self.instance.producto_id:
+                raise serializers.ValidationError(
+                    {"producto": "No se puede cambiar el producto de una referencia existente."}
+                )
+        return attrs
+
+
 class ProductoSerializer(serializers.ModelSerializer):
     receta_items = RecetaItemSerializer(many=True, read_only=True)
+    precios_competencia = PrecioCompetenciaSerializer(many=True, read_only=True)
+    precio_sugerido = serializers.SerializerMethodField()
+    sugerencia_precio = serializers.SerializerMethodField()
 
     class Meta:
         model = Producto
@@ -71,6 +114,11 @@ class ProductoSerializer(serializers.ModelSerializer):
             "costo_total_calculado",
             "ganancia_bruta",
             "margen_bruto",
+            "margen_objetivo",
+            "redondeo_multiplo",
+            "precio_sugerido",
+            "sugerencia_precio",
+            "precios_competencia",
             "receta_items",
             "estado_activo",
             "creado_en",
@@ -81,9 +129,24 @@ class ProductoSerializer(serializers.ModelSerializer):
             "costo_total_calculado",
             "ganancia_bruta",
             "margen_bruto",
+            "precio_sugerido",
+            "sugerencia_precio",
             "creado_en",
             "actualizado_en",
         ]
+
+    def _obtener_sugerencia_cache(self, obj) -> dict:
+        cache = getattr(obj, "_sugerencia_precio_cache", None)
+        if cache is None:
+            cache = obtener_sugerencia_precio_producto(obj)
+            obj._sugerencia_precio_cache = cache
+        return cache
+
+    def get_precio_sugerido(self, obj) -> str:
+        return self._obtener_sugerencia_cache(obj)["precio_sugerido"]
+
+    def get_sugerencia_precio(self, obj) -> dict:
+        return self._obtener_sugerencia_cache(obj)
 
     def validate_precio_venta(self, value):
         if Decimal(str(value)) <= Decimal("0"):
@@ -96,6 +159,19 @@ class ProductoSerializer(serializers.ModelSerializer):
                 "Los minutos de mano de obra no pueden ser negativos."
             )
         return value
+
+    def validate_margen_objetivo(self, value):
+        margen = Decimal(str(value))
+        if margen < Decimal("0") or margen >= Decimal("1"):
+            raise serializers.ValidationError(
+                "El margen objetivo debe ser mayor o igual a 0 y menor a 1 (ej. 0.30 para 30%)."
+            )
+        return value
+
+    def validate_redondeo_multiplo(self, value):
+        if int(value) not in MULTIPLOS_REDONDEO_PERMITIDOS:
+            raise serializers.ValidationError("El múltiplo de redondeo debe ser $50 o $100.")
+        return int(value)
 
     def create(self, validated_data):
         producto = super().create(validated_data)
@@ -130,6 +206,11 @@ class ProductoSerializer(serializers.ModelSerializer):
                 ret["costo_total_calculado"] = None
                 ret["ganancia_bruta"] = None
                 ret["margen_bruto"] = None
+                ret["margen_objetivo"] = None
+                ret["redondeo_multiplo"] = None
+                ret["precio_sugerido"] = None
+                ret["sugerencia_precio"] = None
+                ret["precios_competencia"] = []
                 if "receta_items" in ret and isinstance(ret["receta_items"], list):
                     for item in ret["receta_items"]:
                         item["insumo_costo_unitario"] = None

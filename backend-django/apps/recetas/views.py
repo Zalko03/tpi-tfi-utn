@@ -1,7 +1,7 @@
 """ViewSets para productos y recetas."""
 
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -9,9 +9,10 @@ from rest_framework.views import APIView
 
 from apps.comun.throttling import CartaPublicaRateThrottle, RecalculoRateThrottle
 from apps.insumos.services import obtener_criterio_iva_vigente
-from apps.recetas.models import RecetaItem
+from apps.recetas.models import PrecioCompetencia, RecetaItem
 from apps.recetas.serializers import (
     CartaPublicaProductoSerializer,
+    PrecioCompetenciaSerializer,
     ProductoSerializer,
     RecetaItemSerializer,
 )
@@ -19,6 +20,7 @@ from apps.recetas.services import (
     actualizar_costo_y_margen_producto,
     listar_productos_carta_publica,
     listar_productos_con_costos_optimizado,
+    obtener_sugerencia_precio_producto,
 )
 from apps.usuarios.permissions import TieneAlgunPermiso, TienePermiso
 
@@ -46,7 +48,7 @@ class CartaPublicaView(APIView):
 
 
 class ProductoViewSet(viewsets.ModelViewSet):
-    queryset = listar_productos_con_costos_optimizado()
+    queryset = listar_productos_con_costos_optimizado(incluir_competencia=True)
     serializer_class = ProductoSerializer
     filter_backends = [
         DjangoFilterBackend,
@@ -72,7 +74,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
             return [TienePermiso("recetas.editar")()]
         elif self.action == "destroy":
             return [TienePermiso("recetas.eliminar")()]
-        elif self.action in ("recalcular", "recalcular_todos", "costo"):
+        elif self.action in ("recalcular", "recalcular_todos", "costo", "precio_sugerido"):
             return [TienePermiso("recetas.ver_costos")()]
         return [IsAuthenticated()]
 
@@ -151,6 +153,31 @@ class ProductoViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="precio-sugerido",
+    )
+    def precio_sugerido(self, request, pk=None):
+        """
+        Calcula el precio sugerido del producto según margen objetivo, redondeo configurable
+        y precios de competencia cargados, sin modificar precio_venta automáticamente (HU9).
+        """
+        producto = self.get_object()
+        margen_param = request.query_params.get("margen_objetivo")
+        multiplo_param = request.query_params.get("redondeo_multiplo")
+
+        try:
+            sugerencia = obtener_sugerencia_precio_producto(
+                producto,
+                margen_objetivo=margen_param if margen_param not in (None, "") else None,
+                redondeo_multiplo=multiplo_param if multiplo_param not in (None, "") else None,
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+        return Response(sugerencia, status=status.HTTP_200_OK)
+
 
 class RecetaItemViewSet(viewsets.ModelViewSet):
     queryset = RecetaItem.objects.select_related("producto", "insumo").all()
@@ -181,3 +208,25 @@ class RecetaItemViewSet(viewsets.ModelViewSet):
         producto = instance.producto
         instance.delete()
         actualizar_costo_y_margen_producto(producto)
+
+
+class PrecioCompetenciaViewSet(viewsets.ModelViewSet):
+    """CRUD de precios de referencia de la competencia cargados a mano por producto (HU9)."""
+
+    queryset = PrecioCompetencia.objects.select_related("producto").all()
+    serializer_class = PrecioCompetenciaSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["producto"]
+    ordering_fields = ["precio", "nombre_competidor", "creado_en"]
+    ordering = ["precio", "id"]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [TienePermiso("recetas.ver_costos")()]
+        elif self.action == "create":
+            return [TienePermiso("recetas.crear")()]
+        elif self.action in ("update", "partial_update"):
+            return [TienePermiso("recetas.editar")()]
+        elif self.action == "destroy":
+            return [TienePermiso("recetas.eliminar")()]
+        return [IsAuthenticated()]
