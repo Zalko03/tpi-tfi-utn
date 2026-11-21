@@ -6,14 +6,17 @@ import { validarCampos } from '../middlewares/validarCampos.middleware.js';
 
 const router = Router();
 
-const EVENTOS_VENTA_PERMITIDOS = ['venta.registrada', 'venta.anulada'];
+const EVENTOS_INTERNOS_PERMITIDOS = ['venta.registrada', 'venta.anulada', 'costos.recalculados'];
+
+const esEventoVenta = (req) =>
+    ['venta.registrada', 'venta.anulada'].includes(req.body?.evento);
 
 const checksEventoInterno = [
     check('evento')
         .exists({ checkFalsy: true })
         .withMessage('El nombre del evento es obligatorio.')
         .bail()
-        .isIn(EVENTOS_VENTA_PERMITIDOS)
+        .isIn(EVENTOS_INTERNOS_PERMITIDOS)
         .withMessage('El tipo de evento interno no es válido.'),
     check('datos')
         .exists()
@@ -22,11 +25,19 @@ const checksEventoInterno = [
         .custom((valor) => Boolean(valor && typeof valor === 'object' && !Array.isArray(valor)))
         .withMessage('Los datos del evento deben enviarse como un objeto.'),
     check('datos.ventaId')
+        .if((_valor, { req }) => esEventoVenta(req))
         .exists()
         .withMessage('El identificador de venta es obligatorio.')
         .bail()
         .isInt({ min: 1 })
         .withMessage('El identificador de venta debe ser un entero positivo.'),
+    check('datos.productosRecalculados')
+        .if((_valor, { req }) => req.body?.evento === 'costos.recalculados')
+        .exists()
+        .withMessage('La lista de productos recalculados es obligatoria.')
+        .bail()
+        .isArray()
+        .withMessage('La lista de productos recalculados debe ser un arreglo.'),
     validarCampos,
 ];
 

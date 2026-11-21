@@ -364,4 +364,72 @@ describe('Integración: POST /api/internos/eventos y emisión filtrada en vivo (
         expect(evCajero.costoTotalSnapshot).toBeUndefined();
         expect(evCajero.gananciaBruta).toBeUndefined();
     });
+
+    it('emite costo.actualizado solo a recetas.ver_costos cuando recibe costos.recalculados', async () => {
+        const clienteDuenio = conectarCliente(
+            generarTokenTest({
+                user_id: 20,
+                username: 'duenio_fiscal_sock',
+                rol: 'DUENIO',
+                permisos: ['recetas.ver_costos'],
+            })
+        );
+        const clienteCajero = conectarCliente(
+            generarTokenTest({
+                user_id: 21,
+                username: 'cajero_fiscal_sock',
+                rol: 'CAJERO',
+                permisos: ['ventas.cobrar_ticket'],
+            })
+        );
+
+        await Promise.all([esperarConexion(clienteDuenio), esperarConexion(clienteCajero)]);
+
+        const pDuenio = esperarEvento(clienteDuenio, 'costo.actualizado');
+        let cajeroRecibio = false;
+        clienteCajero.once('costo.actualizado', () => {
+            cajeroRecibio = true;
+        });
+
+        const res = await request(app)
+            .post('/api/internos/eventos')
+            .set('X-Clave-Interna', 'clave-interna-test-hu8-segura')
+            .send({
+                evento: 'costos.recalculados',
+                datos: {
+                    motivo: 'Cambio de condición fiscal (Sin declarar → Responsable Inscripto)',
+                    condicionFiscal: 'RESPONSABLE_INSCRIPTO',
+                    costearConIva: false,
+                    productosRecalculados: [
+                        {
+                            productoId: 44,
+                            nombre: 'Café Latte',
+                            costoAnterior: '1210.0000',
+                            costoNuevo: '1000.0000',
+                            margenNuevo: '0.7368',
+                        },
+                    ],
+                },
+            });
+
+        expect(res.status).toBe(202);
+        expect(res.body).toEqual({
+            recibido: true,
+            evento: 'costos.recalculados',
+            emitido: true,
+        });
+
+        const evDuenio = await pDuenio;
+        expect(evDuenio).toMatchObject({
+            productoId: 44,
+            nombre: 'Café Latte',
+            costoAnterior: '1210.0000',
+            costoNuevo: '1000.0000',
+            margenNuevo: '0.7368',
+            alertaMargenBajo: false,
+        });
+
+        await new Promise((r) => setTimeout(r, 150));
+        expect(cajeroRecibio).toBe(false);
+    });
 });
