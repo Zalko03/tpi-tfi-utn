@@ -3586,3 +3586,116 @@ export const evaluarAvisoCondicionFiscal = (configFiscal, usuario = null) => {
     };
 };
 
+// ============================================================
+// PRECIO SUGERIDO CON MARGEN OBJETIVO Y COMPETENCIA (HU9)
+// ============================================================
+export const MULTIPLOS_REDONDEO_SUGERIDO = [50, 100];
+
+/**
+ * Redondea un monto en pesos al múltiplo configurado ($50 o $100) operando en centavos enteros.
+ */
+export const redondearAMultiplo = (monto, multiplo = 50) => {
+    const multiploNum = Number(multiplo);
+    if (!MULTIPLOS_REDONDEO_SUGERIDO.includes(multiploNum)) {
+        throw new Error('El múltiplo de redondeo debe ser $50 o $100.');
+    }
+
+    const montoCentavos = convertirMontoACentavos(monto);
+    if (montoCentavos < 0) {
+        throw new Error('El monto a redondear no puede ser negativo.');
+    }
+
+    const multiploCentavos = multiploNum * 100;
+    const unidades = Math.round(montoCentavos / multiploCentavos);
+    return formatearCentavosADecimal(unidades * multiploCentavos);
+};
+
+/**
+ * Calcula el precio sugerido en cliente para previsualización en vivo (HU9):
+ * 1. Base = redondeo(costo / (1 - margen_objetivo), múltiplo $50 o $100).
+ * 2. Si hay precios de competencia, acota el resultado a [mínimo, promedio].
+ * Nunca modifica el precio de venta vigente.
+ */
+export const calcularPrecioSugeridoLocal = ({
+    costoTotal = '0',
+    margenObjetivo = '0.30',
+    redondeoMultiplo = 50,
+    preciosCompetencia = [],
+} = {}) => {
+    const costoNum = Number(String(costoTotal ?? 0).replace(',', '.'));
+    if (!Number.isFinite(costoNum) || costoNum < 0) {
+        throw new Error('El costo del producto no es válido.');
+    }
+
+    const margenNum = Number(String(margenObjetivo ?? 0.3).replace(',', '.'));
+    if (!Number.isFinite(margenNum) || margenNum < 0 || margenNum >= 1) {
+        throw new Error('El margen objetivo debe ser mayor o igual a 0% y menor al 100%.');
+    }
+
+    const multiploNum = Number(redondeoMultiplo ?? 50);
+    if (!MULTIPLOS_REDONDEO_SUGERIDO.includes(multiploNum)) {
+        throw new Error('El múltiplo de redondeo debe ser $50 o $100.');
+    }
+
+    const precioTeorico = costoNum > 0 ? costoNum / (1 - margenNum) : 0;
+    const precioBaseRedondeado = redondearAMultiplo(precioTeorico.toFixed(2), multiploNum);
+    const baseCentavos = convertirMontoACentavos(precioBaseRedondeado);
+
+    const compCentavos = (Array.isArray(preciosCompetencia) ? preciosCompetencia : [])
+        .map((item) => {
+            const bruto = typeof item === 'object' && item !== null ? item.precio : item;
+            return convertirMontoACentavos(bruto);
+        })
+        .filter((c) => c > 0);
+
+    let competenciaMinimo = null;
+    let competenciaPromedio = null;
+    let precioSugeridoCentavos = baseCentavos;
+    let acotadoPor = 'NINGUNO';
+
+    if (compCentavos.length > 0) {
+        const minC = Math.min(...compCentavos);
+        const promC = Math.round(compCentavos.reduce((acc, c) => acc + c, 0) / compCentavos.length);
+        competenciaMinimo = formatearCentavosADecimal(minC);
+        competenciaPromedio = formatearCentavosADecimal(promC);
+
+        if (baseCentavos > promC) {
+            precioSugeridoCentavos = promC;
+            acotadoPor = 'PROMEDIO';
+        } else if (baseCentavos < minC) {
+            precioSugeridoCentavos = minC;
+            acotadoPor = 'MINIMO';
+        }
+    }
+
+    const costoCentavos = convertirMontoACentavos(costoNum.toFixed(2));
+
+    return {
+        redondeo_multiplo: multiploNum,
+        precio_base_redondeado: precioBaseRedondeado,
+        precio_sugerido: formatearCentavosADecimal(precioSugeridoCentavos),
+        competencia_cantidad: compCentavos.length,
+        competencia_minimo: competenciaMinimo,
+        competencia_promedio: competenciaPromedio,
+        acotado_por: acotadoPor,
+        alerta_bajo_costo: precioSugeridoCentavos < costoCentavos,
+    };
+};
+
+/**
+ * Devuelve una descripción clara del criterio aplicado al precio sugerido.
+ */
+export const describirAcotamientoSugerido = (sugerencia = {}) => {
+    if (!sugerencia || typeof sugerencia !== 'object') {
+        return 'Sin cálculo';
+    }
+    const multiplo = Number(sugerencia.redondeo_multiplo || 50);
+    if (sugerencia.acotado_por === 'PROMEDIO') {
+        return 'Acotado al promedio de competencia';
+    }
+    if (sugerencia.acotado_por === 'MINIMO') {
+        return 'Ajustado al mínimo de competencia';
+    }
+    return `Redondeado a múltiplos de $${multiplo}`;
+};
+

@@ -13,11 +13,13 @@ import {
     calcularCostosExtraReceta,
     calcularDimensionesReescaladoImagen,
     calcularFactorConversionReceta,
+    calcularPrecioSugeridoLocal,
     calcularResumenCarrito,
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
     construirUrlsMapaOpenStreetMap,
     consultarDisponibilidadDemoApi,
+    describirAcotamientoSugerido,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -58,6 +60,7 @@ import {
     generarMatrizQr,
     generarSvgQrCarta,
     GRUPOS_PERMISOS_EQUIPO,
+    redondearAMultiplo,
     guardarPreferenciaSonidosSilenciados,
     LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
     leerPreferenciaSonidosSilenciados,
@@ -2609,6 +2612,54 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                 puedeDeclarar: false,
                 mensaje: '',
             });
+        });
+    });
+
+    describe('Precio sugerido con margen objetivo y competencia (HU9)', () => {
+        it('redondearAMultiplo redondea a $50 y $100 y rechaza múltiplos inválidos', () => {
+            expect(redondearAMultiplo('2483.61', 50)).toBe('2500.00');
+            expect(redondearAMultiplo('2140.00', 50)).toBe('2150.00');
+            expect(redondearAMultiplo('2140.00', 100)).toBe('2100.00');
+            expect(() => redondearAMultiplo('2100.00', 25)).toThrow();
+        });
+
+        it('calcularPrecioSugeridoLocal aplica margen objetivo y acota por competencia [min, promedio]', () => {
+            const sinComp = calcularPrecioSugeridoLocal({
+                costoTotal: '1092.79',
+                margenObjetivo: '0.56',
+                redondeoMultiplo: 50,
+            });
+            expect(sinComp.precio_base_redondeado).toBe('2500.00');
+            expect(sinComp.precio_sugerido).toBe('2500.00');
+            expect(sinComp.acotado_por).toBe('NINGUNO');
+
+            const acotadoProm = calcularPrecioSugeridoLocal({
+                costoTotal: '1500.00',
+                margenObjetivo: '0.60',
+                redondeoMultiplo: 50,
+                preciosCompetencia: [{ precio: '2800.00' }, { precio: '3200.00' }, { precio: '3600.00' }],
+            });
+            expect(acotadoProm.competencia_minimo).toBe('2800.00');
+            expect(acotadoProm.competencia_promedio).toBe('3200.00');
+            expect(acotadoProm.precio_sugerido).toBe('3200.00');
+            expect(acotadoProm.acotado_por).toBe('PROMEDIO');
+
+            const acotadoMin = calcularPrecioSugeridoLocal({
+                costoTotal: '1500.00',
+                margenObjetivo: '0.30',
+                redondeoMultiplo: 50,
+                preciosCompetencia: [{ precio: '2800.00' }, { precio: '3200.00' }],
+            });
+            expect(acotadoMin.precio_sugerido).toBe('2800.00');
+            expect(acotadoMin.acotado_por).toBe('MINIMO');
+        });
+
+        it('describirAcotamientoSugerido genera etiquetas claras en español', () => {
+            expect(describirAcotamientoSugerido({ acotado_por: 'PROMEDIO' })).toContain('promedio');
+            expect(describirAcotamientoSugerido({ acotado_por: 'MINIMO' })).toContain('mínimo');
+            expect(
+                describirAcotamientoSugerido({ acotado_por: 'NINGUNO', redondeo_multiplo: 100 })
+            ).toContain('$100');
         });
     });
 });

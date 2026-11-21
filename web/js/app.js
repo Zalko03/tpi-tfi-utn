@@ -13,11 +13,13 @@ import {
     calcularCostosExtraReceta,
     calcularDimensionesReescaladoImagen,
     calcularFactorConversionReceta,
+    calcularPrecioSugeridoLocal,
     calcularResumenCarrito,
     CALIDAD_JPEG_IMAGEN_IMPORTACION,
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
     consultarDisponibilidadDemoApi,
+    describirAcotamientoSugerido,
     evaluarAvisoCondicionFiscal,
     fechaIsoATexto,
     fechaTextoAIso,
@@ -1176,7 +1178,7 @@ export const cargarCatalogo = async () => {
             $('grilla-productos').innerHTML = construirCargandoPos();
         }
         if ($('tabla-recetas-productos-body')) {
-            $('tabla-recetas-productos-body').innerHTML = construirFilasCargandoTabla(7, 'Cargando recetas…', 3);
+            $('tabla-recetas-productos-body').innerHTML = construirFilasCargandoTabla(8, 'Cargando recetas…', 3);
         }
         try {
             const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
@@ -2827,6 +2829,23 @@ const abrirModalEditarPrecioProducto = (producto) => {
     if ($('input-editar-precio-venta')) {
         $('input-editar-precio-venta').value = producto.precio_venta ?? '';
     }
+    const ayudaEl = $('editar-precio-sugerido-ayuda');
+    const textoAyudaEl = $('editar-precio-sugerido-texto');
+    const btnUsar = $('btn-usar-precio-sugerido');
+    const tieneSugerido =
+        usuarioTienePermiso(estadoApp.usuario, 'recetas.ver_costos') &&
+        producto.precio_sugerido !== null &&
+        producto.precio_sugerido !== undefined;
+    if (ayudaEl && textoAyudaEl && btnUsar) {
+        if (tieneSugerido) {
+            textoAyudaEl.textContent = `Precio sugerido actual: ${formatearMoneda(producto.precio_sugerido)}`;
+            btnUsar.dataset.precioSugerido = String(producto.precio_sugerido);
+            ayudaEl.style.display = 'flex';
+        } else {
+            btnUsar.dataset.precioSugerido = '';
+            ayudaEl.style.display = 'none';
+        }
+    }
     modal.style.display = 'flex';
 };
 
@@ -2840,13 +2859,14 @@ const renderizarTablaRecetas = () => {
     if (!Array.isArray(estadoApp.catalogo) || estadoApp.catalogo.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="col-centro text-muted py-4">No hay productos cargados en la carta.</td>
+                <td colspan="8" class="col-centro text-muted py-4">No hay productos cargados en la carta.</td>
             </tr>
         `;
         return;
     }
 
     const esCajero = estadoApp.usuario?.rol === 'CAJERO';
+    const puedeVerCostos = !esCajero && usuarioTienePermiso(estadoApp.usuario, 'recetas.ver_costos');
     const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'recetas.editar');
 
     for (const p of estadoApp.catalogo) {
@@ -2864,8 +2884,31 @@ const renderizarTablaRecetas = () => {
             ? Math.round(Number(p.margen_bruto) * 100)
             : (costo !== null && precio > 0 ? Math.round(((precio - costo) / precio) * 100) : null);
 
+        const sugerencia = p.sugerencia_precio || null;
+        const precioSugerido = p.precio_sugerido !== null && p.precio_sugerido !== undefined
+            ? Number(p.precio_sugerido)
+            : null;
+
+        let sugeridoHtml = `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`;
+        if (puedeVerCostos && precioSugerido !== null) {
+            const margenObjPct = Math.round(Number(p.margen_objetivo ?? 0.3) * 100);
+            const multiplo = Number(p.redondeo_multiplo ?? 50);
+            let subtexto = `Obj. ${margenObjPct}% · $${multiplo}`;
+            if (sugerencia?.acotado_por === 'PROMEDIO') {
+                subtexto = 'Acotado prom. comp.';
+            } else if (sugerencia?.acotado_por === 'MINIMO') {
+                subtexto = 'Acotado mín. comp.';
+            }
+            sugeridoHtml = `
+                <div class="sugerencia-celda">
+                    <span class="font-bold">${formatearMoneda(precioSugerido)}</span>
+                    <span class="sugerencia-subtexto">${escaparHtml(subtexto)}</span>
+                </div>
+            `;
+        }
+
         let margenBarraHtml = `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`;
-        if (!esCajero && margenPct !== null) {
+        if (puedeVerCostos && margenPct !== null) {
             let claseColor = 'margen-verde';
             let estadoTexto = 'Saludable';
             if (margenPct < 30) {
@@ -2901,8 +2944,9 @@ const renderizarTablaRecetas = () => {
             </td>
             <td class="col-centro"><span class="producto-codigo-badge">${escaparHtml(p.codigo_barras || 'S/C')}</span></td>
             <td class="col-numero font-bold">${formatearMoneda(p.precio_venta)}</td>
-            <td class="col-numero">${!esCajero && costo !== null ? formatearMoneda(costo) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
-            <td class="col-numero text-exito">${!esCajero && ganancia !== null ? formatearMoneda(ganancia) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-numero">${sugeridoHtml}</td>
+            <td class="col-numero">${puedeVerCostos && costo !== null ? formatearMoneda(costo) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-numero text-exito">${puedeVerCostos && ganancia !== null ? formatearMoneda(ganancia) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-texto">${margenBarraHtml}</td>
             <td class="col-centro">
                 <div class="receta-acciones-fila">
@@ -3090,31 +3134,202 @@ const mostrarDesgloseReceta = (producto) => {
 
     // Mano de obra, descartables y total: suman igual que el costo total del backend.
     const extras = calcularCostosExtraReceta(producto);
-    if (esCajero || !extras || !costosInsumosVisibles) return;
-    const celdaAcciones = mostrarAcciones ? '<td></td>' : '';
-    const minutosTexto = extras.minutos.toLocaleString('es-AR', { maximumFractionDigits: 2 });
-    const filasExtra = [
-        `<tr class="fila-receta-extra">
-            <td class="col-texto"><strong>Mano de obra</strong></td>
-            <td class="col-centro">${escaparHtml(minutosTexto)} <span class="producto-codigo-badge">min</span></td>
-            <td class="col-numero">${formatearMoneda(extras.costoHora)} / hora</td>
-            <td class="col-numero font-bold">${formatearMoneda(extras.manoObra)}</td>
-            ${celdaAcciones}
-        </tr>`,
-        `<tr class="fila-receta-extra">
-            <td class="col-texto"><strong>Descartables</strong></td>
-            <td class="col-centro">-</td>
-            <td class="col-numero">-</td>
-            <td class="col-numero font-bold">${formatearMoneda(extras.descartables)}</td>
-            ${celdaAcciones}
-        </tr>`,
-        `<tr class="fila-receta-total">
-            <td class="col-texto" colspan="3"><strong>Costo total por porción</strong></td>
-            <td class="col-numero font-bold">${formatearMoneda(costoInsumos + extras.manoObra + extras.descartables)}</td>
-            ${celdaAcciones}
-        </tr>`,
-    ];
-    tbody.insertAdjacentHTML('beforeend', filasExtra.join(''));
+    if (!esCajero && extras && costosInsumosVisibles) {
+        const celdaAcciones = mostrarAcciones ? '<td></td>' : '';
+        const minutosTexto = extras.minutos.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+        const filasExtra = [
+            `<tr class="fila-receta-extra">
+                <td class="col-texto"><strong>Mano de obra</strong></td>
+                <td class="col-centro">${escaparHtml(minutosTexto)} <span class="producto-codigo-badge">min</span></td>
+                <td class="col-numero">${formatearMoneda(extras.costoHora)} / hora</td>
+                <td class="col-numero font-bold">${formatearMoneda(extras.manoObra)}</td>
+                ${celdaAcciones}
+            </tr>`,
+            `<tr class="fila-receta-extra">
+                <td class="col-texto"><strong>Descartables</strong></td>
+                <td class="col-centro">-</td>
+                <td class="col-numero">-</td>
+                <td class="col-numero font-bold">${formatearMoneda(extras.descartables)}</td>
+                ${celdaAcciones}
+            </tr>`,
+            `<tr class="fila-receta-total">
+                <td class="col-texto" colspan="3"><strong>Costo total por porción</strong></td>
+                <td class="col-numero font-bold">${formatearMoneda(costoInsumos + extras.manoObra + extras.descartables)}</td>
+                ${celdaAcciones}
+            </tr>`,
+        ];
+        tbody.insertAdjacentHTML('beforeend', filasExtra.join(''));
+    }
+
+    renderizarPanelSugerenciaYCompetencia(producto);
+};
+
+const eliminarPrecioCompetencia = async (refId) => {
+    try {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/precios-competencia/${refId}/`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+            },
+        });
+        if (res.ok) {
+            mostrarToast('Referencia de competencia quitada.', 'exito');
+            await cargarCatalogo();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            mostrarToast(extraerMensajeErrorApi(data, 'No se pudo quitar la referencia.'), 'peligro');
+        }
+    } catch {
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+    }
+};
+
+const actualizarMetricasSugerenciaUI = (producto, sugerencia) => {
+    if (!sugerencia) return;
+    if ($('sugerencia-precio-valor')) {
+        $('sugerencia-precio-valor').textContent = formatearMoneda(sugerencia.precio_sugerido);
+    }
+    if ($('sugerencia-precio-base')) {
+        $('sugerencia-precio-base').textContent = formatearMoneda(sugerencia.precio_base_redondeado);
+    }
+    if ($('sugerencia-comp-minimo')) {
+        $('sugerencia-comp-minimo').textContent = sugerencia.competencia_minimo !== null
+            ? formatearMoneda(sugerencia.competencia_minimo)
+            : 'Sin datos';
+    }
+    if ($('sugerencia-comp-promedio')) {
+        $('sugerencia-comp-promedio').textContent = sugerencia.competencia_promedio !== null
+            ? formatearMoneda(sugerencia.competencia_promedio)
+            : 'Sin datos';
+    }
+    const badgeEl = $('sugerencia-acotamiento-badge');
+    if (badgeEl) {
+        badgeEl.textContent = describirAcotamientoSugerido(sugerencia);
+        badgeEl.className = sugerencia.alerta_bajo_costo
+            ? 'badge-alerta-amarilla'
+            : 'badge-estado-verde';
+    }
+    const detalleEl = $('sugerencia-precio-detalle');
+    if (detalleEl) {
+        if (sugerencia.alerta_bajo_costo) {
+            detalleEl.textContent = 'Atención: queda por debajo del costo actual.';
+        } else if (producto) {
+            const precioActual = Number(producto.precio_venta || 0);
+            const sugeridoNum = Number(sugerencia.precio_sugerido || 0);
+            if (precioActual < sugeridoNum) {
+                detalleEl.textContent = `Precio en carta (${formatearMoneda(precioActual)}) debajo del sugerido.`;
+            } else {
+                detalleEl.textContent = `Precio en carta actual: ${formatearMoneda(precioActual)}`;
+            }
+        }
+    }
+};
+
+const actualizarVistaPreviaSugerencia = () => {
+    if (estadoApp.productoDesgloseId === null) return;
+    const producto = estadoApp.catalogo.find(
+        (p) => Number(p.id) === Number(estadoApp.productoDesgloseId)
+    );
+    if (!producto) return;
+    const margenPct = Number($('input-sugerencia-margen-pct')?.value ?? 30);
+    const multiplo = Number($('select-sugerencia-redondeo')?.value ?? 50);
+    if (!Number.isFinite(margenPct) || margenPct < 0 || margenPct >= 100) return;
+
+    try {
+        const preview = calcularPrecioSugeridoLocal({
+            costoTotal: producto.costo_total_calculado ?? 0,
+            margenObjetivo: (margenPct / 100).toFixed(4),
+            redondeoMultiplo: multiplo,
+            preciosCompetencia: producto.precios_competencia || [],
+        });
+        actualizarMetricasSugerenciaUI(producto, preview);
+    } catch {
+        // Ignora entrada parcial mientras el usuario escribe
+    }
+};
+
+const renderizarPanelSugerenciaYCompetencia = (producto) => {
+    const bloque = $('panel-sugerencia-competencia');
+    if (!bloque) return;
+
+    const esCajero = estadoApp.usuario?.rol === 'CAJERO';
+    const puedeVerCostos = !esCajero && usuarioTienePermiso(estadoApp.usuario, 'recetas.ver_costos');
+    if (!puedeVerCostos || !producto || producto.precio_sugerido === null) {
+        bloque.style.display = 'none';
+        return;
+    }
+
+    bloque.style.display = 'flex';
+    const puedeCrear = usuarioTienePermiso(estadoApp.usuario, 'recetas.crear');
+    const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'recetas.editar');
+    const puedeEliminar = usuarioTienePermiso(estadoApp.usuario, 'recetas.eliminar');
+
+    const formConfig = $('form-sugerencia-producto');
+    if (formConfig) {
+        formConfig.style.display = puedeEditar ? 'block' : 'none';
+    }
+    if ($('input-sugerencia-margen-pct')) {
+        const pct = Math.round(Number(producto.margen_objetivo ?? 0.3) * 1000) / 10;
+        $('input-sugerencia-margen-pct').value = String(pct);
+    }
+    if ($('select-sugerencia-redondeo')) {
+        $('select-sugerencia-redondeo').value = String(producto.redondeo_multiplo ?? 50);
+    }
+
+    const sugerencia = producto.sugerencia_precio || calcularPrecioSugeridoLocal({
+        costoTotal: producto.costo_total_calculado ?? 0,
+        margenObjetivo: producto.margen_objetivo ?? 0.3,
+        redondeoMultiplo: producto.redondeo_multiplo ?? 50,
+        preciosCompetencia: producto.precios_competencia || [],
+    });
+    actualizarMetricasSugerenciaUI(producto, sugerencia);
+
+    if ($('th-competencia-acciones')) {
+        $('th-competencia-acciones').style.display = puedeEliminar ? '' : 'none';
+    }
+    if ($('form-agregar-competencia')) {
+        $('form-agregar-competencia').style.display = puedeCrear ? 'block' : 'none';
+    }
+
+    const tbodyComp = $('tabla-competencia-items-body');
+    if (!tbodyComp) return;
+    tbodyComp.innerHTML = '';
+
+    const referencias = Array.isArray(producto.precios_competencia)
+        ? producto.precios_competencia
+        : [];
+    if (referencias.length === 0) {
+        tbodyComp.innerHTML = `
+            <tr>
+                <td colspan="${puedeEliminar ? 4 : 3}" class="col-centro text-muted py-3">
+                    Todavía no cargaste precios de la competencia para este producto.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    for (const ref of referencias) {
+        const tr = document.createElement('tr');
+        const accionHtml = puedeEliminar
+            ? `<td class="col-centro">
+                    <button type="button" class="btn-refrescar-mini btn-quitar-competencia" data-id="${escaparHtml(ref.id)}">Quitar</button>
+               </td>`
+            : '';
+        tr.innerHTML = `
+            <td class="col-texto"><strong>${escaparHtml(ref.nombre_competidor || 'Referencia de mercado')}</strong></td>
+            <td class="col-numero font-bold">${formatearMoneda(ref.precio)}</td>
+            <td class="col-texto">${escaparHtml(ref.observacion || '-')}</td>
+            ${accionHtml}
+        `;
+        if (puedeEliminar) {
+            const btnQuitar = tr.querySelector('.btn-quitar-competencia');
+            btnQuitar?.addEventListener('click', async () => {
+                await conCargando(btnQuitar, () => eliminarPrecioCompetencia(ref.id));
+            });
+        }
+        tbodyComp.appendChild(tr);
+    }
 };
 
 const recalcularProducto = async (productoId) => {
@@ -5301,6 +5516,105 @@ Flete y entrega a local: $4500`;
                 }
             } catch (err) {
                 console.error('Error al registrar movimiento:', err);
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    $('btn-usar-precio-sugerido')?.addEventListener('click', () => {
+        const sugerido = $('btn-usar-precio-sugerido')?.dataset?.precioSugerido;
+        if (sugerido && $('input-editar-precio-venta')) {
+            $('input-editar-precio-venta').value = sugerido;
+            $('input-editar-precio-venta').focus();
+        }
+    });
+
+    $('input-sugerencia-margen-pct')?.addEventListener('input', actualizarVistaPreviaSugerencia);
+    $('select-sugerencia-redondeo')?.addEventListener('change', actualizarVistaPreviaSugerencia);
+
+    $('form-sugerencia-producto')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.editar')) return;
+
+        const productoId = estadoApp.productoDesgloseId;
+        const margenPct = Number($('input-sugerencia-margen-pct')?.value);
+        const redondeoMultiplo = Number($('select-sugerencia-redondeo')?.value || 50);
+
+        if (!productoId) return;
+        if (!Number.isFinite(margenPct) || margenPct < 0 || margenPct >= 100) {
+            mostrarToast('Ingresá un margen objetivo entre 0% y 99%.', 'advertencia');
+            return;
+        }
+
+        const margenRatio = (margenPct / 100).toFixed(4);
+        const btnSubmit = e.submitter || $('btn-guardar-sugerencia-producto');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        margen_objetivo: margenRatio,
+                        redondeo_multiplo: redondeoMultiplo,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    mostrarToast('Margen objetivo y redondeo guardados.', 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo guardar el objetivo.'), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    $('form-agregar-competencia')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.crear')) return;
+
+        const productoId = estadoApp.productoDesgloseId;
+        const nombreCompetidor = ($('input-competencia-local')?.value || '').trim();
+        const precio = $('input-competencia-precio')?.value;
+        const observacion = ($('input-competencia-observacion')?.value || '').trim();
+
+        if (!productoId || !precio || Number(precio) <= 0) {
+            mostrarToast('Ingresá un precio de competencia mayor a cero.', 'advertencia');
+            return;
+        }
+
+        const btnSubmit = e.submitter || $('btn-agregar-competencia');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/precios-competencia/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        producto: Number(productoId),
+                        nombre_competidor: nombreCompetidor || 'Referencia de mercado',
+                        precio,
+                        observacion,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('input-competencia-local')) $('input-competencia-local').value = '';
+                    if ($('input-competencia-precio')) $('input-competencia-precio').value = '';
+                    if ($('input-competencia-observacion')) $('input-competencia-observacion').value = '';
+                    mostrarToast('Precio de competencia agregado.', 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo agregar la referencia.'), 'peligro');
+                }
+            } catch {
                 mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });

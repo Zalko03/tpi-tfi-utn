@@ -38,6 +38,10 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('form-configuracion-fiscal');
         expect(res.text).toContain('aviso-condicion-fiscal-compras');
         expect(res.text).toContain('aviso-condicion-fiscal-recetas');
+        expect(res.text).toContain('panel-sugerencia-competencia');
+        expect(res.text).toContain('form-sugerencia-producto');
+        expect(res.text).toContain('form-agregar-competencia');
+        expect(res.text).toContain('btn-usar-precio-sugerido');
         expect(res.text).toContain('check-compra-iva-incluido');
         expect(res.text).toContain('archivo-lista-ia');
         expect(res.text).toContain('/app/vendor/pdfjs/pdf.min.js');

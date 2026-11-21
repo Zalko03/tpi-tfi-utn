@@ -815,6 +815,7 @@ Envío: $2000</textarea>
                                             <th class="col-texto">Producto</th>
                                             <th class="col-centro">Código de barras</th>
                                             <th class="col-numero">Precio en Carta</th>
+                                            <th class="col-numero">Precio sugerido</th>
                                             <th class="col-numero">Costo Receta Exacto</th>
                                             <th class="col-numero">Ganancia por unidad ($)</th>
                                             <th class="col-texto" style="min-width: 170px;">Margen bruto (%)</th>
@@ -880,6 +881,96 @@ Envío: $2000</textarea>
                                     </div>
                                 </div>
                             </form>
+
+                            <div id="panel-sugerencia-competencia" class="sugerencia-competencia-bloque" style="display: none;">
+                                <div class="panel-cabecera-linea">
+                                    <div>
+                                        <h4>Precio sugerido y referencia de competencia</h4>
+                                        <p class="text-muted">Calculado con tu margen objetivo, el redondeo elegido y los precios de la competencia cargados a mano. No cambia el precio de venta solo.</p>
+                                    </div>
+                                    <span id="sugerencia-acotamiento-badge" class="badge-estado-verde">Redondeado a múltiplos de $50</span>
+                                </div>
+
+                                <div class="sugerencia-resumen-grilla">
+                                    <div class="sugerencia-kpi-card destacada">
+                                        <span class="sugerencia-kpi-etiqueta">Precio sugerido</span>
+                                        <strong id="sugerencia-precio-valor" class="sugerencia-kpi-valor">$ 0,00</strong>
+                                        <small id="sugerencia-precio-detalle" class="text-muted"></small>
+                                    </div>
+                                    <div class="sugerencia-kpi-card">
+                                        <span class="sugerencia-kpi-etiqueta">Base por margen objetivo</span>
+                                        <strong id="sugerencia-precio-base" class="sugerencia-kpi-valor">$ 0,00</strong>
+                                    </div>
+                                    <div class="sugerencia-kpi-card">
+                                        <span class="sugerencia-kpi-etiqueta">Mínimo competencia (PvP Min)</span>
+                                        <strong id="sugerencia-comp-minimo" class="sugerencia-kpi-valor">Sin datos</strong>
+                                    </div>
+                                    <div class="sugerencia-kpi-card">
+                                        <span class="sugerencia-kpi-etiqueta">Promedio competencia (PvP Prom)</span>
+                                        <strong id="sugerencia-comp-promedio" class="sugerencia-kpi-valor">Sin datos</strong>
+                                    </div>
+                                </div>
+
+                                <form id="form-sugerencia-producto" class="sugerencia-config-form" style="display: none;">
+                                    <div class="sugerencia-config-campos">
+                                        <div class="campo-grupo">
+                                            <label for="input-sugerencia-margen-pct">Margen objetivo (%)</label>
+                                            <input id="input-sugerencia-margen-pct" type="number" step="0.5" min="0" max="99" value="30" required />
+                                        </div>
+                                        <div class="campo-grupo">
+                                            <label for="select-sugerencia-redondeo">Redondear a múltiplos de</label>
+                                            <select id="select-sugerencia-redondeo">
+                                                <option value="50">$50</option>
+                                                <option value="100">$100</option>
+                                            </select>
+                                        </div>
+                                        <div class="receta-agregar-insumo-submit">
+                                            <button type="submit" id="btn-guardar-sugerencia-producto" class="btn-secundario-comercial">Guardar objetivo y redondeo</button>
+                                        </div>
+                                    </div>
+                                </form>
+
+                                <div class="competencia-lista-bloque">
+                                    <h5>Precios de la competencia</h5>
+                                    <div class="tabla-contenedor-responsive">
+                                        <table class="tabla-comercial">
+                                            <thead>
+                                                <tr>
+                                                    <th class="col-texto">Local o referencia</th>
+                                                    <th class="col-numero">Precio observado</th>
+                                                    <th class="col-texto">Observación</th>
+                                                    <th class="col-centro" id="th-competencia-acciones" style="display: none;">Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tabla-competencia-items-body">
+                                                <tr>
+                                                    <td colspan="4" class="col-centro text-muted py-3">Todavía no cargaste precios de la competencia para este producto.</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <form id="form-agregar-competencia" class="competencia-agregar-form" style="display: none;">
+                                        <div class="competencia-agregar-campos">
+                                            <div class="campo-grupo">
+                                                <label for="input-competencia-local">Local o referencia</label>
+                                                <input id="input-competencia-local" type="text" maxlength="150" placeholder="Ej. Cafetería Plaza" />
+                                            </div>
+                                            <div class="campo-grupo">
+                                                <label for="input-competencia-precio">Precio ($)</label>
+                                                <input id="input-competencia-precio" type="number" step="0.01" min="0.01" placeholder="3200.00" required />
+                                            </div>
+                                            <div class="campo-grupo">
+                                                <label for="input-competencia-observacion">Observación (opcional)</label>
+                                                <input id="input-competencia-observacion" type="text" maxlength="255" placeholder="Ej. Vaso grande" />
+                                            </div>
+                                            <div class="receta-agregar-insumo-submit">
+                                                <button type="submit" id="btn-agregar-competencia" class="btn-primario-comercial">Agregar referencia</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -1757,6 +1848,10 @@ Envío: $2000</textarea>
                 <div class="campo-grupo">
                     <label for="input-editar-precio-venta">Nuevo precio de venta ($)</label>
                     <input id="input-editar-precio-venta" type="number" step="0.01" min="0.01" required />
+                </div>
+                <div id="editar-precio-sugerido-ayuda" class="sugerencia-modal-ayuda" style="display: none;">
+                    <span id="editar-precio-sugerido-texto" class="text-muted"></span>
+                    <button type="button" id="btn-usar-precio-sugerido" class="btn-refrescar-mini">Usar precio sugerido</button>
                 </div>
                 <div class="modal-footer-acciones">
                     <button type="button" class="btn-secundario-comercial" data-cerrar="modal-editar-precio-producto">Cancelar</button>
