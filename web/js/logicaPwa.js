@@ -3451,4 +3451,60 @@ export const renderizarUbicacionCarta = (elementos = {}, configGlobal = null) =>
     return true;
 };
 
+// ============================================================
+// ACCESO RÁPIDO EN MODO DEMOSTRACIÓN
+// ============================================================
+const PERFILES_DEMO_POR_BOTON = {
+    'btn-demo-duenio': 'duenio',
+    'btn-demo-encargado': 'encargado',
+    'btn-demo-cajero': 'cajero',
+    duenio_demo: 'duenio',
+    encargado_demo: 'encargado',
+    cajero_demo: 'cajero',
+};
+
+/**
+ * Mapea un botón de demostración (por id, usuario o perfil) al perfil
+ * aceptado por POST /api/auth/demo/. Devuelve null si no corresponde a ninguno.
+ */
+export const resolverPerfilDemoDesdeBoton = ({ id = '', usuario = '', perfil = '' } = {}) => {
+    const perfilLimpio = String(perfil || '')
+        .trim()
+        .toLowerCase();
+    if (
+        perfilLimpio === 'duenio' ||
+        perfilLimpio === 'encargado' ||
+        perfilLimpio === 'cajero'
+    ) {
+        return perfilLimpio;
+    }
+    const porId = PERFILES_DEMO_POR_BOTON[String(id || '').trim()];
+    if (porId) return porId;
+    const porUsuario = PERFILES_DEMO_POR_BOTON[String(usuario || '').trim()];
+    return porUsuario || null;
+};
+
+/**
+ * Consulta GET /api/auth/demo/ para verificar si el acceso rápido de demostración
+ * está habilitado en el servidor. Ante error o respuesta inválida, devuelve false.
+ */
+export const consultarDisponibilidadDemoApi = async ({ fetchFn, djangoUrl }) => {
+    if (typeof fetchFn !== 'function' || !djangoUrl) {
+        return false;
+    }
+    try {
+        const base = String(djangoUrl).replace(/\/$/, '');
+        const res = await fetchFn(`${base}/api/auth/demo/`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+        if (!res || !res.ok) {
+            return false;
+        }
+        const data = await res.json();
+        return Boolean(data && data.disponible === true);
+    } catch {
+        return false;
+    }
+};
 

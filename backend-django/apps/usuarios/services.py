@@ -6,10 +6,13 @@ permisos granulares, protección del último Dueño y auditoría (docs/seguridad
 import logging
 from typing import Any, Dict, Optional
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import update_last_login
 from django.db import transaction
 from django.db.models import Q
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework_simplejwt.settings import api_settings as simplejwt_settings
 
 from apps.usuarios.constantes import (
     PERMISOS_CATALOGO,
@@ -20,9 +23,54 @@ from apps.usuarios.constantes import (
 )
 from apps.usuarios.exceptions import ErrorReglaNegocio, ErrorSupervivenciaDuenio
 from apps.usuarios.models import PerfilUsuario, RegistroAuditoria
+from apps.usuarios.tokens import (
+    CustomTokenObtainPairSerializer,
+    construir_datos_usuario_login,
+)
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+PERFILES_DEMO_USUARIOS = {
+    "duenio": "duenio_demo",
+    "encargado": "encargado_demo",
+    "cajero": "cajero_demo",
+}
+
+
+def demo_acceso_rapido_habilitado() -> bool:
+    """Indica si el acceso rápido de demostración está activo (requiere flag y DEBUG)."""
+    return bool(getattr(settings, "DEMO_ACCESO_RAPIDO", False)) and bool(
+        getattr(settings, "DEBUG", False)
+    )
+
+
+def autenticar_demo_rapido(perfil: str) -> Dict[str, Any]:
+    """
+    Emite tokens JWT RS256 para uno de los tres usuarios de demostración
+    (`duenio_demo`, `encargado_demo`, `cajero_demo`) solo en modo demostración local.
+    """
+    if not demo_acceso_rapido_habilitado():
+        raise NotFound()
+
+    username = PERFILES_DEMO_USUARIOS.get(perfil)
+    if not username:
+        raise ErrorReglaNegocio("El perfil de demostración indicado no es válido.")
+
+    try:
+        usuario = User.objects.select_related("perfil").get(username=username, is_active=True)
+    except User.DoesNotExist:
+        raise NotFound()
+
+    refresh = CustomTokenObtainPairSerializer.get_token(usuario)
+    if simplejwt_settings.UPDATE_LAST_LOGIN:
+        update_last_login(None, usuario)
+
+    return {
+        "refresh": str(refresh),
+        "access": str(refresh.access_token),
+        "usuario": construir_datos_usuario_login(usuario),
+    }
 
 
 def validar_claves_permisos(permisos_dict: Dict[str, Any]) -> None:

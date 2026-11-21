@@ -21,6 +21,28 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-20
+Tarea: Acceso rápido de demostración (1 clic en login solo en demo local)
+Rama: feat/demo-acceso-rapido
+Cambios realizados:
+- **Django (`config/settings/base.py`, `apps/usuarios/`):** Se incorporó la variable `DEMO_ACCESO_RAPIDO` (por defecto `false`), el check `usuarios.E001` que da error si está activa con `DEBUG=False`, el servicio `autenticar_demo_rapido` (limitado a `duenio_demo`, `encargado_demo`, `cajero_demo` activos) y los endpoints `GET`/`POST /api/auth/demo/` (con `LoginRateThrottle` en `POST` y `404` cuando está deshabilitado).
+- **Web (`web/js/logicaPwa.js`, `web/js/app.js`):** Al cargar la pantalla de ingreso se consulta `GET /api/auth/demo/`; si responde `disponible: true`, los tres botones de demo inician sesión en 1 clic reutilizando `aplicarSesionAutenticada` y `conCargando`; si está apagado o falla, mantienen el comportamiento actual.
+- **Configuración, tests y docs:** Se documentó `DEMO_ACCESO_RAPIDO=false` en `.env.example` (sin agregarla a `docker-compose.yml` ni `render.yaml`), se sumaron pruebas pytest y Jest, y se actualizaron `docs/seguridad.md` y `docs/CONNECTIONS.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `web/js/app.js` -> `backend-django` (`GET /api/auth/demo/`, `POST /api/auth/demo/`).
+Archivos tocados:
+- `backend-django/config/settings/base.py`, `backend-django/apps/usuarios/{apps.py,checks.py,serializers.py,services.py,tokens.py,urls.py,views.py}`
+- `backend-django/apps/usuarios/tests/{unit/test_unit_demo_check.py,api/test_api_demo_acceso.py}`
+- `web/js/{app.js,logicaPwa.js}`, `backend-node/tests/unit/logicaPwa.unit.test.js`
+- `.env.example`, `docs/{seguridad.md,CONNECTIONS.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+- `cd backend-django && .venv/bin/python manage.py check`
+---
+
+---
 Fecha: 2026-11-19
 Tarea: T9 (ronda de corrección post-auditoría) — Ajustes de fidelidad en `README.md` (solo documentación)
 Rama: docs/matriz-hu-readme

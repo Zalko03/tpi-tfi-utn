@@ -20,6 +20,7 @@ def _a_booleano(valor):
 
 
 DEBUG = _a_booleano(os.environ.get("DJANGO_DEBUG", "False"))
+DEMO_ACCESO_RAPIDO = _a_booleano(os.environ.get("DEMO_ACCESO_RAPIDO", "false"))
 
 # Los valores por defecto existen solo para desarrollo: con DEBUG apagado
 # y sin variable, el arranque falla en vez de usar una clave o hosts inseguros.

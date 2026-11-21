@@ -194,3 +194,15 @@ Ambos backends aplican límites por ventana y devuelven `HTTP 429` con el format
 - **`DJANGO_THROTTLE_LOGIN`:** `10/minute` en autenticación (`/api/auth/token/`).
 - **`DJANGO_THROTTLE_RECALCULAR`:** `20/minute` en recálculo masivo de costos.
 - **`DJANGO_THROTTLE_CARTA_PUBLICA`:** `60/minute` en el endpoint anónimo `GET /api/carta-publica/`.
+
+---
+
+## 9. Acceso Rápido de Demostración (`DEMO_ACCESO_RAPIDO`)
+
+Para demostraciones presenciales en una PC local, la pantalla de ingreso permite iniciar sesión con un clic usando los tres perfiles fijos de demostración (`duenio_demo`, `encargado_demo` y `cajero_demo`) a través de `GET /api/auth/demo/` y `POST /api/auth/demo/` (protegido con `LoginRateThrottle` y emitiendo los mismos tokens RS256 que `POST /api/auth/token/`).
+
+Por seguridad, este modo permanece **apagado por defecto** y **solo se habilita si se cumplen las dos condiciones a la vez**:
+1. `DEMO_ACCESO_RAPIDO=true` en la configuración de Django (`config/settings/base.py`).
+2. `DEBUG=True` (`DJANGO_DEBUG=True`).
+
+Si cualquiera de las dos condiciones falta (o el usuario demo no existe o está inactivo), `GET /api/auth/demo/` responde `{"disponible": false}` y `POST /api/auth/demo/` responde `HTTP 404` con el formato único de error para no revelar su existencia. Además, un check de arranque de Django (`apps.usuarios.checks.verificar_demo_acceso_rapido_seguro`, código `usuarios.E001`) devuelve **ERROR** e impide la validación si `DEMO_ACCESO_RAPIDO` está activo con `DEBUG=False`. En `docker-compose.yml` y `render.yaml` la variable no se define para garantizar que quede apagado en servidores reales.
