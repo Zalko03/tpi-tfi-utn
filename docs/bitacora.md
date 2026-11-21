@@ -22,6 +22,29 @@ Cómo probarlo:
 
 ---
 Fecha: 2026-11-21
+Tarea: F6 — Documentación para la cátedra y actualización de matriz HU
+Rama: docs/entrega-final
+Cambios realizados:
+- **README por módulo (`backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`, `web/README.md`):** responsabilidades, árbol de carpetas verificado contra el código real, endpoints principales y comandos de ejecución, migraciones/seed, tests y linters.
+- **Documentación académica (`docs/FUNDAMENTACION_TECNICA.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/GUIA_DEFENSA.md`):** comparación honesta entre lo visto en clase (proyecto de referencia de la cátedra y plan original) y la implementación real; auditoría técnica de `backend-node` contra `.agents/rules/convenciones-node.md` (incluyendo desvíos justificados como `String` monetario, `verificarPermiso` y el acoplamiento menor en `productoResumen.controller.js`); guía de defensa oral con las 12 preguntas clave respaldadas en código, los 7 jobs de `.github/workflows/ci.yml` y las 901 pruebas verificadas (`570` Django + `244` Node en 27 suites + `87` AI Service).
+- **Matriz final de HUs (`docs/MATRIZ_HU.md`):** actualizada a **15/15 Historias de Usuario implementadas** (incorporando `HU8`, `HU9`, `HU12` y `HU14` con rutas, modelos, servicios y archivos de test verificados).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna (solo documentación sobre código existente).
+Problemas y decisiones técnicas:
+- En `backend-django`, al existir `DEMO_ACCESO_RAPIDO=true` en el `.env` local de demo, el test `test_disponible_false_por_defecto` requiere correr `pytest` con `DEMO_ACCESO_RAPIDO=false` para validar el valor por defecto `False`.
+- Se documentaron con transparencia las diferencias respecto del borrador de `PLAN_IMPLEMENTACION.md` (sin GraphQL/Apollo ni `drf-spectacular`; OpenAPI nativo en FastAPI `/docs`).
+Archivos tocados:
+- `backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`, `web/README.md`
+- `docs/FUNDAMENTACION_TECNICA.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/GUIA_DEFENSA.md`, `docs/MATRIZ_HU.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+---
+Fecha: 2026-11-21
 Tarea: F5 — HU12: Stock real por insumo, descuento por receta, devolución al anular y alertas de stock bajo
 Rama: feat/hu12-stock
 Cambios realizados:
