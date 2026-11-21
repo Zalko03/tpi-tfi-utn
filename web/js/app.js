@@ -1085,6 +1085,12 @@ export const conectarSocketTiempoReal = () => {
         cargarTurnoActivo();
     });
 
+    socket.on('venta.anulada', (payload) => {
+        registrarEventoEnFeed('venta.anulada', payload);
+        cargarFinanzas();
+        cargarTurnoActivo();
+    });
+
     socket.on('costo.actualizado', (payload) => {
         registrarEventoEnFeed('costo.actualizado', payload);
         cargarCatalogo();
@@ -1130,6 +1136,8 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 
     if (nombreEvento === 'venta.registrada') {
         estadoApp.contadores.ventas += 1;
+    } else if (nombreEvento === 'venta.anulada') {
+        estadoApp.contadores.ventas = Math.max(0, estadoApp.contadores.ventas - 1);
     } else if (nombreEvento === 'costo.actualizado' && item.alertaMargenBajo) {
         estadoApp.contadores.alertasMargen += 1;
     } else if (nombreEvento === 'stock.bajo') {

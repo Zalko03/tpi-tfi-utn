@@ -165,6 +165,21 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
                 emitidoEn: marcaTiempo,
             };
         }
+        case 'venta.anulada': {
+            const turno = payload.turnoId ?? payload.turno_caja ?? 'Local';
+            const tieneTotal = payload.total !== undefined && payload.total !== null;
+            const motivo = String(payload.motivoAnulacion || payload.motivo_anulacion || '').trim();
+            return {
+                evento: nombreEvento,
+                nivel: 'advertencia',
+                titulo: `Venta #${payload.ventaId ?? '-'} anulada`,
+                detalle: tieneTotal
+                    ? `Total $${payload.total} · Turno #${turno}${motivo ? ` · ${motivo}` : ''}`
+                    : `Turno #${turno}${motivo ? ` · ${motivo}` : ' · Anulación confirmada'}`,
+                alertaMargenBajo: false,
+                emitidoEn: marcaTiempo,
+            };
+        }
         case 'costo.actualizado': {
             const margenPct = (Number(payload.margenNuevo ?? payload.margenBruto ?? 0) * 100).toFixed(
                 1

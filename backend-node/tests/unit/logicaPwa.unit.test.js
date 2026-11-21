@@ -166,6 +166,17 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(evVenta.nivel).toBe('exito');
             expect(evVenta.titulo).toContain('#77');
 
+            const evVentaAnulada = formatearEventoTiempoReal('venta.anulada', {
+                ventaId: 77,
+                turnoId: 4,
+                motivoAnulacion: 'Ticket duplicado',
+            });
+            expect(evVentaAnulada.nivel).toBe('advertencia');
+            expect(evVentaAnulada.titulo).toContain('#77');
+            expect(evVentaAnulada.titulo).toContain('anulada');
+            expect(evVentaAnulada.detalle).toContain('Ticket duplicado');
+            expect(evVentaAnulada.detalle).not.toContain('Total');
+
             const evCostoCritico = formatearEventoTiempoReal('costo.actualizado', {
                 nombre: 'Cappuccino Italiano',
                 costoAnterior: '900.0000',

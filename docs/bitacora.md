@@ -2241,3 +2241,17 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint` (230 tests).
 - Abrir `/app/carta.html`: la sección de ubicación muestra la dirección nueva y el mapa centrado en Goya.
 ---
+
+Fecha: 2026-11-21
+Tarea: F2 — HU8 tablero en vivo de ventas y anulaciones
+Rama: feat/hu8-ventas-en-vivo
+Qué se hizo y por qué:
+- **Notificación interna Django -> Node (`backend-django/apps/comun/notificaciones_node.py`, `apps/ventas/services.py`):** al registrar una venta nueva (no en reintentos idempotentes por `id_operacion`) o al anular una venta, luego de confirmar la transacción atómica en PostgreSQL, Django envía un `POST` a `{NODE_BASE_URL}/api/internos/eventos` con cabecera `X-Clave-Interna` (`EVENTOS_INTERNOS_CLAVE` desde `.env`, nunca en código) y `X-Request-ID`. Ante falla, timeout o falta de configuración de Node, registra un aviso y la operación local igual se guarda.
+- **Endpoint interno y filtrado por salas en Node (`backend-node/`):** se agregó `POST /api/internos/eventos` protegido con `verificarClaveInterna` (`crypto.timingSafeEqual` sobre SHA-256) y validaciones con `express-validator` en formato único de error. En `src/sockets/index.js` y `src/sockets/emitter.js` se unificó la emisión de `venta.registrada` y `venta.anulada` filtrando estrictamente por salas: solo `permiso:recetas.ver_costos` recibe costos (`costoTotalSnapshot`, `costoUnitarioSnapshot`), solo `permiso:caja.ver_efectivo_esperado` recibe montos y medio de pago (`total`, `medio_pago`, `metodoPago`, `precioUnitario`), y `gananciaBruta` requiere ambos permisos.
+- **Tablero en vivo PWA (`web/js/logicaPwa.js`, `web/js/app.js`):** se sumó el manejo de `venta.anulada` en `formatearEventoTiempoReal` y el listener Socket.IO en `app.js` para actualizar el feed, el contador y refrescar finanzas/turno sin recargar.
+- **Documentación y entorno:** actualización de `.env.example`, `docker-compose.yml`, `render.yaml`, `docs/CONNECTIONS.md` y `docs/ARCHITECTURE.md`.
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
