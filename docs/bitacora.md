@@ -2255,3 +2255,18 @@ Cómo probarlo:
 - `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 ---
+
+Fecha: 2026-11-21
+Tarea: F3 — HU14 condición fiscal del local y tratamiento de IVA
+Rama: feat/hu14-condicion-fiscal
+Qué se hizo y por qué:
+- **Modelos, migración y servicios en Django (`backend-django/apps/insumos/`):** se agregaron `ConfiguracionLocal` (`NO_DECLARADA`, `RESPONSABLE_INSCRIPTO`, `MONOTRIBUTISTA`, `EXENTO`) e `HistorialCondicionFiscal` (solo migración `0002_configuracionlocal_historialcondicionfiscal.py`, sin aplicar sobre `db.sqlite3`). En `services.py`, `registrar_compra_y_actualizar_costo` y `registrar_lote_compras_importacion` toman la condición vigente: `RESPONSABLE_INSCRIPTO` calcula el costo unitario sin IVA, mientras `MONOTRIBUTISTA`, `EXENTO` y `NO_DECLARADA` (criterio por defecto) incluyen IVA y adjuntan aviso si falta declarar (CA14.1, CA14.2). Al cambiar la condición fiscal (`actualizar_condicion_fiscal`), se recalculan los insumos desde su última compra, se actualizan las recetas afectadas en lote, se guarda `HistorialCondicionFiscal` y se notifica a Node por `POST /api/internos/eventos` (`costos.recalculados`) tras confirmar la transacción (CA14.3).
+- **API y permisos (`backend-django/apps/insumos/views.py`, `urls.py`, `serializers.py`):** endpoints `GET/PUT/PATCH /api/configuracion-fiscal/` y `GET /api/configuracion-fiscal/historial/` exclusivos del Dueño (`EsDuenio`), `GET /api/configuracion-fiscal/estado/` de solo lectura para personal con permisos de insumos/compras/costos, y campos `costear_con_iva` y `aviso_fiscal` en compras y recálculo. Tests unitarios, de API y negativos (`403` para Encargado y Cajero).
+- **Historial documental y tiempo real (`backend-node/src/routes/eventosInternos.routes.js`, `src/services/eventosInternos.service.js`):** soporte para evento interno `costos.recalculados` que registra `HistorialPrecio` + `SnapshotCosteo` en MongoDB (si está conectado) y emite `costo.actualizado` por Socket.IO a `recetas.ver_costos`.
+- **Pantalla para el dueño y avisos (`web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`):** sección "Configuración del local" visible solo para el Dueño con selector de condición fiscal e historial, banners de aviso cuando falta declarar en Compras y Recetas (con acceso directo para el Dueño) y controles de `iva_incluido` / `alicuota` en compra manual.
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
+- `.venv/bin/ruff check backend-django/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
