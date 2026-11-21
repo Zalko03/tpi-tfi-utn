@@ -10,15 +10,20 @@ from rest_framework.views import APIView
 from apps.comun.filtros import extraer_rango_fechas, filtrar_queryset_por_rango_fechas
 from apps.insumos.models import Compra, Insumo, Proveedor
 from apps.insumos.serializers import (
+    AjusteStockSerializer,
     CompraSerializer,
     ConfiguracionFiscalActualizarSerializer,
     ConfirmarImportacionComprasSerializer,
     InsumoSerializer,
+    MovimientoStockSerializer,
     ProveedorSerializer,
 )
 from apps.insumos.services import (
     actualizar_condicion_fiscal,
+    ajustar_stock_insumo,
     listar_historial_condicion_fiscal,
+    listar_insumos_stock_bajo,
+    listar_movimientos_stock_reales,
     obtener_criterio_iva_vigente,
     obtener_detalle_configuracion_fiscal,
     obtener_movimientos_stock_trazabilidad,
@@ -67,19 +72,100 @@ class InsumoViewSet(viewsets.ModelViewSet):
     ]
     filterset_fields = ["unidad_base", "estado_activo"]
     search_fields = ["nombre"]
-    ordering_fields = ["nombre", "costo_unitario", "creado_en"]
+    ordering_fields = ["nombre", "costo_unitario", "stock_actual", "stock_minimo", "creado_en"]
     ordering = ["nombre"]
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve", "movimientos"):
+        if self.action in (
+            "list",
+            "retrieve",
+            "movimientos",
+            "movimientos_stock",
+            "stock_bajo",
+        ):
             return [TienePermiso("insumos.ver")()]
         elif self.action == "create":
             return [TienePermiso("insumos.crear")()]
-        elif self.action in ("update", "partial_update"):
+        elif self.action in ("update", "partial_update", "ajustar_stock"):
             return [TienePermiso("insumos.editar")()]
         elif self.action == "destroy":
             return [TienePermiso("insumos.eliminar")()]
         return [IsAuthenticated()]
+
+    @action(detail=True, methods=["post"], url_path="ajustar-stock")
+    def ajustar_stock(self, request, pk=None):
+        """Registra un ajuste manual de stock (INGRESO o EGRESO) sobre el insumo (HU12)."""
+        insumo = self.get_object()
+        serializer = AjusteStockSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            resultado = ajustar_stock_insumo(
+                insumo_id=insumo.id,
+                tipo=datos["tipo"],
+                cantidad=datos["cantidad"],
+                unidad=datos.get("unidad") or None,
+                motivo=datos.get("motivo") or "",
+                usuario=request.user,
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+        insumo_actualizado = resultado["insumo"]
+        return Response(
+            {
+                "mensaje": "Stock actualizado correctamente.",
+                "insumo": InsumoSerializer(insumo_actualizado).data,
+                "movimiento": MovimientoStockSerializer(resultado["movimiento"]).data,
+                "alerta_stock_bajo": resultado["alerta_stock_bajo"],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get"], url_path="stock-bajo")
+    def stock_bajo(self, request):
+        """Lista los insumos activos cuyo stock actual está por debajo de su stock mínimo."""
+        insumos = list(listar_insumos_stock_bajo())
+        datos = InsumoSerializer(insumos, many=True).data
+        return Response({"datos": datos, "total": len(datos)}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="movimientos-stock")
+    def movimientos_stock(self, request):
+        """Lista los movimientos reales persistidos en MovimientoStock (HU12)."""
+        dt_desde, dt_hasta = extraer_rango_fechas(request.query_params)
+
+        insumo_raw = request.query_params.get("insumo")
+        insumo_id = None
+        if insumo_raw not in (None, ""):
+            try:
+                insumo_id = int(insumo_raw)
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError("El insumo seleccionado no es válido.") from exc
+
+        tipo_param = request.query_params.get("tipo")
+        if tipo_param and str(tipo_param).strip().upper() not in ("INGRESO", "EGRESO"):
+            raise serializers.ValidationError("El tipo de movimiento debe ser ingreso o egreso.")
+
+        subtipo_param = request.query_params.get("subtipo")
+        limite_raw = request.query_params.get("limite", 100)
+        try:
+            limite = int(limite_raw)
+        except (TypeError, ValueError) as exc:
+            raise serializers.ValidationError("El límite debe ser un número entero.") from exc
+
+        movimientos = list(
+            listar_movimientos_stock_reales(
+                fecha_desde=dt_desde,
+                fecha_hasta=dt_hasta,
+                insumo_id=insumo_id,
+                tipo=tipo_param,
+                subtipo=subtipo_param,
+                limite=limite,
+            )
+        )
+        datos = MovimientoStockSerializer(movimientos, many=True).data
+        return Response({"datos": datos, "total": len(datos)}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="movimientos")
     def movimientos(self, request):

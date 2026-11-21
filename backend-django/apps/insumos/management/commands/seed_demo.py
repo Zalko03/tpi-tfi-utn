@@ -102,25 +102,29 @@ def _asegurar_insumos_y_compras() -> dict[str, Insumo]:
     )
 
     definiciones_insumos = [
-        ("Café Especialidad Colombia", "g", Decimal("28.0000")),
-        ("Café Geisha Panamá Lote Especial", "g", Decimal("85.0000")),
-        ("Leche Barista Entera", "ml", Decimal("1.4000")),
-        ("Bebida de Almendras Barista", "ml", Decimal("3.2000")),
-        ("Harina de Trigo 000 Orgánica", "g", Decimal("1.8000")),
-        ("Harina de Mandioca", "g", Decimal("4.5000")),
-        ("Manteca Calidad Extra 82%", "g", Decimal("14.0000")),
-        ("Queso Criollo", "g", Decimal("9.5000")),
-        ("Chocolate Cobertura Semiamargo 70%", "g", Decimal("22.0000")),
-        ("Azúcar Mascabo Natural", "g", Decimal("2.5000")),
-        ("Vaso Polipapel 240ml", "un", Decimal("80.0000")),
-        ("Bolsa Kraft Panadería", "un", Decimal("45.0000")),
+        ("Café Especialidad Colombia", "g", Decimal("28.0000"), Decimal("300.0000")),
+        ("Café Geisha Panamá Lote Especial", "g", Decimal("85.0000"), Decimal("100.0000")),
+        ("Leche Barista Entera", "ml", Decimal("1.4000"), Decimal("5000.0000")),
+        ("Bebida de Almendras Barista", "ml", Decimal("3.2000"), Decimal("1000.0000")),
+        ("Harina de Trigo 000 Orgánica", "g", Decimal("1.8000"), Decimal("2000.0000")),
+        ("Harina de Mandioca", "g", Decimal("4.5000"), Decimal("1000.0000")),
+        ("Manteca Calidad Extra 82%", "g", Decimal("14.0000"), Decimal("500.0000")),
+        ("Queso Criollo", "g", Decimal("9.5000"), Decimal("500.0000")),
+        ("Chocolate Cobertura Semiamargo 70%", "g", Decimal("22.0000"), Decimal("400.0000")),
+        ("Azúcar Mascabo Natural", "g", Decimal("2.5000"), Decimal("1000.0000")),
+        ("Vaso Polipapel 240ml", "un", Decimal("80.0000"), Decimal("30.0000")),
+        ("Bolsa Kraft Panadería", "un", Decimal("45.0000"), Decimal("30.0000")),
     ]
 
     insumos_dict = {}
-    for nombre_insumo, unidad_base, costo_inicial in definiciones_insumos:
+    for nombre_insumo, unidad_base, costo_inicial, stock_minimo in definiciones_insumos:
         insumo, creado = Insumo.objects.get_or_create(
             nombre=nombre_insumo,
-            defaults={"unidad_base": unidad_base, "costo_unitario": costo_inicial},
+            defaults={
+                "unidad_base": unidad_base,
+                "costo_unitario": costo_inicial,
+                "stock_minimo": stock_minimo,
+            },
         )
         if not creado:
             campos_insumo = []
@@ -131,6 +135,9 @@ def _asegurar_insumos_y_compras() -> dict[str, Insumo]:
                 if insumo.unidad_base != unidad_base:
                     insumo.unidad_base = unidad_base
                     campos_insumo.append("unidad_base")
+                if insumo.stock_minimo == Decimal("0.0000") and stock_minimo > Decimal("0.0000"):
+                    insumo.stock_minimo = stock_minimo
+                    campos_insumo.append("stock_minimo")
             if not insumo.estado_activo:
                 insumo.estado_activo = True
                 campos_insumo.append("estado_activo")

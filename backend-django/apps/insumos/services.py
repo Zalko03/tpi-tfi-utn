@@ -276,6 +276,7 @@ def obtener_detalle_configuracion_fiscal(limite_historial: int = 20) -> dict:
     }
 
 
+@transaction.atomic
 def registrar_compra_y_actualizar_costo(
     proveedor,
     insumo,
@@ -289,11 +290,14 @@ def registrar_compra_y_actualizar_costo(
     fecha=None,
 ):
     """
-    Persiste una Compra, actualiza el costo_unitario vigente del Insumo
+    Persiste una Compra, actualiza el costo_unitario vigente y stock_actual del Insumo,
+    registra el movimiento real de ingreso en MovimientoStock
     y propaga el recálculo a las recetas afectadas.
     Si no se especifica costear_con_iva, aplica la condición fiscal vigente del local.
     """
-    from apps.insumos.models import Compra
+    from apps.insumos.models import Compra, Insumo, MovimientoStock
+
+    insumo_bloqueado = Insumo.objects.select_for_update().get(pk=insumo.pk)
 
     criterio_fiscal = None
     if costear_con_iva is None:
@@ -304,11 +308,17 @@ def registrar_compra_y_actualizar_costo(
         costear_con_iva_aplicado = bool(costear_con_iva)
         aviso_fiscal = None
 
+    cantidad_base = convertir_a_unidad_base(
+        cantidad=Decimal(str(cantidad)),
+        unidad_origen=unidad,
+        unidad_base=insumo_bloqueado.unidad_base,
+    )
+
     costo_unit = calcular_costo_unitario(
         precio_total=precio_total,
         cantidad=cantidad,
         unidad=unidad,
-        unidad_base=insumo.unidad_base,
+        unidad_base=insumo_bloqueado.unidad_base,
         envio=envio,
         iva_incluido=iva_incluido,
         alicuota=alicuota,
@@ -317,7 +327,7 @@ def registrar_compra_y_actualizar_costo(
 
     datos = {
         "proveedor": proveedor,
-        "insumo": insumo,
+        "insumo": insumo_bloqueado,
         "precio_total": Decimal(str(precio_total)),
         "cantidad": Decimal(str(cantidad)),
         "unidad": unidad,
@@ -331,16 +341,37 @@ def registrar_compra_y_actualizar_costo(
 
     compra = Compra.objects.create(**datos)
 
-    # Actualizar insumo
+    stock_anterior = insumo_bloqueado.stock_actual
+    stock_posterior = (stock_anterior + cantidad_base).quantize(
+        Decimal("0.0001"), rounding=ROUND_HALF_UP
+    )
+
+    insumo_bloqueado.costo_unitario = costo_unit
+    insumo_bloqueado.stock_actual = stock_posterior
+    insumo_bloqueado.save(update_fields=["costo_unitario", "stock_actual", "actualizado_en"])
+
+    # Mantiene sincronizada la instancia recibida en memoria para quienes la lean luego
     insumo.costo_unitario = costo_unit
-    insumo.save(update_fields=["costo_unitario", "actualizado_en"])
+    insumo.stock_actual = stock_posterior
+
+    MovimientoStock.objects.create(
+        insumo=insumo_bloqueado,
+        tipo="INGRESO",
+        subtipo="COMPRA",
+        cantidad_base=cantidad_base,
+        stock_anterior=stock_anterior,
+        stock_posterior=stock_posterior,
+        compra=compra,
+        fecha=compra.fecha,
+        motivo=f"Compra a {proveedor.nombre} ({cantidad} {unidad})",
+    )
 
     # Recalcular recetas afectadas de forma explícita (T1.8)
     productos_recalculados = []
     try:
         from apps.recetas.services import recalcular_recetas_por_insumo
 
-        productos_recalculados = recalcular_recetas_por_insumo(insumo.id)
+        productos_recalculados = recalcular_recetas_por_insumo(insumo_bloqueado.id)
     except ImportError:
         pass
 
@@ -480,6 +511,7 @@ def registrar_lote_compras_importacion(
                 "alicuota": str(compra.alicuota),
                 "costo_unitario_anterior": str(costo_insumo_anterior),
                 "costo_unitario_calculado": str(compra.costo_unitario_calculado),
+                "stock_actual": str(insumo.stock_actual),
             }
         )
 
@@ -757,6 +789,339 @@ def _convertir_seguro_a_base(cantidad: Decimal, unidad: str, unidad_base: str) -
         return Decimal(str(cantidad)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
+def construir_payload_stock_bajo(insumo) -> dict:
+    """Construye el payload estándar de alerta de stock bajo para Socket.IO (CA12.2)."""
+    return {
+        "insumoId": insumo.id,
+        "nombre": insumo.nombre,
+        "stockActual": str(insumo.stock_actual),
+        "stockMinimo": str(insumo.stock_minimo),
+        "unidadBase": insumo.unidad_base,
+    }
+
+
+def notificar_stock_bajo_alertas(alertas: list[dict]) -> None:
+    """Notifica a backend-node las alertas de stock bajo fuera de la transacción (best-effort)."""
+    for alerta in alertas or []:
+        try:
+            notificar_evento_node("stock.bajo", alerta)
+        except Exception:
+            logger.exception(
+                "Error inesperado al notificar stock.bajo para insumo #%s",
+                alerta.get("insumoId"),
+            )
+
+
+def descontar_stock_por_venta(venta, items_venta: list, usuario=None) -> list[dict]:
+    """
+    Descuenta del stock_actual de cada insumo las cantidades requeridas por la receta
+    de los productos vendidos en unidad base (CA12.1) y registra MovimientoStock.
+    Debe ejecutarse dentro de una transacción atómica.
+    Retorna los payloads de alerta 'stock.bajo' para los insumos que quedaron bajo mínimo.
+    """
+    from apps.insumos.models import Insumo, MovimientoStock
+    from apps.recetas.models import RecetaItem
+
+    if not items_venta:
+        return []
+
+    cantidad_por_producto: dict[int, Decimal] = {}
+    for item_venta in items_venta:
+        prod_id = item_venta.producto_id
+        if not prod_id:
+            continue
+        cant = (
+            item_venta.cantidad
+            if isinstance(item_venta.cantidad, Decimal)
+            else Decimal(str(item_venta.cantidad))
+        )
+        cantidad_por_producto[prod_id] = cantidad_por_producto.get(prod_id, Decimal("0")) + cant
+
+    if not cantidad_por_producto:
+        return []
+
+    receta_items = list(
+        RecetaItem.objects.filter(producto_id__in=cantidad_por_producto.keys())
+        .select_related("insumo")
+        .order_by("insumo_id", "id")
+    )
+    if not receta_items:
+        return []
+
+    consumo_por_insumo: dict[int, Decimal] = {}
+    for r_item in receta_items:
+        cant_vendida = cantidad_por_producto.get(r_item.producto_id, Decimal("0"))
+        if cant_vendida <= Decimal("0"):
+            continue
+        cant_base = convertir_a_unidad_base(
+            cantidad=r_item.cantidad * cant_vendida,
+            unidad_origen=r_item.unidad,
+            unidad_base=r_item.insumo.unidad_base,
+        )
+        consumo_por_insumo[r_item.insumo_id] = (
+            consumo_por_insumo.get(r_item.insumo_id, Decimal("0")) + cant_base
+        )
+
+    if not consumo_por_insumo:
+        return []
+
+    # Bloqueo determinístico por id ascendente para prevenir deadlocks en PostgreSQL
+    ids_ordenados = sorted(consumo_por_insumo.keys())
+    insumos_bloqueados = list(
+        Insumo.objects.select_for_update().filter(id__in=ids_ordenados).order_by("id")
+    )
+
+    ahora = timezone.now()
+    movimientos_a_crear = []
+    alertas_stock_bajo = []
+    usuario_valido = (
+        usuario if (usuario is not None and getattr(usuario, "pk", None) is not None) else None
+    )
+
+    for insumo in insumos_bloqueados:
+        consumo = consumo_por_insumo[insumo.id].quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        if consumo <= Decimal("0"):
+            continue
+        stock_anterior = insumo.stock_actual
+        stock_posterior = (stock_anterior - consumo).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+        insumo.stock_actual = stock_posterior
+        insumo.actualizado_en = ahora
+
+        movimientos_a_crear.append(
+            MovimientoStock(
+                insumo=insumo,
+                tipo="EGRESO",
+                subtipo="VENTA_RECETA",
+                cantidad_base=consumo,
+                stock_anterior=stock_anterior,
+                stock_posterior=stock_posterior,
+                venta=venta,
+                usuario=usuario_valido,
+                fecha=venta.fecha,
+                motivo=f"Consumo por venta #{venta.id}",
+            )
+        )
+
+        if insumo.stock_bajo:
+            alertas_stock_bajo.append(construir_payload_stock_bajo(insumo))
+
+    if insumos_bloqueados:
+        Insumo.objects.bulk_update(insumos_bloqueados, ["stock_actual", "actualizado_en"])
+    if movimientos_a_crear:
+        MovimientoStock.objects.bulk_create(movimientos_a_crear)
+
+    return alertas_stock_bajo
+
+
+def devolver_stock_por_anulacion_venta(venta, usuario=None) -> list[int]:
+    """
+    Devuelve al stock_actual de cada insumo las cantidades previamente descontadas
+    por una venta al momento de anularla, registrando MovimientoStock (ANULACION_VENTA).
+    Debe ejecutarse dentro de una transacción atómica.
+    """
+    from apps.insumos.models import Insumo, MovimientoStock
+
+    if MovimientoStock.objects.filter(
+        venta=venta, tipo="INGRESO", subtipo="ANULACION_VENTA"
+    ).exists():
+        return []
+
+    egresos = list(
+        MovimientoStock.objects.filter(
+            venta=venta,
+            tipo="EGRESO",
+            subtipo="VENTA_RECETA",
+        ).order_by("insumo_id", "id")
+    )
+    if not egresos:
+        return []
+
+    devolucion_por_insumo: dict[int, Decimal] = {}
+    for mov in egresos:
+        devolucion_por_insumo[mov.insumo_id] = (
+            devolucion_por_insumo.get(mov.insumo_id, Decimal("0")) + mov.cantidad_base
+        )
+
+    ids_ordenados = sorted(devolucion_por_insumo.keys())
+    insumos_bloqueados = list(
+        Insumo.objects.select_for_update().filter(id__in=ids_ordenados).order_by("id")
+    )
+
+    ahora = timezone.now()
+    fecha_anul = venta.anulada_en or ahora
+    usuario_valido = (
+        usuario if (usuario is not None and getattr(usuario, "pk", None) is not None) else None
+    )
+    movimientos_a_crear = []
+
+    for insumo in insumos_bloqueados:
+        devolucion = devolucion_por_insumo[insumo.id].quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+        if devolucion <= Decimal("0"):
+            continue
+        stock_anterior = insumo.stock_actual
+        stock_posterior = (stock_anterior + devolucion).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+        insumo.stock_actual = stock_posterior
+        insumo.actualizado_en = ahora
+
+        movimientos_a_crear.append(
+            MovimientoStock(
+                insumo=insumo,
+                tipo="INGRESO",
+                subtipo="ANULACION_VENTA",
+                cantidad_base=devolucion,
+                stock_anterior=stock_anterior,
+                stock_posterior=stock_posterior,
+                venta=venta,
+                usuario=usuario_valido,
+                fecha=fecha_anul,
+                motivo=f"Devolución por anulación de venta #{venta.id}",
+            )
+        )
+
+    if insumos_bloqueados:
+        Insumo.objects.bulk_update(insumos_bloqueados, ["stock_actual", "actualizado_en"])
+    if movimientos_a_crear:
+        MovimientoStock.objects.bulk_create(movimientos_a_crear)
+
+    return ids_ordenados
+
+
+@transaction.atomic
+def _persistir_ajuste_stock_atomico(
+    insumo_id: int,
+    tipo: str,
+    cantidad: Decimal,
+    unidad: str | None = None,
+    motivo: str = "",
+    usuario=None,
+) -> dict:
+    from apps.insumos.models import Insumo, MovimientoStock
+
+    tipo_norm = str(tipo or "").strip().upper()
+    if tipo_norm not in ("INGRESO", "EGRESO"):
+        raise ValueError("El tipo de ajuste debe ser INGRESO o EGRESO.")
+
+    insumo = Insumo.objects.select_for_update().filter(id=insumo_id, estado_activo=True).first()
+    if insumo is None:
+        raise ValueError(f"El insumo con ID {insumo_id} no existe o está inactivo.")
+
+    unidad_origen = normalizar_unidad(unidad) or insumo.unidad_base
+    cantidad_base = convertir_a_unidad_base(
+        cantidad=Decimal(str(cantidad)),
+        unidad_origen=unidad_origen,
+        unidad_base=insumo.unidad_base,
+    )
+
+    stock_anterior = insumo.stock_actual
+    delta = cantidad_base if tipo_norm == "INGRESO" else -cantidad_base
+    stock_posterior = (stock_anterior + delta).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+    insumo.stock_actual = stock_posterior
+    insumo.save(update_fields=["stock_actual", "actualizado_en"])
+
+    usuario_valido = (
+        usuario if (usuario is not None and getattr(usuario, "pk", None) is not None) else None
+    )
+    motivo_limpio = str(motivo or "").strip()[:255] or "Ajuste manual de inventario"
+
+    movimiento = MovimientoStock.objects.create(
+        insumo=insumo,
+        tipo=tipo_norm,
+        subtipo="AJUSTE_MANUAL",
+        cantidad_base=cantidad_base,
+        stock_anterior=stock_anterior,
+        stock_posterior=stock_posterior,
+        usuario=usuario_valido,
+        motivo=motivo_limpio,
+    )
+
+    alerta_payload = (
+        construir_payload_stock_bajo(insumo)
+        if tipo_norm == "EGRESO" and insumo.stock_bajo
+        else None
+    )
+    return {
+        "insumo": insumo,
+        "movimiento": movimiento,
+        "alerta_payload": alerta_payload,
+    }
+
+
+def ajustar_stock_insumo(
+    insumo_id: int,
+    tipo: str,
+    cantidad: Decimal,
+    unidad: str | None = None,
+    motivo: str = "",
+    usuario=None,
+) -> dict:
+    """
+    Registra un ajuste manual de stock (INGRESO o EGRESO) sobre un insumo activo
+    y emite alerta 'stock.bajo' si tras un egreso quedó por debajo de su mínimo.
+    """
+    resultado = _persistir_ajuste_stock_atomico(
+        insumo_id=insumo_id,
+        tipo=tipo,
+        cantidad=cantidad,
+        unidad=unidad,
+        motivo=motivo,
+        usuario=usuario,
+    )
+    if resultado["alerta_payload"] is not None:
+        notificar_stock_bajo_alertas([resultado["alerta_payload"]])
+
+    insumo = resultado["insumo"]
+    return {
+        "insumo": insumo,
+        "movimiento": resultado["movimiento"],
+        "alerta_stock_bajo": insumo.stock_bajo,
+    }
+
+
+def listar_insumos_stock_bajo():
+    """Retorna insumos activos cuyo stock_actual está por debajo de un stock_minimo > 0."""
+    from django.db.models import F
+
+    from apps.insumos.models import Insumo
+
+    return Insumo.objects.filter(
+        estado_activo=True,
+        stock_minimo__gt=Decimal("0.0000"),
+        stock_actual__lt=F("stock_minimo"),
+    ).order_by("nombre")
+
+
+def listar_movimientos_stock_reales(
+    fecha_desde=None,
+    fecha_hasta=None,
+    insumo_id: int | None = None,
+    tipo: str | None = None,
+    subtipo: str | None = None,
+    limite: int = 100,
+):
+    """Consulta los movimientos reales persistidos en MovimientoStock."""
+    from apps.insumos.models import MovimientoStock
+
+    qs = MovimientoStock.objects.select_related("insumo", "usuario", "compra", "venta").all()
+    if fecha_desde is not None:
+        qs = qs.filter(fecha__gte=fecha_desde)
+    if fecha_hasta is not None:
+        qs = qs.filter(fecha__lte=fecha_hasta)
+    if insumo_id is not None:
+        qs = qs.filter(insumo_id=insumo_id)
+    if tipo:
+        qs = qs.filter(tipo=str(tipo).strip().upper())
+    if subtipo:
+        qs = qs.filter(subtipo=str(subtipo).strip().upper())
+    return qs[: max(1, int(limite or 100))]
+
+
 def obtener_movimientos_stock_trazabilidad(
     fecha_desde=None,
     fecha_hasta=None,
@@ -765,11 +1130,12 @@ def obtener_movimientos_stock_trazabilidad(
     incluir_costos: bool = True,
 ) -> list[dict]:
     """
-    Construye la trazabilidad real de movimientos de insumos/stock combinando:
+    Construye la trazabilidad de movimientos de insumos/stock combinando:
     - INGRESO (COMPRA): compras registradas a proveedores (Compra).
-    - EGRESO (VENTA_RECETA): consumo teórico por recetas de ítems vendidos (VentaItem -> RecetaItem).
+    - EGRESO (VENTA_RECETA): consumo por recetas de ítems de ventas EMITIDAS (VentaItem -> RecetaItem).
+    - INGRESO / EGRESO (AJUSTE_MANUAL): ajustes manuales de inventario (MovimientoStock).
     """
-    from apps.insumos.models import Compra
+    from apps.insumos.models import Compra, MovimientoStock
     from apps.ventas.models import VentaItem
 
     tipo_norm = str(tipo or "").strip().upper()
@@ -869,6 +1235,38 @@ def obtener_movimientos_stock_trazabilidad(
                         "usuario_nombre": usuario_nombre,
                     }
                 )
+
+    qs_ajustes = MovimientoStock.objects.filter(subtipo="AJUSTE_MANUAL").select_related(
+        "insumo", "usuario"
+    )
+    if tipo_norm in ("INGRESO", "EGRESO"):
+        qs_ajustes = qs_ajustes.filter(tipo=tipo_norm)
+    if fecha_desde is not None:
+        qs_ajustes = qs_ajustes.filter(fecha__gte=fecha_desde)
+    if fecha_hasta is not None:
+        qs_ajustes = qs_ajustes.filter(fecha__lte=fecha_hasta)
+    if insumo_id is not None:
+        qs_ajustes = qs_ajustes.filter(insumo_id=insumo_id)
+
+    for ajuste in qs_ajustes:
+        movimientos.append(
+            {
+                "id": f"ajuste-{ajuste.id}",
+                "origen_id": ajuste.id,
+                "fecha": ajuste.fecha.isoformat(),
+                "tipo": ajuste.tipo,
+                "subtipo": ajuste.subtipo,
+                "insumo_id": ajuste.insumo_id,
+                "insumo_nombre": ajuste.insumo.nombre,
+                "cantidad": str(ajuste.cantidad_base),
+                "unidad": ajuste.insumo.unidad_base,
+                "cantidad_base": str(ajuste.cantidad_base),
+                "unidad_base": ajuste.insumo.unidad_base,
+                "monto": None,
+                "detalle": ajuste.motivo or "Ajuste manual de inventario",
+                "usuario_nombre": ajuste.usuario.username if ajuste.usuario else "Gerencia",
+            }
+        )
 
     movimientos.sort(key=lambda m: (m["fecha"], str(m["id"])), reverse=True)
     return movimientos

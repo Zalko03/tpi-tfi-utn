@@ -10,6 +10,7 @@ from apps.insumos.models import (
     CONDICION_RESPONSABLE_INSCRIPTO,
     Compra,
     Insumo,
+    MovimientoStock,
     Proveedor,
 )
 from apps.insumos.services import (
@@ -26,6 +27,8 @@ class ProveedorSerializer(serializers.ModelSerializer):
 
 
 class InsumoSerializer(serializers.ModelSerializer):
+    stock_bajo = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = Insumo
         fields = [
@@ -33,16 +36,76 @@ class InsumoSerializer(serializers.ModelSerializer):
             "nombre",
             "unidad_base",
             "costo_unitario",
+            "stock_actual",
+            "stock_minimo",
+            "stock_bajo",
             "estado_activo",
             "creado_en",
             "actualizado_en",
         ]
-        read_only_fields = ["id", "costo_unitario", "creado_en", "actualizado_en"]
+        read_only_fields = [
+            "id",
+            "costo_unitario",
+            "stock_actual",
+            "stock_bajo",
+            "creado_en",
+            "actualizado_en",
+        ]
 
     def validate_unidad_base(self, value):
         if value not in ("g", "ml", "un"):
             raise serializers.ValidationError("La unidad base debe ser 'g', 'ml' o 'un'.")
         return value
+
+    def validate_stock_minimo(self, value):
+        if value is not None and Decimal(str(value)) < Decimal("0"):
+            raise serializers.ValidationError("El stock mínimo no puede ser negativo.")
+        return value
+
+
+class AjusteStockSerializer(serializers.Serializer):
+    """Valida una solicitud de ajuste manual de stock de un insumo (HU12)."""
+
+    tipo = serializers.ChoiceField(
+        choices=[("INGRESO", "Ingreso"), ("EGRESO", "Egreso")],
+        error_messages={"invalid_choice": "El tipo de ajuste debe ser INGRESO o EGRESO."},
+    )
+    cantidad = serializers.DecimalField(max_digits=14, decimal_places=4)
+    unidad = serializers.CharField(max_length=10, required=False, allow_blank=True, default="")
+    motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+
+    def validate_cantidad(self, value):
+        if Decimal(str(value)) <= Decimal("0"):
+            raise serializers.ValidationError("La cantidad del ajuste debe ser mayor a cero.")
+        return value
+
+
+class MovimientoStockSerializer(serializers.ModelSerializer):
+    insumo_nombre = serializers.ReadOnlyField(source="insumo.nombre")
+    unidad_base = serializers.ReadOnlyField(source="insumo.unidad_base")
+    usuario_nombre = serializers.ReadOnlyField(source="usuario.username")
+
+    class Meta:
+        model = MovimientoStock
+        fields = [
+            "id",
+            "insumo",
+            "insumo_nombre",
+            "unidad_base",
+            "tipo",
+            "subtipo",
+            "cantidad_base",
+            "stock_anterior",
+            "stock_posterior",
+            "compra",
+            "venta",
+            "usuario",
+            "usuario_nombre",
+            "motivo",
+            "fecha",
+            "creado_en",
+        ]
+        read_only_fields = fields
 
 
 class CompraSerializer(serializers.ModelSerializer):

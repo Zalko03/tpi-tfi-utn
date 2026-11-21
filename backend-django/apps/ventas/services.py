@@ -12,6 +12,11 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.caja.models import TurnoCaja
 from apps.comun.notificaciones_node import notificar_evento_node
+from apps.insumos.services import (
+    descontar_stock_por_venta,
+    devolver_stock_por_anulacion_venta,
+    notificar_stock_bajo_alertas,
+)
 from apps.recetas.models import Producto
 from apps.ventas.models import Venta, VentaItem
 
@@ -112,7 +117,7 @@ def _persistir_venta_atomica(
             .first()
         )
         if venta_existente is not None:
-            return venta_existente, False, []
+            return venta_existente, False, [], []
 
     if not items_data:
         raise ValueError("La venta debe contener al menos un producto.")
@@ -140,7 +145,7 @@ def _persistir_venta_atomica(
                 .first()
             )
             if venta_existente is not None:
-                return venta_existente, False, []
+                return venta_existente, False, [], []
         raise
 
     if fecha:
@@ -233,7 +238,14 @@ def _persistir_venta_atomica(
     venta.costo_total_snapshot = total_costo
     venta.save(update_fields=["total", "costo_total_snapshot", "fecha"])
 
-    return venta, True, items_creados
+    usuario_venta = getattr(turno_caja, "usuario", None) if turno_caja is not None else None
+    alertas_stock_bajo = descontar_stock_por_venta(
+        venta=venta,
+        items_venta=items_creados,
+        usuario=usuario_venta,
+    )
+
+    return venta, True, items_creados, alertas_stock_bajo
 
 
 def registrar_venta(
@@ -246,10 +258,11 @@ def registrar_venta(
 ) -> Venta:
     """
     Registra una venta cobrada en caja. Congela el costo unitario vigente
-    de cada producto (HU4 / CA4.2) para que futuros cambios de precio de insumos
-    no reescriban el pasado contable. Soporta idempotencia vía id_operacion.
+    de cada producto (HU4 / CA4.2), descuenta el stock de insumos por receta
+    (HU12 / CA12.1) y notifica a Node si algún insumo quedó bajo mínimo (CA12.2).
+    Soporta idempotencia vía id_operacion.
     """
-    venta, fue_creada, items_creados = _persistir_venta_atomica(
+    venta, fue_creada, items_creados, alertas_stock_bajo = _persistir_venta_atomica(
         items_data=items_data,
         medio_pago=medio_pago,
         origen=origen,
@@ -259,6 +272,8 @@ def registrar_venta(
     )
     if fue_creada:
         _notificar_venta_en_vivo("venta.registrada", venta, items=items_creados)
+        if alertas_stock_bajo:
+            notificar_stock_bajo_alertas(alertas_stock_bajo)
     return venta
 
 
@@ -301,6 +316,10 @@ def _persistir_anulacion_atomica(
     )
     venta_bloqueada.motivo_anulacion = motivo_limpio
     venta_bloqueada.save(update_fields=["estado", "anulada_en", "anulada_por", "motivo_anulacion"])
+    devolver_stock_por_anulacion_venta(
+        venta=venta_bloqueada,
+        usuario=venta_bloqueada.anulada_por,
+    )
     return venta_bloqueada
 
 
