@@ -2270,3 +2270,17 @@ Cómo probarlo:
 - `.venv/bin/ruff check backend-django/`
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
 ---
+
+Fecha: 2026-11-21
+Tarea: F4 — HU9 precio sugerido con margen objetivo y competencia
+Rama: feat/hu9-precio-sugerido
+Qué se hizo y por qué:
+- **Modelos y migración en Django (`backend-django/apps/recetas/models.py`):** se sumaron `margen_objetivo` (por defecto `0.3000`, 30%) y `redondeo_multiplo` (`$50` o `$100`, por defecto `50`) a `Producto`, y se creó el modelo `PrecioCompetencia` para cargar precios de referencia de competidores por producto. Se generó la migración `0003_producto_margen_objetivo_producto_redondeo_multiplo_and_more.py` sin aplicarla sobre `db.sqlite3`.
+- **Servicio de cálculo (`backend-django/apps/recetas/services.py`):** se implementaron `redondear_a_multiplo`, `calcular_precio_sugerido` y `obtener_sugerencia_precio_producto`. Calcula `costo ÷ (1 − margen_objetivo)` redondeado al múltiplo de `$50` o `$100` configurado (CA9.1), acota el resultado entre el mínimo y el promedio de los precios de competencia cargados cuando existen (CA9.2) y nunca modifica `precio_venta` automáticamente. Se mantuvo `listar_productos_con_costos_optimizado` con el parámetro opcional `incluir_competencia=False` para conservar las 2 consultas SQL de T3.4 y evitar N+1 en `ProductoViewSet`.
+- **API, permisos y pruebas (`backend-django/apps/recetas/` y `apps/comun/tests/api/test_api_permisos_negativos.py`):** se agregó `GET /api/productos/:id/precio-sugerido/` (permiso `recetas.ver_costos`), CRUD `/api/precios-competencia/` y los campos `precio_sugerido` y `sugerencia_precio` en `ProductoSerializer` (ocultos para quienes no tienen `recetas.ver_costos`, como Cajero). Se agregaron tests unitarios, de API y negativos (`403`).
+- **Recetas en PWA (`web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`):** nueva columna "Precio sugerido" en la tabla de Recetas (enmascarada con candado para Cajero), panel de margen objetivo, redondeo `$50`/`$100`, previsualización en vivo (`calcularPrecioSugeridoLocal`) y carga/eliminación manual de precios de competencia en el detalle de la receta, más botón opcional "Usar precio sugerido" en el modal de edición manual de precio. Tests unitarios y de integración en `backend-node/tests/`.
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
