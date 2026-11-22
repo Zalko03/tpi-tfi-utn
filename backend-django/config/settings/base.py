@@ -231,6 +231,11 @@ try:
     NODE_EVENTOS_TIMEOUT_SECONDS = float(os.environ.get("NODE_EVENTOS_TIMEOUT_SECONDS", "2.0"))
 except (TypeError, ValueError):
     NODE_EVENTOS_TIMEOUT_SECONDS = 2.0
+# Los avisos a Node salen en un hilo de fondo para no demorar el cobro si Node está dormido.
+# Los tests lo apagan (conftest.py) para verificar el envío de forma síncrona.
+NODE_EVENTOS_EN_SEGUNDO_PLANO = os.environ.get(
+    "NODE_EVENTOS_EN_SEGUNDO_PLANO", "True"
+).strip().lower() in ("1", "true", "yes", "si", "sí")
 
 LANGUAGE_CODE = "es-ar"
 TIME_ZONE = "America/Argentina/Buenos_Aires"
