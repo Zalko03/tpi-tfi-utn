@@ -209,4 +209,4 @@ Resultados verificados en la rama actual (`fix/post-auditoria-tanda2`):
 - **Bitácora de sesiones:** [docs/bitacora.md](docs/bitacora.md)
 
 ### Declaración de uso de IA en el desarrollo
-Conforme a [docs/PLAN_IMPLEMENTACION.md](docs/PLAN_IMPLEMENTACION.md) (§0.4) y [docs/PROPUESTA.md](docs/PROPUESTA.md) (§5), durante la construcción del proyecto se utilizó asistencia de inteligencia artificial (Antigravity) bajo flujo de una tarea por sesión, commits incrementales, pruebas automatizadas y registro en [docs/bitacora.md](docs/bitacora.md).
+Conforme a [docs/PLAN_IMPLEMENTACION.md](docs/PLAN_IMPLEMENTACION.md) (§0.4) y [docs/PROPUESTA.md](docs/PROPUESTA.md) (§5), durante la construcción del proyecto se utilizaron asistentes de inteligencia artificial para programar bajo flujo de una tarea por sesión, commits incrementales, pruebas automatizadas y registro en [docs/bitacora.md](docs/bitacora.md).

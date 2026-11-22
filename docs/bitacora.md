@@ -2216,7 +2216,7 @@ Fecha: 2026-11-20
 Tarea: T12 — Correcciones post-auditoría de Tanda 2/3 y accesibilidad pre-video (T11)
 Rama: fix/post-auditoria-tanda2 (base `test/e2e-flujo-demo`)
 Qué se hizo y por qué:
-- **Seguridad y robustez de `scripts/ensayo_demo.py` y `scripts/ensayo_demo.sh` (A.4 + revisión Claude):**
+- **Seguridad y robustez de `scripts/ensayo_demo.py` y `scripts/ensayo_demo.sh` (A.4 + revisión):**
   - Guarda obligatoria contra `backend-django/db.sqlite3`: sin `DJANGO_URL` y `NODE_URL` explícitas (salvo flag `--confirmo-base-real`), el script rechaza ejecutar e indica qué variables o flag pasar; `scripts/ensayo_demo.sh` reenvía `"$@"`.
   - `correr_paso` captura `(KeyError, AttributeError, TypeError, ValueError)` ante JSON con forma inesperada y lo reporta como fallo controlado del paso.
   - Limpieza ante falla intermedia: si falla Paso 4 o Paso 5 luego de crear `venta_temp`, intenta anularla en limpieza y evita cerrar el turno si quedó una venta huérfana o falló el cobro.
@@ -2263,19 +2263,19 @@ Cómo probarlo:
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
 ---
 
-## 20/11 — CSP de la web: Google Fonts y hosts de Render (Claude)
+## 20/11 — CSP de la web: Google Fonts y hosts de Render
 - **Qué:** la CSP que se agregó en T12 a `web/nginx.conf` y `vercel.json` bloqueaba la hoja de Google Fonts (`style-src` sin `fonts.googleapis.com`, sin `font-src` para `fonts.gstatic.com`) y la web caía a Times New Roman. La de Node (`backend-node/app.js`) tenía lo mismo desde antes, y su `connect-src` no incluía los hosts de Render (la web abierta desde `/app` del Node publicado no podía hablar con Django).
 - **Cambio:** las tres CSP permiten `https://fonts.googleapis.com` (estilos) y `https://fonts.gstatic.com` (fuentes), y comparten `connect-src` (Render + localhost). nginx y Vercel quedan idénticas.
 - **Test:** `backend-node/tests/integration/cspConsistencia.integration.test.js` lee `vercel.json`, `web/nginx.conf` y la cabecera real de Node, y verifica fuentes, mapa, `script-src 'self'`, sin comodines e iguales entre sí.
-- **Cómo probarlo:** `npm test` en `backend-node`. A mano: servir `web/` bajo `/app/` con la CSP de nginx y comprobar en la consola del navegador que `getComputedStyle(document.body).fontFamily` empieza con "Plus Jakarta Sans" (verificado por Claude).
+- **Cómo probarlo:** `npm test` en `backend-node`. A mano: servir `web/` bajo `/app/` con la CSP de nginx y comprobar en la consola del navegador que `getComputedStyle(document.body).fontFamily` empieza con "Plus Jakarta Sans" (verificado).
 
-## 20/11 — Ensayo de la demo sin romper el turno del video + botones de Equipo (Claude)
+## 20/11 — Ensayo de la demo sin romper el turno del video + botones de Equipo
 - **Problema encontrado al ensayar sobre una copia de la base:** `scripts/ensayo_demo.py` reutilizaba el turno abierto que deja `seed_demo --video` (el que se prepara para grabar) y lo cerraba al final con un faltante. El historial de Reportes quedaba con un cierre de caja que no se quería mostrar.
 - **Cambio:** el ensayo solo cierra los turnos que abrió él. Si el turno ya estaba abierto, el paso 6 se informa como ✅ "No se cerró el turno #N porque ya estaba abierto antes del ensayo" (queda con 1 venta de prueba y 1 anulada). El test de doble corrida verifica que el turno del video sigue ABIERTO y, para cubrir el arqueo, lo cierra a mano antes de la segunda corrida.
 - **Igual conviene no correr el ensayo sobre la base con la que se graba:** usarlo en una copia (servidores en otros puertos o una copia de `db.sqlite3`).
 - **Antes de `seed_demo --video` en la base local:** hay que cerrar el Turno #1 de cajero_demo (abierto desde el 16/11). El comando se niega a correr mientras haya un turno viejo abierto, y lo explica.
 - **Equipo:** los botones de cada tarjeta ("Permisos", "Dar de baja", "Reactivar") ahora tienen el mismo ancho y no se parten en varios renglones.
-- **Verificado por Claude** sobre una copia de la base (Django 8000 + Node 3000 con Mongo `sapori_ensayo`): `seed_demo --video` dos veces (idempotente), ensayo 8/8 dos veces, el turno del video sigue abierto, y sin URLs el ensayo se niega a correr.
+- **Verificado** sobre una copia de la base (Django 8000 + Node 3000 con Mongo `sapori_ensayo`): `seed_demo --video` dos veces (idempotente), ensayo 8/8 dos veces, el turno del video sigue abierto, y sin URLs el ensayo se niega a correr.
 
 
 
@@ -2357,7 +2357,7 @@ Cómo probarlo:
 - `cd ai-service && pytest --cov=app --cov-report=term-missing`
 ---
 
-## 21/11 — Integración y auditoría de la cadena F2→F6 (Claude)
+## 21/11 — Integración y auditoría de la cadena F2→F6
 Rama: `integracion/entrega-final` (cadena HU8 → HU14 → HU9 → HU12 → docs + commit `ef0f6a5` de `feature/ajustes-evaluacion`).
 Qué se hizo y por qué:
 - **Integración:** se aplicó el commit del compañero sobre la cadena. En los README de módulo y en `REVISION_TECNICA_BACKEND_NODE.md` se conservaron las versiones de la cadena, que ya cubren HU8, HU9, HU12 y HU14, y se sumaron los comandos de cobertura.
@@ -2374,7 +2374,7 @@ Cómo probarlo:
 
 ---
 
-## 21/11 — Prueba en el navegador, arreglos del frontend y avisos a Node en segundo plano (Claude)
+## 21/11 — Prueba en el navegador, arreglos del frontend y avisos a Node en segundo plano
 Rama: `integracion/entrega-final`. Base local respaldada (`~/orq/backups/db.sqlite3.20261121-220907.antes-integracion`) y migrada (insumos 0002 y 0003, recetas 0003).
 Qué se probó en el navegador (dueño, encargado y cajero demo):
 - Anduvo: login demo, apertura de turno propio, cobro con ticket (dirección real), venta y anulación en vivo en el tablero del encargado (HU8), condición fiscal con recálculo de 19 insumos y 12 recetas e historial (HU14), precio sugerido, vista previa del margen, competencia con tope al mínimo y al promedio (HU9), ajuste manual, mínimo y alerta de stock bajo en vivo (HU12), importación con IA (Groq) y carta pública. El cajero solo ve Punto de Venta y Caja; la API le devuelve los costos en `null` y 403 en insumos, competencia, finanzas y condición fiscal.
@@ -2393,7 +2393,7 @@ Cómo probarlo:
 - `cd backend-node && npm test -- --silent`
 - `cd ai-service && .venv/bin/python -m pytest -q`
 
-## 21/11 — Anular ventas desde la web, stock inicial de demo, Socket.IO en Vercel y revisión del deploy (Claude)
+## 21/11 — Anular ventas desde la web, stock inicial de demo, Socket.IO en Vercel y revisión del deploy
 Rama: `integracion/entrega-final`. Backup previo a la prueba en el navegador: `~/orq/backups/db.sqlite3.20261121-225235.antes-prueba-anular`.
 Qué se hizo y por qué:
 - **Anular ventas desde Reportes:** columna "Acción" en la tabla de trazabilidad con botón "Anular" solo para ventas EMITIDA de turnos abiertos y usuarios con `ventas.anular_ticket`. Abre un modal que pide motivo (3 a 255 caracteres), llama a `POST /api/ventas/{id}/anular/`, muestra el error de la API con `extraerMensajeErrorApi` y refresca reportes y tarjetas (si el backend responde 400, por ejemplo porque el turno se cerró, también refresca para que el botón desaparezca). Para saber si el turno sigue abierto, `VentaSerializer` suma el campo de solo lectura `turno_estado`. La lógica pura (`esVentaAnulable`, `puedeAnularVenta`, `registroMuestraBotonAnular`, `validarMotivoAnulacion`) está en `logicaPwa.js` con tests. El backend sigue validando permiso y turno: el botón solo evita ofrecer algo que va a fallar.
