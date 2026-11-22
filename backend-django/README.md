@@ -156,6 +156,8 @@ DJANGO_DEBUG=True SEED_DEMO_PASSWORD="<clave-demo>" .venv/bin/python manage.py s
 # Nota: si tu .env local tiene DEMO_ACCESO_RAPIDO=true, pasá DEMO_ACCESO_RAPIDO=false
 cd backend-django
 DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q
+# Con tabla de cobertura (pytest-cov)
+DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q --cov=apps --cov-report=term-missing
 
 # Solo unitarias o solo API
 .venv/bin/python -m pytest -q apps/*/tests/unit/

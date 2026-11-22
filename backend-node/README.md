@@ -120,6 +120,8 @@ cd backend-node
 
 # Suite completa (27 suites, 244 tests pasando sin requerir MongoDB externo activo salvo test de integración mockeado)
 npm test
+# Con tabla de cobertura
+npm run test:coverage
 
 # Linter ESLint (0 errores)
 npm run lint

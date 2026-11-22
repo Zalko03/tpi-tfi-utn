@@ -2333,4 +2333,28 @@ Cómo probarlo:
 - `cd backend-node && npm test && npm run lint`
 - `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+Fecha: 2026-11-21
+Tarea: Cierre de documentación integral de entrega final, auditoría de los 8 ejes de evaluación docente y configuración de reportes de cobertura
+Rama: feature/ajustes-evaluacion
+Qué se hizo y por qué:
+- Se elaboró el conjunto completo de documentación técnica y de defensa exigido para la entrega final dentro de `docs/`:
+  - `docs/ESTRUCTURA_Y_MANUAL_MODULOS.md`: guía de instalación desde cero, orden estricto de inicio de los servicios y explicación archivo por archivo de las tres ramas/módulos del sistema.
+  - `docs/REVISION_TECNICA_BACKEND_NODE.md`: análisis técnico de `backend-node` cubriendo arquitectura de capas, responsabilidades de controladores, tabla de endpoints REST, validación JWT RS256, permisos, WebSockets (`Socket.IO`) y manejo de secretos.
+  - `docs/FUNDAMENTACION_Y_GUIA_DEFENSA.md`: líneas de funcionamiento paso a paso (cobro en POS e importación con IA), capturas de pantalla reales del flujo Frontend (`docs/capturas/`), comparativa de decisiones tecnológicas frente a los contenidos de clase y respuestas a las 12 preguntas de defensa oral.
+  - `docs/AUDITORIA_PROYECTO.md`: informe de auditoría integral verificando requerimientos funcionales, arquitectura, seguridad, resiliencia y calidad.
+  - `docs/CORRECCIONES_EVALUACION_FINAL.md`: registro detallado de las correcciones aplicadas tras contrastar el proyecto con los 8 ejes de evaluación del tribunal docente.
+  - `docs/novedades.md`: síntesis conceptual (sin código) de las mejoras posteriores al rediseño visual del frontend.
+- Se crearon los archivos `README.md` individuales por módulo (`backend-django/README.md`, `backend-node/README.md` y `ai-service/README.md`).
+- Se incorporó la medición de cobertura de código (`pytest-cov>=5.0.0` en `backend-django/requirements.txt` y `ai-service/requirements.txt`, script `test:coverage` en `backend-node/package.json` y banderas `--cov` en `.github/workflows/ci.yml`).
+- Se conservó `web/dev-server.js` como servidor estático auxiliar en el puerto `5173` para pruebas y demostraciones locales sin Docker.
+Archivos tocados:
+- `backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`
+- `backend-django/requirements.txt`, `ai-service/requirements.txt`, `backend-node/package.json`, `.github/workflows/ci.yml`
+- `docs/ESTRUCTURA_Y_MANUAL_MODULOS.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/FUNDAMENTACION_Y_GUIA_DEFENSA.md`, `docs/AUDITORIA_PROYECTO.md`, `docs/CORRECCIONES_EVALUACION_FINAL.md`, `docs/novedades.md`, `docs/capturas/*`
+- `web/dev-server.js`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && USE_SQLITE=True pytest --cov=apps --cov-report=term-missing`
+- `cd backend-node && npm run test:coverage && npm run lint`
+- `cd ai-service && pytest --cov=app --cov-report=term-missing`
 ---

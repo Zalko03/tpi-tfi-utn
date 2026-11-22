@@ -99,6 +99,8 @@ cd ai-service
 
 # Suite completa (87 tests: 73 unitarios + 14 de API)
 .venv/bin/python -m pytest -q
+# Con tabla de cobertura (pytest-cov)
+.venv/bin/python -m pytest -q --cov=app --cov-report=term-missing
 
 # Linter y formato desde la raíz del repo
 cd ..
