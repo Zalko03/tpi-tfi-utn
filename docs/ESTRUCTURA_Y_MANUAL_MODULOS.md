@@ -61,11 +61,9 @@ El sistema tiene dependencias estrictas de arranque que deben respetarse en este
    npm ci
    npm run dev
    ```
-5. **Paso 5 — Cliente Frontend PWA (`web` en puerto `5173` o vía Nginx en puerto `80`):**
+5. **Paso 5 — Cliente Frontend PWA (servido por Node en `http://localhost:3000/app/` o vía Nginx en puerto `80`):**
    Consume la API REST de Django (`:8000`), la API REST de Node (`:3000`) y se suscribe en tiempo real al canal `Socket.IO` de Node (`:3000`).
-   ```bash
-   node web/dev-server.js
-   ```
+   No necesita un comando aparte: con Node levantado (paso 4), abrir `http://localhost:3000/app/`.
 
 *(Si se utiliza Docker Compose mediante `docker compose up -d --build`, el archivo `docker-compose.yml` garantiza automáticamente este mismo orden exacto mediante condiciones `depends_on: { condition: service_healthy }`).*
 
@@ -225,7 +223,6 @@ web/
 ├── manifest.webmanifest            # Metadatos de instalación PWA para escritorio y tablets de mostrador
 ├── sw.js                           # Service Worker que cachea assets estáticos y librerías locales para uso sin internet
 ├── nginx.conf                      # Configuración del Reverse Proxy perimetral (/api/ -> Django, /socket.io/ -> Node)
-├── dev-server.js                   # Servidor estático ligero para desarrollo local en puerto 5173
 ├── css/
 │   └── estilos.css                 # Sistema de diseño editorial Impeccable UI con variables CSS y modo responsivo
 ├── js/

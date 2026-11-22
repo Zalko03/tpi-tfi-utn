@@ -26,7 +26,7 @@ Tarea: F6 — Documentación para la cátedra y actualización de matriz HU
 Rama: docs/entrega-final
 Cambios realizados:
 - **README por módulo (`backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`, `web/README.md`):** responsabilidades, árbol de carpetas verificado contra el código real, endpoints principales y comandos de ejecución, migraciones/seed, tests y linters.
-- **Documentación académica (`docs/FUNDAMENTACION_TECNICA.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/GUIA_DEFENSA.md`):** comparación honesta entre lo visto en clase (proyecto de referencia de la cátedra y plan original) y la implementación real; auditoría técnica de `backend-node` contra `.agents/rules/convenciones-node.md` (incluyendo desvíos justificados como `String` monetario, `verificarPermiso` y el acoplamiento menor en `productoResumen.controller.js`); guía de defensa oral con las 12 preguntas clave respaldadas en código, los 7 jobs de `.github/workflows/ci.yml` y las 901 pruebas verificadas (`570` Django + `244` Node en 27 suites + `87` AI Service).
+- **Documentación académica (`docs/FUNDAMENTACION_TECNICA.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`):** comparación honesta entre lo visto en clase (proyecto de referencia de la cátedra y plan original) y la implementación real; auditoría técnica de `backend-node` contra `.agents/rules/convenciones-node.md` (incluyendo desvíos justificados como `String` monetario, `verificarPermiso` y el acoplamiento menor en `productoResumen.controller.js`). La guía de preguntas para la defensa oral se conserva fuera del repositorio.
 - **Matriz final de HUs (`docs/MATRIZ_HU.md`):** actualizada a **15/15 Historias de Usuario implementadas** (incorporando `HU8`, `HU9`, `HU12` y `HU14` con rutas, modelos, servicios y archivos de test verificados).
 Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
 - Ninguna (solo documentación sobre código existente).
@@ -35,7 +35,7 @@ Problemas y decisiones técnicas:
 - Se documentaron con transparencia las diferencias respecto del borrador de `PLAN_IMPLEMENTACION.md` (sin GraphQL/Apollo ni `drf-spectacular`; OpenAPI nativo en FastAPI `/docs`).
 Archivos tocados:
 - `backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`, `web/README.md`
-- `docs/FUNDAMENTACION_TECNICA.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/GUIA_DEFENSA.md`, `docs/MATRIZ_HU.md`, `docs/bitacora.md`
+- `docs/FUNDAMENTACION_TECNICA.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/MATRIZ_HU.md`, `docs/bitacora.md`
 Cómo probarlo:
 - `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
 - `cd backend-node && npm test && npm run lint`
@@ -2340,18 +2340,16 @@ Qué se hizo y por qué:
 - Se elaboró el conjunto completo de documentación técnica y de defensa exigido para la entrega final dentro de `docs/`:
   - `docs/ESTRUCTURA_Y_MANUAL_MODULOS.md`: guía de instalación desde cero, orden estricto de inicio de los servicios y explicación archivo por archivo de las tres ramas/módulos del sistema.
   - `docs/REVISION_TECNICA_BACKEND_NODE.md`: análisis técnico de `backend-node` cubriendo arquitectura de capas, responsabilidades de controladores, tabla de endpoints REST, validación JWT RS256, permisos, WebSockets (`Socket.IO`) y manejo de secretos.
-  - `docs/FUNDAMENTACION_Y_GUIA_DEFENSA.md`: líneas de funcionamiento paso a paso (cobro en POS e importación con IA), capturas de pantalla reales del flujo Frontend (`docs/capturas/`), comparativa de decisiones tecnológicas frente a los contenidos de clase y respuestas a las 12 preguntas de defensa oral.
+  - `docs/capturas/`: capturas de pantalla reales del flujo del frontend (caja, importación con IA y tablero en vivo).
   - `docs/AUDITORIA_PROYECTO.md`: informe de auditoría integral verificando requerimientos funcionales, arquitectura, seguridad, resiliencia y calidad.
-  - `docs/CORRECCIONES_EVALUACION_FINAL.md`: registro detallado de las correcciones aplicadas tras contrastar el proyecto con los 8 ejes de evaluación del tribunal docente.
-  - `docs/novedades.md`: síntesis conceptual (sin código) de las mejoras posteriores al rediseño visual del frontend.
+  - La guía de defensa oral y las notas internas de correcciones y novedades se conservan fuera del repositorio.
 - Se crearon los archivos `README.md` individuales por módulo (`backend-django/README.md`, `backend-node/README.md` y `ai-service/README.md`).
 - Se incorporó la medición de cobertura de código (`pytest-cov>=5.0.0` en `backend-django/requirements.txt` y `ai-service/requirements.txt`, script `test:coverage` en `backend-node/package.json` y banderas `--cov` en `.github/workflows/ci.yml`).
-- Se conservó `web/dev-server.js` como servidor estático auxiliar en el puerto `5173` para pruebas y demostraciones locales sin Docker.
+- `web/dev-server.js` (servidor estático auxiliar para pruebas locales) quedó fuera de la integración: se publicaría como archivo estático y para pruebas locales alcanza con `python3 -m http.server`.
 Archivos tocados:
 - `backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`
 - `backend-django/requirements.txt`, `ai-service/requirements.txt`, `backend-node/package.json`, `.github/workflows/ci.yml`
-- `docs/ESTRUCTURA_Y_MANUAL_MODULOS.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/FUNDAMENTACION_Y_GUIA_DEFENSA.md`, `docs/AUDITORIA_PROYECTO.md`, `docs/CORRECCIONES_EVALUACION_FINAL.md`, `docs/novedades.md`, `docs/capturas/*`
-- `web/dev-server.js`
+- `docs/ESTRUCTURA_Y_MANUAL_MODULOS.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/AUDITORIA_PROYECTO.md`, `docs/capturas/*`
 - `docs/bitacora.md`
 Cómo probarlo:
 - `cd backend-django && USE_SQLITE=True pytest --cov=apps --cov-report=term-missing`

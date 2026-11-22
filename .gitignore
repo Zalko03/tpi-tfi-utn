@@ -62,3 +62,9 @@ docs/dominio/real/
 # ── Bases de datos locales / temporales ───────────────────────────────────────
 *.sqlite3
 db.sqlite3
+
+# ── Material de defensa oral y notas internas (no se publican) ───────────────
+docs/GUIA_DEFENSA.md
+docs/FUNDAMENTACION_Y_GUIA_DEFENSA.md
+docs/CORRECCIONES_EVALUACION_FINAL.md
+docs/novedades.md
