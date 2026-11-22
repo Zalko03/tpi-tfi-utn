@@ -12,8 +12,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.caja.models import MovimientoCaja, TurnoCaja
-from apps.insumos.models import Compra, Insumo, Proveedor
-from apps.insumos.services import registrar_compra_y_actualizar_costo
+from apps.insumos.models import Compra, Insumo, MovimientoStock, Proveedor
+from apps.insumos.services import ajustar_stock_insumo, registrar_compra_y_actualizar_costo
 from apps.recetas.models import Producto, RecetaItem
 from apps.recetas.services import actualizar_costo_y_margen_producto
 from apps.usuarios.constantes import ROL_CAJERO, ROL_DUENIO, ROL_ENCARGADO
@@ -101,23 +101,89 @@ def _asegurar_insumos_y_compras() -> dict[str, Insumo]:
         nombre="Chocolates y Especialidades Andinas"
     )
 
+    # (nombre, unidad base, costo inicial, stock mínimo, stock inicial). Datos inventados.
+    # El stock inicial solo se usa en bases sin ingresos previos (ver _asegurar_stock_inicial).
+    # Ahí almendras y vasos arrancan por debajo del mínimo a propósito, para que el video
+    # muestre la alerta; el resto queda holgado aun después de las ventas de --video.
     definiciones_insumos = [
-        ("Café Especialidad Colombia", "g", Decimal("28.0000"), Decimal("300.0000")),
-        ("Café Geisha Panamá Lote Especial", "g", Decimal("85.0000"), Decimal("100.0000")),
-        ("Leche Barista Entera", "ml", Decimal("1.4000"), Decimal("5000.0000")),
-        ("Bebida de Almendras Barista", "ml", Decimal("3.2000"), Decimal("1000.0000")),
-        ("Harina de Trigo 000 Orgánica", "g", Decimal("1.8000"), Decimal("2000.0000")),
-        ("Harina de Mandioca", "g", Decimal("4.5000"), Decimal("1000.0000")),
-        ("Manteca Calidad Extra 82%", "g", Decimal("14.0000"), Decimal("500.0000")),
-        ("Queso Criollo", "g", Decimal("9.5000"), Decimal("500.0000")),
-        ("Chocolate Cobertura Semiamargo 70%", "g", Decimal("22.0000"), Decimal("400.0000")),
-        ("Azúcar Mascabo Natural", "g", Decimal("2.5000"), Decimal("1000.0000")),
-        ("Vaso Polipapel 240ml", "un", Decimal("80.0000"), Decimal("30.0000")),
-        ("Bolsa Kraft Panadería", "un", Decimal("45.0000"), Decimal("30.0000")),
+        (
+            "Café Especialidad Colombia",
+            "g",
+            Decimal("28.0000"),
+            Decimal("300.0000"),
+            Decimal("2000.0000"),
+        ),
+        (
+            "Café Geisha Panamá Lote Especial",
+            "g",
+            Decimal("85.0000"),
+            Decimal("100.0000"),
+            Decimal("400.0000"),
+        ),
+        (
+            "Leche Barista Entera",
+            "ml",
+            Decimal("1.4000"),
+            Decimal("5000.0000"),
+            Decimal("12000.0000"),
+        ),
+        (
+            "Bebida de Almendras Barista",
+            "ml",
+            Decimal("3.2000"),
+            Decimal("1000.0000"),
+            Decimal("600.0000"),
+        ),
+        (
+            "Harina de Trigo 000 Orgánica",
+            "g",
+            Decimal("1.8000"),
+            Decimal("2000.0000"),
+            Decimal("8000.0000"),
+        ),
+        ("Harina de Mandioca", "g", Decimal("4.5000"), Decimal("1000.0000"), Decimal("4000.0000")),
+        (
+            "Manteca Calidad Extra 82%",
+            "g",
+            Decimal("14.0000"),
+            Decimal("500.0000"),
+            Decimal("2000.0000"),
+        ),
+        ("Queso Criollo", "g", Decimal("9.5000"), Decimal("500.0000"), Decimal("2500.0000")),
+        (
+            "Chocolate Cobertura Semiamargo 70%",
+            "g",
+            Decimal("22.0000"),
+            Decimal("400.0000"),
+            Decimal("1500.0000"),
+        ),
+        (
+            "Azúcar Mascabo Natural",
+            "g",
+            Decimal("2.5000"),
+            Decimal("1000.0000"),
+            Decimal("4000.0000"),
+        ),
+        ("Vaso Polipapel 240ml", "un", Decimal("80.0000"), Decimal("30.0000"), Decimal("20.0000")),
+        (
+            "Bolsa Kraft Panadería",
+            "un",
+            Decimal("45.0000"),
+            Decimal("30.0000"),
+            Decimal("150.0000"),
+        ),
     ]
 
     insumos_dict = {}
-    for nombre_insumo, unidad_base, costo_inicial, stock_minimo in definiciones_insumos:
+    stock_inicial_por_insumo = {}
+    for (
+        nombre_insumo,
+        unidad_base,
+        costo_inicial,
+        stock_minimo,
+        stock_inicial,
+    ) in definiciones_insumos:
+        stock_inicial_por_insumo[nombre_insumo] = stock_inicial
         insumo, creado = Insumo.objects.get_or_create(
             nombre=nombre_insumo,
             defaults={
@@ -135,9 +201,10 @@ def _asegurar_insumos_y_compras() -> dict[str, Insumo]:
                 if insumo.unidad_base != unidad_base:
                     insumo.unidad_base = unidad_base
                     campos_insumo.append("unidad_base")
-                if insumo.stock_minimo == Decimal("0.0000") and stock_minimo > Decimal("0.0000"):
-                    insumo.stock_minimo = stock_minimo
-                    campos_insumo.append("stock_minimo")
+            # El mínimo no depende de las compras: se completa si nadie lo definió.
+            if insumo.stock_minimo == Decimal("0.0000") and stock_minimo > Decimal("0.0000"):
+                insumo.stock_minimo = stock_minimo
+                campos_insumo.append("stock_minimo")
             if not insumo.estado_activo:
                 insumo.estado_activo = True
                 campos_insumo.append("estado_activo")
@@ -257,7 +324,36 @@ def _asegurar_insumos_y_compras() -> dict[str, Insumo]:
                 iva_incluido=True,
             )
 
+    _asegurar_stock_inicial(insumos_dict, stock_inicial_por_insumo)
     return insumos_dict
+
+
+def _asegurar_stock_inicial(
+    insumos_dict: dict[str, Insumo], stock_inicial_por_insumo: dict[str, Decimal]
+) -> None:
+    """
+    Carga un stock inicial de demo como ajuste manual (queda en la trazabilidad).
+    Solo actúa sobre insumos que nunca tuvieron un ingreso: si el usuario ya cargó
+    stock (compra o ajuste), no se toca. En una base nueva las compras de arriba ya
+    generan ingresos, así que esto cubre bases creadas antes del control de stock (HU12).
+    """
+    for nombre_insumo, insumo in insumos_dict.items():
+        objetivo = stock_inicial_por_insumo.get(nombre_insumo, Decimal("0.0000"))
+        if objetivo <= Decimal("0.0000"):
+            continue
+        if MovimientoStock.objects.filter(insumo=insumo, tipo="INGRESO").exists():
+            continue
+        insumo.refresh_from_db(fields=["stock_actual"])
+        if insumo.stock_actual > Decimal("0.0000"):
+            continue
+        ajustar_stock_insumo(
+            insumo_id=insumo.id,
+            tipo="INGRESO",
+            # Si quedó negativo por ventas previas, se lleva exactamente al objetivo.
+            cantidad=objetivo - insumo.stock_actual,
+            unidad=insumo.unidad_base,
+            motivo="Stock inicial de demo (seed_demo)",
+        )
 
 
 def _asegurar_productos_y_recetas(
