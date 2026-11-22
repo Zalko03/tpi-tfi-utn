@@ -6,6 +6,7 @@ import vm from 'vm';
 import { jest } from '@jest/globals';
 import {
     accionesCajaVisiblesParaUsuario,
+    seleccionarTurnoPropio,
     accionesEmpleadoVisiblesParaUsuario,
     accionesEquipoVisiblesParaUsuario,
     agregarProductoAlCarrito,
@@ -174,6 +175,8 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             });
             expect(evVenta.nivel).toBe('exito');
             expect(evVenta.titulo).toContain('#77');
+            // Montos con formato de moneda (no "$5400.00" crudo del backend).
+            expect(evVenta.detalle).toContain('Total $ 5.400,00');
 
             const evVentaAnulada = formatearEventoTiempoReal('venta.anulada', {
                 ventaId: 77,
@@ -196,6 +199,7 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(evCostoCritico.nivel).toBe('peligro');
             expect(evCostoCritico.alertaMargenBajo).toBe(true);
             expect(evCostoCritico.detalle).toContain('22.0%');
+            expect(evCostoCritico.detalle).toContain('$ 900,00 -> $ 1.600,00');
 
             const evStock = formatearEventoTiempoReal('stock.bajo', {
                 nombre: 'Leche Entera',
@@ -2713,5 +2717,31 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(resumen.totalBajos).toBe(1);
             expect(resumen.insumosBajos[0].nombre).toBe('Café');
         });
+    });
+});
+
+describe('seleccionarTurnoPropio (turno activo en Caja)', () => {
+    const turnos = [
+        { id: 1, usuario: 4, estado: 'ABIERTO' },
+        { id: 6, usuario: 4, estado: 'CERRADO' },
+        { id: 3, usuario: 2, estado: 'CERRADO' },
+        { id: 2, usuario: 2, estado: 'CERRADO' },
+    ];
+
+    it('el dueño no adopta el turno abierto de otro cajero: toma su último turno propio', () => {
+        expect(seleccionarTurnoPropio(turnos, 2)).toEqual({ id: 3, usuario: 2, estado: 'CERRADO' });
+    });
+
+    it('prioriza el turno propio abierto aunque haya cerrados más arriba', () => {
+        const lista = [{ id: 9, usuario: 7, estado: 'CERRADO' }, { id: 8, usuario: 7, estado: 'ABIERTO' }];
+        expect(seleccionarTurnoPropio(lista, 7).id).toBe(8);
+        expect(seleccionarTurnoPropio(turnos, '4').id).toBe(1);
+    });
+
+    it('sin turnos propios, sin usuario o con entrada inválida devuelve null', () => {
+        expect(seleccionarTurnoPropio(turnos, 99)).toBeNull();
+        expect(seleccionarTurnoPropio(turnos, null)).toBeNull();
+        expect(seleccionarTurnoPropio(null, 2)).toBeNull();
+        expect(seleccionarTurnoPropio([null], 2)).toBeNull();
     });
 });

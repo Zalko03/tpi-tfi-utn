@@ -75,6 +75,7 @@ import {
     puedeGestionarQrCarta,
     resolverPerfilDemoDesdeBoton,
     seccionesVisiblesParaUsuario,
+    seleccionarTurnoPropio,
     siguienteIdCarga,
     SONIDOS,
     unificarTrazabilidadRegistros,
@@ -1151,7 +1152,7 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
         li.innerHTML = `
             <div class="evento-titulo">
                 <span>${escaparHtml(item.titulo)}</span>
-                <small>${new Date(item.emitidoEn).toLocaleTimeString('es-AR')}</small>
+                <small>${new Date(item.emitidoEn).toLocaleTimeString('es-AR', { hourCycle: 'h23' })}</small>
             </div>
             <div class="evento-detalle">${escaparHtml(item.detalle)}</div>
         `;
@@ -1544,7 +1545,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
         : `#${String(datosVenta.id).padStart(4, '0')}`;
 
     if ($('ticket-termico-id')) $('ticket-termico-id').textContent = idFormateado;
-    if ($('ticket-termico-fecha')) $('ticket-termico-fecha').textContent = new Date().toLocaleString('es-AR');
+    if ($('ticket-termico-fecha')) $('ticket-termico-fecha').textContent = new Date().toLocaleString('es-AR', { hourCycle: 'h23' });
     if ($('ticket-termico-cajero')) $('ticket-termico-cajero').textContent = estadoApp.usuario?.username || 'Operador';
     if ($('ticket-termico-turno')) $('ticket-termico-turno').textContent = datosVenta.turno_caja ? `#${datosVenta.turno_caja}` : '-';
 
@@ -1583,7 +1584,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
 // ============================================================
 export const cargarTurnoActivo = async () => {
     if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
-        const turnoCache = leerCacheTurnoLocal();
+        const turnoCache = leerCacheTurnoPropio();
         if (turnoCache) {
             estadoApp.turnoActivo = turnoCache;
             actualizarCardTurnoActivo(turnoCache);
@@ -1603,25 +1604,45 @@ export const cargarTurnoActivo = async () => {
             const turnos = Array.isArray(data) ? data : (data.datos || data.results || []);
             estadoApp.turnosHistorial = turnos;
 
-            const turnoAbierto = turnos.find((t) => t.estado === 'ABIERTO');
-            if (turnoAbierto) {
-                estadoApp.turnoActivo = turnoAbierto;
-                localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnoAbierto));
-                actualizarCardTurnoActivo(turnoAbierto);
-            } else if (turnos.length > 0) {
-                estadoApp.turnoActivo = turnos[0];
-                localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnos[0]));
-                actualizarCardTurnoActivo(turnos[0]);
+            // Solo turnos propios: el dueño/encargado ven los de todo el equipo (ver seleccionarTurnoPropio).
+            const turnoPropio = seleccionarTurnoPropio(turnos, estadoApp.usuario?.id);
+            if (turnoPropio) {
+                estadoApp.turnoActivo = turnoPropio;
+                localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnoPropio));
+                actualizarCardTurnoActivo(turnoPropio);
+            } else {
+                estadoApp.turnoActivo = null;
+                localStorage.removeItem(CLAVE_TURNO_CACHE);
+                mostrarSinTurnoPropio();
             }
             renderizarTablaTurnosAuditoria();
         }
     } catch {
-        const turnoCache = leerCacheTurnoLocal();
+        const turnoCache = leerCacheTurnoPropio();
         if (turnoCache) {
             estadoApp.turnoActivo = turnoCache;
             actualizarCardTurnoActivo(turnoCache);
         }
     }
+};
+
+// El caché de turno es por navegador: si otro usuario lo usó antes, no se toma como propio.
+const leerCacheTurnoPropio = () => seleccionarTurnoPropio([leerCacheTurnoLocal()], estadoApp.usuario?.id);
+
+const mostrarSinTurnoPropio = () => {
+    for (const id of ['texto-turno-cabecera', 'caja-turno-estado-texto']) {
+        if ($(id)) $(id).textContent = 'Sin turno abierto';
+    }
+    if ($('caja-turno-estado-texto')) $('caja-turno-estado-texto').className = 'badge-estado-rojo text-peligro';
+    if ($('caja-turno-cajero-texto')) $('caja-turno-cajero-texto').textContent = `Responsable: ${estadoApp.usuario?.username || '-'}`;
+    for (const id of ['caja-turno-fondo-inicial', 'caja-turno-ventas-efectivo']) {
+        if ($(id)) $(id).textContent = formatearMoneda(0);
+    }
+    if ($('caja-turno-apertura-hora')) $('caja-turno-apertura-hora').textContent = '';
+    if ($('caja-turno-cant-tickets')) $('caja-turno-cant-tickets').textContent = '0 tickets emitidos';
+    if ($('input-turno-id')) $('input-turno-id').value = '';
+    renderizarMovimientosCaja([]);
+    aplicarAccionesCajaVisibles();
 };
 
 const actualizarCardTurnoActivo = (turno) => {
@@ -1652,7 +1673,7 @@ const actualizarCardTurnoActivo = (turno) => {
     }
 
     if ($('caja-turno-apertura-hora') && turno.apertura) {
-        $('caja-turno-apertura-hora').textContent = `Apertura: ${new Date(turno.apertura).toLocaleString('es-AR')}`;
+        $('caja-turno-apertura-hora').textContent = `Apertura: ${new Date(turno.apertura).toLocaleString('es-AR', { hourCycle: 'h23' })}`;
     }
 
     if ($('caja-turno-ventas-efectivo')) {
@@ -1697,7 +1718,7 @@ const renderizarMovimientosCaja = (movimientos = []) => {
     for (const m of lista) {
         const tr = document.createElement('tr');
         const esIngreso = m.tipo === 'ENTRADA' || m.tipo === 'INGRESO';
-        const hora = m.fecha ? new Date(m.fecha).toLocaleTimeString('es-AR') : '-';
+        const hora = m.fecha ? new Date(m.fecha).toLocaleTimeString('es-AR', { hourCycle: 'h23' }) : '-';
         tr.innerHTML = `
             <td class="col-centro">${hora}</td>
             <td class="col-centro"><span class="${esIngreso ? 'badge-diferencia-sobrante' : 'badge-diferencia-faltante'}">${escaparHtml(m.tipo)}</span></td>
@@ -1739,7 +1760,7 @@ const renderizarTablaTurnosAuditoria = () => {
             <td class="col-centro"><strong>#${t.id}</strong></td>
             <td class="col-texto">${escaparHtml(t.usuario_nombre || 'Operador')}</td>
             <td class="col-centro">${t.apertura ? new Date(t.apertura).toLocaleDateString('es-AR') : '-'}</td>
-            <td class="col-centro">${t.cierre ? new Date(t.cierre).toLocaleTimeString('es-AR') : '<span class="badge-estado-verde">Abierto</span>'}</td>
+            <td class="col-centro">${t.cierre ? new Date(t.cierre).toLocaleTimeString('es-AR', { hourCycle: 'h23' }) : '<span class="badge-estado-verde">Abierto</span>'}</td>
             <td class="col-numero">${t.efectivo_inicial !== null && t.efectivo_inicial !== undefined ? formatearMoneda(t.efectivo_inicial) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero">${t.efectivo_esperado !== null ? formatearMoneda(t.efectivo_esperado) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero">${t.efectivo_contado !== null ? formatearMoneda(t.efectivo_contado) : '-'}</td>
@@ -3562,6 +3583,7 @@ const renderizarTablaTrazabilidad = () => {
                 year: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit',
+                hourCycle: 'h23',
             })
             : '-';
 
@@ -4091,7 +4113,7 @@ const consultarDiagnosticoStockIA = async () => {
 
         const evalResumen = evaluarEstadoResumenIA(dataAi, errorAi);
 
-        const fechaDictamen = new Date().toLocaleString('es-AR');
+        const fechaDictamen = new Date().toLocaleString('es-AR', { hourCycle: 'h23' });
         const itemsCriticosHtml = insumosCriticos.length > 0
             ? insumosCriticos.map((ins) => `<li><strong>${escaparHtml(ins.nombre)}:</strong> Costo base ${formatearMoneda(ins.costo_unitario)} por ${escaparHtml(ins.unidad_base)}. Nivel de prioridad de adquisición: ALTO.</li>`).join('')
             : '<li>No se registran insumos con desvíos de costo extraordinarios.</li>';
@@ -4268,9 +4290,9 @@ const auditarCierreCajaIA = async () => {
             dictamenDiferencia = 'TURNO EN CURSO — ARQUEO CIEGO PENDIENTE AL CIERRE';
         }
 
-        const fechaDictamen = new Date().toLocaleString('es-AR');
-        const aperturaStr = turnoAuditado.apertura ? new Date(turnoAuditado.apertura).toLocaleString('es-AR') : '-';
-        const cierreStr = turnoAuditado.cierre ? new Date(turnoAuditado.cierre).toLocaleString('es-AR') : 'Turno en curso';
+        const fechaDictamen = new Date().toLocaleString('es-AR', { hourCycle: 'h23' });
+        const aperturaStr = turnoAuditado.apertura ? new Date(turnoAuditado.apertura).toLocaleString('es-AR', { hourCycle: 'h23' }) : '-';
+        const cierreStr = turnoAuditado.cierre ? new Date(turnoAuditado.cierre).toLocaleString('es-AR', { hourCycle: 'h23' }) : 'Turno en curso';
 
         const totalIngresosChica = movimientos.filter((m) => m.tipo === 'ENTRADA' || m.tipo === 'INGRESO').reduce((a, m) => a + Number(m.monto || 0), 0);
         const totalEgresosChica = movimientos.filter((m) => m.tipo === 'SALIDA' || m.tipo === 'EGRESO').reduce((a, m) => a + Number(m.monto || 0), 0);
@@ -4661,6 +4683,7 @@ const renderizarVistaConfiguracionFiscal = () => {
                 year: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit',
+                hourCycle: 'h23',
             });
             ultimoEl.textContent = `Última actualización: ${fechaTxt}${cfg.actualizado_por_username ? ` por @${cfg.actualizado_por_username}` : ''}`;
         } else {
@@ -4687,6 +4710,7 @@ const renderizarVistaConfiguracionFiscal = () => {
                   year: 'numeric',
                   hour: '2-digit',
                   minute: '2-digit',
+                  hourCycle: 'h23',
               })
             : '-';
         const antEtiqueta =

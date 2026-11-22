@@ -159,7 +159,7 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
                 nivel: 'exito',
                 titulo: `Venta #${payload.ventaId ?? '-'} registrada`,
                 detalle: tieneTotal
-                    ? `Total $${payload.total} · Turno #${turno}${metodo ? ` (${metodo})` : ''}`
+                    ? `Total ${formatearMontoSimple(payload.total)} · Turno #${turno}${metodo ? ` (${metodo})` : ''}`
                     : `Turno #${turno} · Operación confirmada`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
@@ -174,7 +174,7 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
                 nivel: 'advertencia',
                 titulo: `Venta #${payload.ventaId ?? '-'} anulada`,
                 detalle: tieneTotal
-                    ? `Total $${payload.total} · Turno #${turno}${motivo ? ` · ${motivo}` : ''}`
+                    ? `Total ${formatearMontoSimple(payload.total)} · Turno #${turno}${motivo ? ` · ${motivo}` : ''}`
                     : `Turno #${turno}${motivo ? ` · ${motivo}` : ' · Anulación confirmada'}`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
@@ -191,7 +191,7 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
                 titulo: esCritico
                     ? `Alerta de margen bajo: ${payload.nombre || 'Producto'}`
                     : `Costo actualizado: ${payload.nombre || 'Producto'}`,
-                detalle: `Costo $${payload.costoAnterior ?? '-'} -> $${payload.costoNuevo ?? '-'} · Margen: ${margenPct}%`,
+                detalle: `Costo ${formatearMontoSimple(payload.costoAnterior)} -> ${formatearMontoSimple(payload.costoNuevo)} · Margen: ${margenPct}%`,
                 alertaMargenBajo: esCritico,
                 emitidoEn: marcaTiempo,
             };
@@ -2170,6 +2170,22 @@ export const PERMISOS_POR_SECCION = {
  * Indica qué acciones rápidas de caja puede ver el usuario según sus permisos.
  * "Abrir turno" además se oculta mientras ya hay un turno abierto.
  */
+/**
+ * Elige el turno que la pantalla de Caja trata como "activo" para el usuario logueado.
+ * El dueño y el encargado reciben en la lista los turnos de todo el equipo; si se tomara
+ * el primer turno ABIERTO de cualquiera, cobrarían o cerrarían caja sobre el turno de otro
+ * cajero. Por eso solo se consideran turnos propios: primero el abierto y, si no hay,
+ * el más reciente (la lista llega ordenada por apertura descendente). Sin turnos propios → null.
+ */
+export const seleccionarTurnoPropio = (turnos = [], usuarioId = null) => {
+    const miId = Number(usuarioId || 0);
+    if (!miId || !Array.isArray(turnos)) {
+        return null;
+    }
+    const propios = turnos.filter((t) => t && Number(t.usuario) === miId);
+    return propios.find((t) => t.estado === 'ABIERTO') || propios[0] || null;
+};
+
 export const accionesCajaVisiblesParaUsuario = (usuario, turnoActivo = null) => ({
     movimiento: usuarioTienePermiso(usuario, 'caja.registrar_movimiento'),
     abrirTurno: usuarioTienePermiso(usuario, 'caja.abrir_turno') && turnoActivo?.estado !== 'ABIERTO',
