@@ -67,6 +67,10 @@
             "destination": "/web/manifest.webmanifest"
         },
         {
+            "source": "/carta.html",
+            "destination": "/web/carta.html"
+        },
+        {
             "source": "/",
             "destination": "/web/index.html"
         }

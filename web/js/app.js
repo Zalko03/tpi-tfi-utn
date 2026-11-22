@@ -99,6 +99,20 @@ const CLAVE_NODE_URL = 'sapori_node_url';
  * - Si corre en localhost o 127.0.0.1, usa http://localhost:8000 y http://localhost:3000 (salvo override en localStorage).
  * - Si corre en dominio externo (ej. Vercel), lee window.__SAPORI_CONFIG__ o localStorage.
  */
+// Último recurso si web/js/config.js no cargó; el lugar para cambiarlas es config.js (urlsNube).
+const URLS_NUBE_POR_DEFECTO = {
+    django: 'https://sapori-backend-django.onrender.com',
+    node: 'https://sapori-backend-node.onrender.com',
+};
+
+const obtenerUrlsNube = () => {
+    const urls = (window.__SAPORI_CONFIG__ || {}).urlsNube || {};
+    return {
+        django: urls.django || URLS_NUBE_POR_DEFECTO.django,
+        node: urls.node || URLS_NUBE_POR_DEFECTO.node,
+    };
+};
+
 export const resolverEndpointsServidor = () => {
     const host = window.location.hostname;
     const esLocalhost = host === 'localhost' || host === '127.0.0.1';
@@ -110,11 +124,11 @@ export const resolverEndpointsServidor = () => {
 
     const DJANGO_API_URL = esLocalhost
         ? djangoGuardado || 'http://localhost:8000'
-        : djangoGuardado || configGlobal.DJANGO_API_URL || 'https://sapori-backend-django.onrender.com';
+        : djangoGuardado || configGlobal.DJANGO_API_URL || obtenerUrlsNube().django;
 
     const NODE_API_URL = esLocalhost
         ? nodeGuardado || (window.location.origin.includes('3000') ? window.location.origin : 'http://localhost:3000')
-        : nodeGuardado || configGlobal.NODE_API_URL || 'https://sapori-backend-node.onrender.com';
+        : nodeGuardado || configGlobal.NODE_API_URL || obtenerUrlsNube().node;
 
     return {
         modoConexion: modoGuardado,
@@ -5945,8 +5959,8 @@ Flete y entrega a local: $4500`;
             if ($('input-config-node-url')) $('input-config-node-url').value = 'http://localhost:3000';
         } else if (modo === 'cloud') {
             const cfg = window.__SAPORI_CONFIG__ || {};
-            if ($('input-config-django-url')) $('input-config-django-url').value = cfg.DJANGO_API_URL || 'https://sapori-backend-django.onrender.com';
-            if ($('input-config-node-url')) $('input-config-node-url').value = cfg.NODE_API_URL || 'https://sapori-backend-node.onrender.com';
+            if ($('input-config-django-url')) $('input-config-django-url').value = cfg.DJANGO_API_URL || obtenerUrlsNube().django;
+            if ($('input-config-node-url')) $('input-config-node-url').value = cfg.NODE_API_URL || obtenerUrlsNube().node;
         }
     });
 
