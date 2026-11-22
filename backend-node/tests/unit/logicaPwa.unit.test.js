@@ -2464,7 +2464,7 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             const requireCjs = createRequire(import.meta.url);
             const { debeIgnorarPeticionSw, NOMBRE_CACHE } = requireCjs('../../../web/sw.js');
 
-            expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v4');
+            expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v5');
             expect(debeIgnorarPeticionSw('', 'document', 'https://sapori.local')).toBe(true);
             expect(debeIgnorarPeticionSw(null, 'document', 'https://sapori.local')).toBe(true);
             expect(debeIgnorarPeticionSw('http://[', 'document', 'https://sapori.local')).toBe(true);

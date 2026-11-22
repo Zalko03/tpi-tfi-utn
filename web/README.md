@@ -28,7 +28,7 @@ web/
 ├── Dockerfile                        # Imagen nginx:1.27-alpine con estáticos PWA y nginx.conf
 ├── nginx.conf                        # Reverse proxy, CSP, compresión Gzip y /healthz
 ├── manifest.webmanifest              # Metadatos instalables de la PWA
-├── sw.js                             # Service Worker (caché cafe-gestion-pwa-v4, Network-First)
+├── sw.js                             # Service Worker (caché cafe-gestion-pwa-v5, Network-First)
 ├── index.html                        # Shell principal de la aplicación comercial
 ├── carta.html                        # Carta Digital pública por QR + mapa OpenStreetMap
 ├── css/

@@ -1,4 +1,4 @@
-const NOMBRE_CACHE = 'cafe-gestion-pwa-v4';
+const NOMBRE_CACHE = 'cafe-gestion-pwa-v5';
 const RECURSOS_CASCARA = [
     '/app/',
     '/app/index.html',
@@ -13,6 +13,7 @@ const RECURSOS_CASCARA = [
     '/app/vendor/pdfjs/pdf.worker.min.js',
     '/app/vendor/sheetjs/xlsx.full.min.js',
     '/app/vendor/mammoth/mammoth.browser.min.js',
+    '/app/vendor/socket.io/socket.io.min.js',
     '/',
     '/index.html',
     '/carta.html',
@@ -26,6 +27,7 @@ const RECURSOS_CASCARA = [
     '/vendor/pdfjs/pdf.worker.min.js',
     '/vendor/sheetjs/xlsx.full.min.js',
     '/vendor/mammoth/mammoth.browser.min.js',
+    '/vendor/socket.io/socket.io.min.js',
 ];
 
 /**

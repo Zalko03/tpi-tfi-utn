@@ -2006,7 +2006,8 @@ Envío: $2000</textarea>
     <script src="/app/vendor/pdfjs/pdf.min.js"></script>
     <script src="/app/vendor/sheetjs/xlsx.full.min.js"></script>
     <script src="/app/vendor/mammoth/mammoth.browser.min.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- Cliente Socket.IO local (misma versión que el servidor): en Vercel no existe /socket.io/socket.io.js -->
+    <script src="/app/vendor/socket.io/socket.io.min.js"></script>
     <script type="module" src="/app/js/app.js"></script>
 </body>
 </html>
