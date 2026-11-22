@@ -41,12 +41,23 @@ else:
         )
 
 ALLOWED_HOSTS = []
-for _h in [*(h.strip() for h in _hosts.split(",") if h.strip()), "localhost", "127.0.0.1"]:
+# Render publica el dominio propio del servicio (ej. sapori-backend-django.onrender.com)
+# en RENDER_EXTERNAL_HOSTNAME: se suma solo para no depender de escribirlo a mano.
+_host_render = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+for _h in [
+    *(h.strip() for h in _hosts.split(",") if h.strip()),
+    *([_host_render] if _host_render else []),
+    "localhost",
+    "127.0.0.1",
+]:
     if _h not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(_h)
 
 # Par de claves criptográficas asimétricas para SimpleJWT RS256 (ADR-0001)
-JWT_PRIVATE_KEY, JWT_PUBLIC_KEY = obtener_claves_jwt(BASE_DIR)
+try:
+    JWT_PRIVATE_KEY, JWT_PUBLIC_KEY = obtener_claves_jwt(BASE_DIR, permitir_efimero=DEBUG)
+except ValueError as error_claves:
+    raise ImproperlyConfigured(str(error_claves)) from error_claves
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",

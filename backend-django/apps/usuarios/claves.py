@@ -55,7 +55,9 @@ def _generar_par_rsa_efimero() -> Tuple[str, str]:
     return _CLAVE_PRIVADA_MEMORIA, _CLAVE_PUBLICA_MEMORIA
 
 
-def obtener_claves_jwt(base_dir: Path | None = None) -> Tuple[str, str]:
+def obtener_claves_jwt(
+    base_dir: Path | None = None, permitir_efimero: bool = True
+) -> Tuple[str, str]:
     """
     Obtiene la clave privada y pública en formato PEM para RS256.
     Prioridad:
@@ -68,7 +70,11 @@ def obtener_claves_jwt(base_dir: Path | None = None) -> Tuple[str, str]:
     priv_env = os.environ.get("DJANGO_JWT_PRIVATE_KEY")
     pub_env = os.environ.get("DJANGO_JWT_PUBLIC_KEY")
     if priv_env and pub_env:
-        return priv_env.strip(), pub_env.strip()
+        # En paneles como Render el PEM a veces se pega en una línea con "\n" literales.
+        return (
+            priv_env.replace("\\n", "\n").strip(),
+            pub_env.replace("\\n", "\n").strip(),
+        )
 
     # 2. Rutas a archivos PEM
     priv_path_str = os.environ.get("DJANGO_JWT_PRIVATE_KEY_PATH", "config/keys/private.pem")
@@ -104,5 +110,11 @@ def obtener_claves_jwt(base_dir: Path | None = None) -> Tuple[str, str]:
         except Exception as e:
             logger.warning("No se pudo derivar clave pública de %s: %s", priv_path, e)
 
-    # 3. Fallback en memoria
+    # 3. Fallback en memoria. En producción no sirve: cada worker de gunicorn generaría
+    # su propio par y Node no podría validar los tokens, así que se exige configurarlas.
+    if not permitir_efimero:
+        raise ValueError(
+            "Faltan las claves JWT: definí DJANGO_JWT_PRIVATE_KEY y DJANGO_JWT_PUBLIC_KEY "
+            "(obligatorias con DJANGO_DEBUG apagado)."
+        )
     return _generar_par_rsa_efimero()
