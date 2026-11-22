@@ -80,6 +80,8 @@ import {
     SONIDOS,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
+    registroMuestraBotonAnular,
+    validarMotivoAnulacion,
     validarArchivoImportacionGeneral,
     validarCarritoContraCatalogo,
     validarRangoFechas,
@@ -180,6 +182,7 @@ export const estadoApp = {
     usuariosEquipo: [],
     empleadoEditandoPermisos: null,
     empleadoParaBaja: null,
+    ventaParaAnular: null,
     productoDesgloseId: null,
     filtroCategoriaActual: 'todos',
     idCargaReportes: 0,
@@ -3567,7 +3570,7 @@ const renderizarTablaTrazabilidad = () => {
     if (filtrados.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="col-centro text-muted py-4">No se encontraron movimientos en el rango de fechas seleccionado.</td>
+                <td colspan="6" class="col-centro text-muted py-4">No se encontraron movimientos en el rango de fechas seleccionado.</td>
             </tr>
         `;
         return;
@@ -3593,9 +3596,76 @@ const renderizarTablaTrazabilidad = () => {
             <td class="col-texto">${escaparHtml(item.detalle)}</td>
             <td class="col-numero font-bold">${escaparHtml(item.montoCantidad)}</td>
             <td class="col-texto">${escaparHtml(item.responsable)}</td>
+            <td class="col-centro"></td>
         `;
+        // El backend vuelve a validar permiso y turno: esto solo evita ofrecer un botón que va a fallar.
+        if (registroMuestraBotonAnular(estadoApp.usuario, item)) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn-refrescar-mini btn-anular-venta';
+            btn.textContent = 'Anular';
+            btn.title = `Anular ticket #${item.ventaId}`;
+            btn.addEventListener('click', () => abrirModalAnularVenta(item));
+            tr.lastElementChild.appendChild(btn);
+        }
         tbody.appendChild(tr);
     }
+};
+
+const abrirModalAnularVenta = (item) => {
+    const modal = $('modal-anular-venta');
+    if (!modal || !item) return;
+    estadoApp.ventaParaAnular = item;
+    if ($('anular-venta-titulo')) $('anular-venta-titulo').textContent = `Anular ticket #${item.ventaId}`;
+    if ($('anular-venta-descripcion')) {
+        $('anular-venta-descripcion').textContent = `${item.detalle} · ${item.montoCantidad}. `
+            + 'La venta queda registrada como anulada y deja de sumar en los reportes. No se puede deshacer.';
+    }
+    if ($('input-anular-venta-motivo')) $('input-anular-venta-motivo').value = '';
+    modal.style.display = 'flex';
+    $('input-anular-venta-motivo')?.focus();
+};
+
+const confirmarAnulacionVenta = async () => {
+    const item = estadoApp.ventaParaAnular;
+    if (!item) return false;
+    const validacion = validarMotivoAnulacion($('input-anular-venta-motivo')?.value);
+    if (!validacion.valido) {
+        mostrarToast(validacion.mensaje, 'advertencia');
+        return false;
+    }
+    try {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/ventas/${item.ventaId}/anular/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ motivo: validacion.motivo }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+            mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+            // Si el turno se cerró o ya estaba anulada, refrescamos para que desaparezca el botón.
+            if (res.status === 400) await refrescarTrasAnulacion();
+            return false;
+        }
+        if ($('modal-anular-venta')) $('modal-anular-venta').style.display = 'none';
+        estadoApp.ventaParaAnular = null;
+        mostrarToast(data?.mensaje || `Venta #${item.ventaId} anulada.`, 'exito');
+        await refrescarTrasAnulacion();
+        return true;
+    } catch {
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+        return false;
+    }
+};
+
+const refrescarTrasAnulacion = async () => {
+    if (estadoApp.usuario?.rol === 'CAJERO') {
+        const { fechaDesde = '', fechaHasta = '' } = estadoApp.trazabilidad || {};
+        await cargarTrazabilidadReportes(fechaDesde, fechaHasta);
+        return;
+    }
+    await cargarFinanzas();
 };
 
 const limpiarTarjetasFinanzas = () => {
@@ -3623,7 +3693,7 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
 
     const tbodyTraza = $('tabla-trazabilidad-body');
     if (tbodyTraza) {
-        tbodyTraza.innerHTML = construirFilasCargandoTabla(5, 'Cargando reportes…', 4);
+        tbodyTraza.innerHTML = construirFilasCargandoTabla(6, 'Cargando reportes…', 4);
     }
 
     const queryFechas = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
@@ -6160,6 +6230,11 @@ Flete y entrega a local: $4500`;
                 mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
+    });
+
+    $('form-anular-venta')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await conCargando($('btn-confirmar-anular-venta'), () => confirmarAnulacionVenta());
     });
 
     $('form-baja-empleado')?.addEventListener('submit', async (e) => {

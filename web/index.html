@@ -1093,11 +1093,12 @@ Envío: $2000</textarea>
                                             <th class="col-texto">Detalle</th>
                                             <th class="col-numero">Monto / Cantidad</th>
                                             <th class="col-texto">Usuario / Responsable</th>
+                                            <th class="col-centro">Acción</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tabla-trazabilidad-body">
                                         <tr>
-                                            <td colspan="5" class="col-centro text-muted py-4">Cargando registros de trazabilidad...</td>
+                                            <td colspan="6" class="col-centro text-muted py-4">Cargando registros de trazabilidad...</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -1747,6 +1748,31 @@ Envío: $2000</textarea>
                 <div class="modal-footer-acciones">
                     <button type="button" class="btn-secundario-comercial" data-cerrar="modal-baja-empleado">Cancelar</button>
                     <button type="submit" id="btn-confirmar-baja-empleado" class="btn-peligro-comercial">Confirmar baja</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL ANULAR VENTA (HU: anulación con motivo, solo turnos abiertos) -->
+    <div id="modal-anular-venta" class="modal-overlay" style="display: none;">
+        <div class="modal-tarjeta">
+            <div class="modal-cabecera">
+                <div>
+                    <h3 id="anular-venta-titulo">Anular venta</h3>
+                </div>
+                <button type="button" class="btn-cerrar-modal" data-cerrar="modal-anular-venta" aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <form id="form-anular-venta" class="modal-cuerpo">
+                <p id="anular-venta-descripcion" class="text-muted">La venta queda registrada como anulada y deja de sumar en los reportes. No se puede deshacer.</p>
+                <div class="campo-grupo">
+                    <label for="input-anular-venta-motivo">Motivo</label>
+                    <input id="input-anular-venta-motivo" type="text" maxlength="255" required placeholder="ej. Ticket cobrado dos veces" />
+                </div>
+                <div class="modal-footer-acciones">
+                    <button type="button" class="btn-secundario-comercial" data-cerrar="modal-anular-venta">Cancelar</button>
+                    <button type="submit" id="btn-confirmar-anular-venta" class="btn-peligro-comercial">Anular venta</button>
                 </div>
             </form>
         </div>

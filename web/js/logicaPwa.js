@@ -1171,6 +1171,49 @@ const formatearMontoSimple = (valor) => {
 };
 
 /**
+ * Una venta se puede anular solo si sigue EMITIDA y su turno de caja está abierto
+ * (misma regla que apps/ventas/services.anular_venta). Si el backend no informa el
+ * turno, no se ofrece el botón: es preferible ocultarlo a mostrar uno que falle.
+ */
+export const esVentaAnulable = (venta) => {
+    if (!venta || venta.id === undefined || venta.id === null) return false;
+    const estado = String(venta.estado || '').toUpperCase();
+    const turnoEstado = String(venta.turno_estado || '').toUpperCase();
+    return estado === 'EMITIDA' && turnoEstado === 'ABIERTO';
+};
+
+/** Combina la regla del ticket con el permiso del usuario (ventas.anular_ticket). */
+export const puedeAnularVenta = (usuario, venta) =>
+    usuarioTienePermiso(usuario, 'ventas.anular_ticket') && esVentaAnulable(venta);
+
+/** Para la tabla de Reportes: fila de venta del servidor, anulable y usuario con permiso. */
+export const registroMuestraBotonAnular = (usuario, registro) =>
+    Boolean(registro)
+    && registro.categoria === 'venta'
+    && registro.anulable === true
+    && registro.ventaId !== undefined
+    && registro.ventaId !== null
+    && usuarioTienePermiso(usuario, 'ventas.anular_ticket');
+
+export const LARGO_MAXIMO_MOTIVO_ANULACION = 255;
+
+/** Valida el motivo que se pide en el modal antes de llamar a /anular/. */
+export const validarMotivoAnulacion = (motivo) => {
+    const texto = String(motivo ?? '').trim();
+    if (texto.length < 3) {
+        return { valido: false, motivo: texto, mensaje: 'Escribí el motivo de la anulación (al menos 3 letras).' };
+    }
+    if (texto.length > LARGO_MAXIMO_MOTIVO_ANULACION) {
+        return {
+            valido: false,
+            motivo: texto,
+            mensaje: `El motivo puede tener hasta ${LARGO_MAXIMO_MOTIVO_ANULACION} caracteres.`,
+        };
+    }
+    return { valido: true, motivo: texto, mensaje: '' };
+};
+
+/**
  * Unifica y ordena cronológicamente Ventas, Movimientos de Stock (o Compras fallback),
  * Cierres de Caja y Ventas Offline pendientes dentro del rango de fechas seleccionado.
  */
@@ -1239,6 +1282,8 @@ export const unificarTrazabilidadRegistros = ({
         }
         registros.push({
             id: `venta-${v.id}`,
+            ventaId: v.id,
+            anulable: esVentaAnulable(v),
             categoria: 'venta',
             fechaIso: v.fecha || v.creado_en || '',
             tipoEtiqueta: esAnulada ? `${etiquetaBase} · Anulada` : etiquetaBase,

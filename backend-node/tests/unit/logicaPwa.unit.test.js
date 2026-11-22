@@ -99,6 +99,10 @@ import {
     SONIDOS,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
+    esVentaAnulable,
+    puedeAnularVenta,
+    registroMuestraBotonAnular,
+    validarMotivoAnulacion,
     usuarioTienePermiso,
     validarArchivoImagenImportacion,
     validarArchivoImportacionGeneral,
@@ -2744,5 +2748,61 @@ describe('seleccionarTurnoPropio (turno activo en Caja)', () => {
         expect(seleccionarTurnoPropio(turnos, null)).toBeNull();
         expect(seleccionarTurnoPropio(null, 2)).toBeNull();
         expect(seleccionarTurnoPropio([null], 2)).toBeNull();
+    });
+
+    describe('Anulación de ventas desde Reportes', () => {
+        const duenio = { rol: 'DUENIO', permisos: ['ventas.anular_ticket'] };
+        const cajero = { rol: 'CAJERO', permisos: ['ventas.cobrar_ticket'] };
+        const ventaAbierta = { id: 7, estado: 'EMITIDA', turno_estado: 'ABIERTO' };
+
+        it('esVentaAnulable exige EMITIDA y turno ABIERTO', () => {
+            expect(esVentaAnulable(ventaAbierta)).toBe(true);
+            expect(esVentaAnulable({ ...ventaAbierta, estado: 'ANULADA' })).toBe(false);
+            expect(esVentaAnulable({ ...ventaAbierta, turno_estado: 'CERRADO' })).toBe(false);
+            expect(esVentaAnulable({ id: 8, estado: 'EMITIDA' })).toBe(false);
+            expect(esVentaAnulable({ estado: 'EMITIDA', turno_estado: 'ABIERTO' })).toBe(false);
+            expect(esVentaAnulable(null)).toBe(false);
+        });
+
+        it('puedeAnularVenta combina regla del ticket y permiso', () => {
+            expect(puedeAnularVenta(duenio, ventaAbierta)).toBe(true);
+            expect(puedeAnularVenta(cajero, ventaAbierta)).toBe(false);
+            expect(puedeAnularVenta(duenio, { ...ventaAbierta, turno_estado: 'CERRADO' })).toBe(false);
+        });
+
+        it('unificarTrazabilidadRegistros marca ventaId y anulable en cada venta', () => {
+            const fecha = new Date(2026, 10, 20, 10, 0, 0).toISOString();
+            const { registros } = unificarTrazabilidadRegistros({
+                ventas: [
+                    { ...ventaAbierta, fecha, total: '100.00' },
+                    { id: 9, estado: 'EMITIDA', turno_estado: 'CERRADO', fecha, total: '50.00' },
+                ],
+            });
+            const r7 = registros.find((r) => r.id === 'venta-7');
+            const r9 = registros.find((r) => r.id === 'venta-9');
+            expect(r7).toMatchObject({ ventaId: 7, anulable: true });
+            expect(r9).toMatchObject({ ventaId: 9, anulable: false });
+            expect(registroMuestraBotonAnular(duenio, r7)).toBe(true);
+            expect(registroMuestraBotonAnular(duenio, r9)).toBe(false);
+            expect(registroMuestraBotonAnular(cajero, r7)).toBe(false);
+        });
+
+        it('registroMuestraBotonAnular ignora filas que no son ventas del servidor', () => {
+            expect(registroMuestraBotonAnular(duenio, { categoria: 'stock', anulable: true, ventaId: 1 })).toBe(false);
+            expect(registroMuestraBotonAnular(duenio, { categoria: 'venta', id: 'offline-1' })).toBe(false);
+            expect(registroMuestraBotonAnular(duenio, null)).toBe(false);
+        });
+
+        it('validarMotivoAnulacion pide texto y respeta el largo máximo', () => {
+            expect(validarMotivoAnulacion('  ').valido).toBe(false);
+            expect(validarMotivoAnulacion('ab').valido).toBe(false);
+            expect(validarMotivoAnulacion(undefined).valido).toBe(false);
+            expect(validarMotivoAnulacion('x'.repeat(256)).valido).toBe(false);
+            expect(validarMotivoAnulacion('  Cobrado dos veces ')).toEqual({
+                valido: true,
+                motivo: 'Cobrado dos veces',
+                mensaje: '',
+            });
+        });
     });
 });
