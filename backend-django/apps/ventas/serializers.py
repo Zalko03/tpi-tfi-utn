@@ -46,6 +46,8 @@ class VentaSerializer(serializers.ModelSerializer):
     id_operacion = serializers.UUIDField(required=False, allow_null=True)
     usuario_nombre = serializers.ReadOnlyField(source="turno_caja.usuario.username")
     anulada_por_nombre = serializers.ReadOnlyField(source="anulada_por.username")
+    # La web muestra "Anular" solo si el turno sigue abierto (misma regla que anular_venta).
+    turno_estado = serializers.ReadOnlyField(source="turno_caja.estado")
 
     class Meta:
         model = Venta
@@ -53,6 +55,7 @@ class VentaSerializer(serializers.ModelSerializer):
             "id",
             "id_operacion",
             "turno_caja",
+            "turno_estado",
             "usuario_nombre",
             "fecha",
             "medio_pago",
@@ -71,6 +74,7 @@ class VentaSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "usuario_nombre",
+            "turno_estado",
             "fecha",
             "estado",
             "anulada_en",
