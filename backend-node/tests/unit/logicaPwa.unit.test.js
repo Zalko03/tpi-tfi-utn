@@ -209,6 +209,7 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             });
             expect(evStock.nivel).toBe('peligro');
             expect(evStock.titulo).toContain('Leche Entera');
+            expect(evStock.detalle).toBe('Disponible: 1.200 ml (mínimo 5.000 ml)');
 
             const evImp = formatearEventoTiempoReal('importacion.lista', {
                 estado: 'LISTA',

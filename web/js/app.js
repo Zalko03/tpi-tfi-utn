@@ -1120,7 +1120,7 @@ export const conectarSocketTiempoReal = () => {
     socket.on('stock.bajo', (payload) => {
         registrarEventoEnFeed('stock.bajo', payload);
         mostrarToast(
-            `Stock bajo: ${payload?.nombre || 'Insumo'} (${payload?.stockActual ?? '0'} ${payload?.unidadBase || ''})`.trim(),
+            `Stock bajo: ${payload?.nombre || 'Insumo'} (${formatearCantidadStock(payload?.stockActual, payload?.unidadBase)})`,
             'advertencia'
         );
         cargarInsumos();
@@ -3814,10 +3814,16 @@ export const cargarFinanzas = async () => {
         }
     };
 
+    // Sin el permiso correspondiente el backend responde 403: no se pide y no se avisa como error
+    // (el encargado no ve métricas financieras y recibía el aviso en cada venta en vivo).
+    const veFinancieros = usuarioTienePermiso(estadoApp.usuario, 'reportes.ver_financieros');
+    const veOperativos = usuarioTienePermiso(estadoApp.usuario, 'reportes.ver_operativos');
+    if (!veFinancieros) limpiarTarjetasFinanzas();
+
     const [okGanancia, okRanking, okPuntoEquilibrio] = await Promise.all([
-        cargarTarjetasGanancia(),
-        cargarRanking(),
-        calcularPuntoEquilibrio(fechaDesde, fechaHasta, idCarga),
+        veFinancieros ? cargarTarjetasGanancia() : true,
+        veOperativos ? cargarRanking() : true,
+        veFinancieros ? calcularPuntoEquilibrio(fechaDesde, fechaHasta, idCarga) : true,
         cargarTrazabilidadReportes(fechaDesde, fechaHasta, idCarga),
     ]);
 

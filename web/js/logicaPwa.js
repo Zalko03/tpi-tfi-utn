@@ -201,7 +201,7 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
                 evento: nombreEvento,
                 nivel: 'peligro',
                 titulo: `Stock crítico: ${payload.nombre || 'Insumo'}`,
-                detalle: `Disponible: ${payload.stockActual ?? '0'} ${payload.unidadBase || ''} (mínimo ${payload.stockMinimo ?? '0'})`,
+                detalle: `Disponible: ${formatearCantidadStock(payload.stockActual, payload.unidadBase)} (mínimo ${formatearCantidadStock(payload.stockMinimo, payload.unidadBase)})`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
             };
