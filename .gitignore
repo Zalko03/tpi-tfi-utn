@@ -34,6 +34,8 @@ env/
 htmlcov/
 .coverage
 coverage.xml
+htmlcov/
+backend-node/coverage/
 
 # ── Node ─────────────────────────────────────────────────────────────────────
 node_modules/
@@ -68,3 +70,6 @@ docs/GUIA_DEFENSA.md
 docs/FUNDAMENTACION_Y_GUIA_DEFENSA.md
 docs/CORRECCIONES_EVALUACION_FINAL.md
 docs/novedades.md
+
+# Enlace local a node_modules (worktrees)
+backend-node/node_modules

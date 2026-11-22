@@ -1119,7 +1119,8 @@ def listar_movimientos_stock_reales(
         qs = qs.filter(tipo=str(tipo).strip().upper())
     if subtipo:
         qs = qs.filter(subtipo=str(subtipo).strip().upper())
-    return qs[: max(1, int(limite or 100))]
+    # Tope de 500 filas: el historial completo se recorre filtrando por fechas, no con un límite enorme.
+    return qs[: min(500, max(1, int(limite or 100)))]
 
 
 def obtener_movimientos_stock_trazabilidad(

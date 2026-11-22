@@ -82,7 +82,7 @@ jobs:
         run: npm run lint
 
   test-django:
-    name: Tests Django (357+ pruebas)
+    name: Tests Django (571 pruebas)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -116,7 +116,7 @@ jobs:
         run: pytest --cov=apps --cov-report=term-missing
 
   test-node:
-    name: Tests Express + MongoDB (119+ pruebas)
+    name: Tests Express + MongoDB (244 pruebas)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -150,7 +150,7 @@ jobs:
         run: npm run test:coverage
 
   test-ai-service:
-    name: Tests FastAPI AI Service (57+ pruebas)
+    name: Tests FastAPI AI Service (87 pruebas)
     runs-on: ubuntu-latest
     defaults:
       run:

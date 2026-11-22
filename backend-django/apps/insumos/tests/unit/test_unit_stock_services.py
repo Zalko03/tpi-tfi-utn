@@ -12,6 +12,7 @@ from apps.insumos.models import Insumo, MovimientoStock, Proveedor
 from apps.insumos.services import (
     ajustar_stock_insumo,
     listar_insumos_stock_bajo,
+    listar_movimientos_stock_reales,
     registrar_compra_y_actualizar_costo,
     registrar_lote_compras_importacion,
 )
@@ -101,6 +102,23 @@ class TestUnitStockInsumos:
         assert leche.stock_actual == Decimal("3000.0000")
         assert res_lote["compras_creadas"][0]["stock_actual"] == "2000.0000"
         assert res_lote["compras_creadas"][1]["stock_actual"] == "3000.0000"
+
+    def test_listar_movimientos_stock_topea_el_limite_en_500(self):
+        """Un límite enorme en la consulta no devuelve más de 500 movimientos."""
+        insumo = Insumo.objects.create(nombre="Harina Tope", unidad_base="g")
+        MovimientoStock.objects.bulk_create(
+            MovimientoStock(
+                insumo=insumo,
+                tipo="INGRESO",
+                subtipo="AJUSTE_MANUAL",
+                cantidad_base=Decimal("1.0000"),
+                stock_anterior=Decimal("0.0000"),
+                stock_posterior=Decimal("1.0000"),
+            )
+            for _ in range(501)
+        )
+        assert len(listar_movimientos_stock_reales(limite=100000)) == 500
+        assert len(listar_movimientos_stock_reales(limite=3)) == 3
 
     @override_settings(
         NODE_BASE_URL="http://127.0.0.1:3000",

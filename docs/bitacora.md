@@ -2345,7 +2345,7 @@ Qué se hizo y por qué:
   - La guía de defensa oral y las notas internas de correcciones y novedades se conservan fuera del repositorio.
 - Se crearon los archivos `README.md` individuales por módulo (`backend-django/README.md`, `backend-node/README.md` y `ai-service/README.md`).
 - Se incorporó la medición de cobertura de código (`pytest-cov>=5.0.0` en `backend-django/requirements.txt` y `ai-service/requirements.txt`, script `test:coverage` en `backend-node/package.json` y banderas `--cov` en `.github/workflows/ci.yml`).
-- `web/dev-server.js` (servidor estático auxiliar para pruebas locales) quedó fuera de la integración: se publicaría como archivo estático y para pruebas locales alcanza con `python3 -m http.server`.
+- `web/dev-server.js` (servidor estático auxiliar para pruebas locales) quedó fuera de la integración: se publicaría como archivo estático y en local Node ya sirve la PWA en `http://localhost:3000/app/`.
 Archivos tocados:
 - `backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`
 - `backend-django/requirements.txt`, `ai-service/requirements.txt`, `backend-node/package.json`, `.github/workflows/ci.yml`
@@ -2356,3 +2356,18 @@ Cómo probarlo:
 - `cd backend-node && npm run test:coverage && npm run lint`
 - `cd ai-service && pytest --cov=app --cov-report=term-missing`
 ---
+
+## 21/11 — Integración y auditoría de la cadena F2→F6 (Claude)
+Rama: `integracion/entrega-final` (cadena HU8 → HU14 → HU9 → HU12 → docs + commit `ef0f6a5` de `feature/ajustes-evaluacion`).
+Qué se hizo y por qué:
+- **Integración:** se aplicó el commit del compañero sobre la cadena. En los README de módulo y en `REVISION_TECNICA_BACKEND_NODE.md` se conservaron las versiones de la cadena, que ya cubren HU8, HU9, HU12 y HU14, y se sumaron los comandos de cobertura.
+- **Guía de defensa fuera del repo:** `docs/GUIA_DEFENSA.md` se quitó de todos los commits sin publicar y se agregó al `.gitignore` junto con las notas internas, porque el repositorio es público.
+- **Tests frágiles:** `test_api_demo_acceso` leía `DEMO_ACCESO_RAPIDO` del `.env` local y fallaba en la PC de la demo; ahora fuerza la configuración. El test de importación con pdf.js real superaba los 5 s con cobertura y suites en paralelo; ahora tiene 20 s.
+- **Límite de movimientos de stock:** `GET /api/insumos/movimientos-stock/?limite=` no tenía tope; ahora devuelve como máximo 500 filas (test nuevo).
+- **Auditoría sin hallazgos bloqueantes:** permisos de las vistas nuevas (`EsDuenio` en condición fiscal, `recetas.*` en precios de competencia), clave interna Django→Node comparada en tiempo constante, eventos de venta filtrados por sala sin filtrar costos ni montos al cajero, descuento y devolución de stock con `select_for_update()` en orden de id e idempotentes, `makemigrations --check` sin cambios pendientes.
+- **Riesgo conocido para el deploy:** las notificaciones a Node son síncronas después del commit (timeout de 2 s por llamada). Si Node está dormido, cada cobro puede tardar unos segundos más, aunque la venta se guarda igual.
+Resultados verificados: Django 571 pruebas (96 % de cobertura, con `USE_SQLITE=True`), Node 244 (88,5 % de líneas), AI Service 87 (92 %). Ruff y ESLint sin errores.
+Cómo probarlo:
+- `cd backend-django && USE_SQLITE=True .venv/bin/python -m pytest -q --cov=apps`
+- `cd backend-node && npm run test:coverage && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q --cov=app`
