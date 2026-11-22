@@ -2371,3 +2371,24 @@ Cómo probarlo:
 - `cd backend-django && USE_SQLITE=True .venv/bin/python -m pytest -q --cov=apps`
 - `cd backend-node && npm run test:coverage && npm run lint`
 - `cd ai-service && .venv/bin/python -m pytest -q --cov=app`
+
+---
+
+## 21/11 — Prueba en el navegador, arreglos del frontend y avisos a Node en segundo plano (Claude)
+Rama: `integracion/entrega-final`. Base local respaldada (`~/orq/backups/db.sqlite3.20261121-220907.antes-integracion`) y migrada (insumos 0002 y 0003, recetas 0003).
+Qué se probó en el navegador (dueño, encargado y cajero demo):
+- Anduvo: login demo, apertura de turno propio, cobro con ticket (dirección real), venta y anulación en vivo en el tablero del encargado (HU8), condición fiscal con recálculo de 19 insumos y 12 recetas e historial (HU14), precio sugerido, vista previa del margen, competencia con tope al mínimo y al promedio (HU9), ajuste manual, mínimo y alerta de stock bajo en vivo (HU12), importación con IA (Groq) y carta pública. El cajero solo ve Punto de Venta y Caja; la API le devuelve los costos en `null` y 403 en insumos, competencia, finanzas y condición fiscal.
+- No hay botón para anular ventas en la web: la anulación existe solo como `POST /api/ventas/{id}/anular/` (se probó por API).
+Arreglos y por qué:
+- **Turno ajeno en Caja:** el dueño y el encargado tomaban como propio el primer turno ABIERTO de la lista (el del cajero) y podían cobrar o cerrar caja sobre él. `seleccionarTurnoPropio` (en `logicaPwa.js`, con tests) solo considera turnos del usuario; el caché de turno de otro usuario se ignora.
+- **Hora en 24 h:** Chrome formatea `es-AR` con reloj de 12 h sin "a. m./p. m." (un ticket de las 22:16 decía 10:16). Se fuerza `hourCycle: 'h23'` en ticket, caja, auditoría, tablero y carta.
+- **Tablero en vivo:** montos con formato de moneda (antes "$2200.0000") y cantidades de stock legibles en el toast y el tablero (antes "492.0000 g").
+- **Reportes del encargado:** sin `reportes.ver_financieros` ya no se piden ganancia diaria ni punto de equilibrio (daban 403 y el aviso "No se pudieron cargar algunas métricas" en cada venta en vivo).
+- **Avisos a Node en segundo plano:** `notificar_evento_node` arma la petición en el hilo del request (el correlation id es un `ContextVar` y no pasa a otros hilos) y la encola en un `ThreadPoolExecutor` de un solo hilo, que conserva el orden (venta → stock bajo). Así un cobro no espera el timeout de 2 s por aviso si Node está dormido en Render. Se descartaron: agrupar avisos (no evita la espera), bajar el timeout (sigue demorando y pierde avisos) y un ping para mantener Node despierto (en Render gratis las 750 horas mensuales se comparten entre los tres servicios). Nueva variable `NODE_EVENTOS_EN_SEGUNDO_PLANO` (por defecto `True`); `conftest.py` la apaga para que los tests existentes sigan verificando el envío de forma síncrona, y `test_unit_notificaciones_node_segundo_plano.py` prueba el modo real (no bloquea, orden, correlation id, errores y cobro sin demora).
+Archivos tocados: `web/js/app.js`, `web/js/logicaPwa.js`, `web/js/carta.js`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-django/apps/comun/notificaciones_node.py`, `backend-django/apps/comun/tests/unit/test_unit_notificaciones_node_segundo_plano.py`, `backend-django/config/settings/base.py`, `backend-django/conftest.py`, `.env.example`, `docs/bitacora.md`.
+Resultados verificados: Django 578 pruebas (`USE_SQLITE=True`), Node 247, AI Service 87; ruff, `npm run lint` y `node --check` de la web sin errores.
+Pendiente antes del deploy: el cliente Socket.IO se carga desde `/socket.io/socket.io.js`, que en Vercel no existe (lo sirve Node), así que el tablero en vivo no conectaría; además `seed_demo` define `stock_minimo` pero no `stock_actual`, por lo que tras sembrar los insumos con mínimo aparecerían en "Stock bajo".
+Cómo probarlo:
+- `cd backend-django && USE_SQLITE=True .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test -- --silent`
+- `cd ai-service && .venv/bin/python -m pytest -q`
