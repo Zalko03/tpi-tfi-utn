@@ -1,11 +1,14 @@
 """Servicios de costeo de recetas, márgenes y propagación de costos."""
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db.models import Prefetch
 from django.utils import timezone
 
 from apps.insumos.services import convertir_a_unidad_base
+
+MULTIPLOS_REDONDEO_PERMITIDOS = (50, 100)
+MARGEN_OBJETIVO_DEFECTO = Decimal("0.3000")
 
 
 def listar_productos_carta_publica():
@@ -15,19 +18,32 @@ def listar_productos_carta_publica():
     return Producto.objects.filter(estado_activo=True).order_by("nombre")
 
 
-def listar_productos_con_costos_optimizado(solo_activos: bool = False):
+def listar_productos_con_costos_optimizado(
+    solo_activos: bool = False,
+    incluir_competencia: bool = False,
+):
     """
     Construye el QuerySet de productos precargando receta_items e insumos asociados
     en una única consulta adicional (Prefetch + select_related), eliminando el problema N+1 (T3.4).
+    Opcionalmente precarga los precios de competencia para sugerencia de precios (HU9).
     """
-    from apps.recetas.models import Producto, RecetaItem
+    from apps.recetas.models import PrecioCompetencia, Producto, RecetaItem
 
-    qs = Producto.objects.prefetch_related(
+    prefetches = [
         Prefetch(
             "receta_items",
             queryset=RecetaItem.objects.select_related("insumo").order_by("id"),
         )
-    )
+    ]
+    if incluir_competencia:
+        prefetches.append(
+            Prefetch(
+                "precios_competencia",
+                queryset=PrecioCompetencia.objects.order_by("precio", "nombre_competidor", "id"),
+            )
+        )
+
+    qs = Producto.objects.prefetch_related(*prefetches)
     if solo_activos:
         qs = qs.filter(estado_activo=True)
     return qs
@@ -203,3 +219,163 @@ def recalcular_recetas_por_insumo(insumo_id: int) -> list[dict]:
     )
 
     return resumen
+
+
+def redondear_a_multiplo(valor: Decimal, multiplo: int = 50) -> Decimal:
+    """
+    Redondea un importe monetario al múltiplo configurado ($50 o $100) usando ROUND_HALF_UP (HU9).
+    """
+    try:
+        multiplo_int = int(multiplo)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("El múltiplo de redondeo debe ser $50 o $100.") from exc
+
+    if multiplo_int not in MULTIPLOS_REDONDEO_PERMITIDOS:
+        raise ValueError("El múltiplo de redondeo debe ser $50 o $100.")
+
+    try:
+        monto = Decimal(str(valor))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("El importe a redondear no es válido.") from exc
+
+    if monto < Decimal("0"):
+        raise ValueError("El importe a redondear no puede ser negativo.")
+
+    multiplo_dec = Decimal(str(multiplo_int))
+    unidades = (monto / multiplo_dec).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return (unidades * multiplo_dec).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def calcular_precio_sugerido(
+    costo_total: Decimal,
+    margen_objetivo: Decimal = MARGEN_OBJETIVO_DEFECTO,
+    redondeo_multiplo: int = 50,
+    precios_competencia: list[Decimal] | None = None,
+) -> dict:
+    """
+    Calcula el precio sugerido de un producto (HU9, CA9.1 y CA9.2):
+    1. Precio base = redondeo(costo / (1 - margen_objetivo), múltiplo $50 o $100).
+    2. Si existen precios de competencia cargados, acota el precio sugerido entre
+       el mínimo y el promedio de la competencia (PvP Min <= sugerido <= PvP Prom).
+    """
+    try:
+        costo = Decimal(str(costo_total if costo_total is not None else "0"))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("El costo del producto no es válido.") from exc
+
+    if costo < Decimal("0"):
+        raise ValueError("El costo total no puede ser negativo.")
+
+    try:
+        margen = Decimal(
+            str(margen_objetivo if margen_objetivo is not None else MARGEN_OBJETIVO_DEFECTO)
+        )
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("El margen objetivo no es válido.") from exc
+
+    if margen < Decimal("0") or margen >= Decimal("1"):
+        raise ValueError("El margen objetivo debe ser mayor o igual a 0% y menor al 100%.")
+
+    try:
+        multiplo = int(redondeo_multiplo if redondeo_multiplo is not None else 50)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("El múltiplo de redondeo debe ser $50 o $100.") from exc
+
+    if multiplo not in MULTIPLOS_REDONDEO_PERMITIDOS:
+        raise ValueError("El múltiplo de redondeo debe ser $50 o $100.")
+
+    if costo > Decimal("0"):
+        precio_teorico = costo / (Decimal("1") - margen)
+    else:
+        precio_teorico = Decimal("0.00")
+
+    precio_base_redondeado = redondear_a_multiplo(precio_teorico, multiplo)
+
+    precios_validos: list[Decimal] = []
+    for p in precios_competencia or []:
+        try:
+            valor_comp = Decimal(str(p))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("Uno de los precios de competencia no es válido.") from exc
+        if valor_comp <= Decimal("0"):
+            raise ValueError("Todos los precios de competencia deben ser mayores a cero.")
+        precios_validos.append(valor_comp.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+    if precios_validos:
+        competencia_minimo = min(precios_validos).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        competencia_promedio = (sum(precios_validos) / Decimal(len(precios_validos))).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        if precio_base_redondeado > competencia_promedio:
+            precio_sugerido = competencia_promedio
+            acotado_por = "PROMEDIO"
+        elif precio_base_redondeado < competencia_minimo:
+            precio_sugerido = competencia_minimo
+            acotado_por = "MINIMO"
+        else:
+            precio_sugerido = precio_base_redondeado
+            acotado_por = "NINGUNO"
+    else:
+        competencia_minimo = None
+        competencia_promedio = None
+        precio_sugerido = precio_base_redondeado
+        acotado_por = "NINGUNO"
+
+    ganancia_sugerida, margen_sugerido = calcular_margen_y_ganancia(precio_sugerido, costo)
+
+    return {
+        "costo_total": str(costo.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)),
+        "margen_objetivo": str(margen.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)),
+        "redondeo_multiplo": multiplo,
+        "precio_teorico": str(precio_teorico.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        "precio_base_redondeado": str(precio_base_redondeado),
+        "precio_sugerido": str(precio_sugerido),
+        "competencia_cantidad": len(precios_validos),
+        "competencia_minimo": str(competencia_minimo) if competencia_minimo is not None else None,
+        "competencia_promedio": (
+            str(competencia_promedio) if competencia_promedio is not None else None
+        ),
+        "acotado_por": acotado_por,
+        "ganancia_con_sugerido": str(ganancia_sugerida),
+        "margen_con_sugerido": str(margen_sugerido),
+        "alerta_bajo_costo": precio_sugerido < costo,
+    }
+
+
+def obtener_sugerencia_precio_producto(
+    producto,
+    margen_objetivo: Decimal | None = None,
+    redondeo_multiplo: int | None = None,
+) -> dict:
+    """
+    Calcula la sugerencia de precio de un producto sin alterar su precio_venta vigente.
+    Reutiliza precios_competencia precargados en memoria si están disponibles.
+    """
+    margen_eff = producto.margen_objetivo if margen_objetivo is None else margen_objetivo
+    multiplo_eff = producto.redondeo_multiplo if redondeo_multiplo is None else redondeo_multiplo
+
+    cache_prefetch = getattr(producto, "_prefetched_objects_cache", {})
+    if isinstance(cache_prefetch, dict) and "precios_competencia" in cache_prefetch:
+        items_comp = producto.precios_competencia.all()
+    else:
+        items_comp = producto.precios_competencia.order_by("precio", "nombre_competidor", "id")
+
+    precios_comp = [item.precio for item in items_comp]
+
+    resultado = calcular_precio_sugerido(
+        costo_total=producto.costo_total_calculado,
+        margen_objetivo=margen_eff,
+        redondeo_multiplo=multiplo_eff,
+        precios_competencia=precios_comp,
+    )
+    return {
+        "producto_id": producto.id,
+        "nombre": producto.nombre,
+        "precio_venta_actual": str(
+            Decimal(str(producto.precio_venta or 0)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        ),
+        **resultado,
+    }

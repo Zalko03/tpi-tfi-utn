@@ -1,0 +1,65 @@
+import { Router } from 'express';
+import { check } from 'express-validator';
+import { recibirEventoInterno } from '../controllers/eventosInternos.controller.js';
+import { verificarClaveInterna } from '../middlewares/authInterna.middleware.js';
+import { validarCampos } from '../middlewares/validarCampos.middleware.js';
+
+const router = Router();
+
+const EVENTOS_INTERNOS_PERMITIDOS = [
+    'venta.registrada',
+    'venta.anulada',
+    'costos.recalculados',
+    'stock.bajo',
+];
+
+const esEventoVenta = (req) =>
+    ['venta.registrada', 'venta.anulada'].includes(req.body?.evento);
+
+const checksEventoInterno = [
+    check('evento')
+        .exists({ checkFalsy: true })
+        .withMessage('El nombre del evento es obligatorio.')
+        .bail()
+        .isIn(EVENTOS_INTERNOS_PERMITIDOS)
+        .withMessage('El tipo de evento interno no es válido.'),
+    check('datos')
+        .exists()
+        .withMessage('Los datos del evento son obligatorios.')
+        .bail()
+        .custom((valor) => Boolean(valor && typeof valor === 'object' && !Array.isArray(valor)))
+        .withMessage('Los datos del evento deben enviarse como un objeto.'),
+    check('datos.ventaId')
+        .if((_valor, { req }) => esEventoVenta(req))
+        .exists()
+        .withMessage('El identificador de venta es obligatorio.')
+        .bail()
+        .isInt({ min: 1 })
+        .withMessage('El identificador de venta debe ser un entero positivo.'),
+    check('datos.productosRecalculados')
+        .if((_valor, { req }) => req.body?.evento === 'costos.recalculados')
+        .exists()
+        .withMessage('La lista de productos recalculados es obligatoria.')
+        .bail()
+        .isArray()
+        .withMessage('La lista de productos recalculados debe ser un arreglo.'),
+    check('datos.insumoId')
+        .if((_valor, { req }) => req.body?.evento === 'stock.bajo')
+        .exists()
+        .withMessage('El identificador del insumo es obligatorio.')
+        .bail()
+        .isInt({ min: 1 })
+        .withMessage('El identificador del insumo debe ser un entero positivo.'),
+    check('datos.nombre')
+        .if((_valor, { req }) => req.body?.evento === 'stock.bajo')
+        .exists({ checkFalsy: true })
+        .withMessage('El nombre del insumo es obligatorio.')
+        .bail()
+        .isString()
+        .withMessage('El nombre del insumo debe ser un texto.'),
+    validarCampos,
+];
+
+router.post('/eventos', verificarClaveInterna, checksEventoInterno, recibirEventoInterno);
+
+export default router;

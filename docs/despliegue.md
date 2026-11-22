@@ -176,3 +176,89 @@ Si tras desplegar una actualización se detecta un incidente en producción:
    curl -I http://localhost/healthz
    curl -s http://localhost/api/health/profundo/ | jq
    ```
+
+---
+
+## 8. Despliegue en la nube: Render + Vercel (entrega final)
+
+Modalidad pública para la demo: la web estática en **Vercel**, los tres servicios en **Render**
+(`render.yaml`, plan gratuito), PostgreSQL en **Aiven** y MongoDB en **Atlas**.
+
+```text
+Navegador ──> Vercel (web/, vercel.json)
+   │ HTTPS/WSS
+   ├──> sapori-backend-django.onrender.com ──> PostgreSQL (Aiven)
+   │         └── avisos de ventas/stock ──> Node (NODE_BASE_URL + EVENTOS_INTERNOS_CLAVE)
+   └──> sapori-backend-node.onrender.com ──> MongoDB (Atlas)
+             ├──> Django (DJANGO_BASE_URL, termina en /api)
+             └──> sapori-ai-service.onrender.com ──> Groq
+```
+
+### 8.1 Límites del plan gratuito de Render (docs oficiales: https://render.com/docs/free)
+* Sin `plan` en `render.yaml`, Render crea instancias **pagas** (`0.5c-512mb`); por eso cada servicio tiene `plan: free`.
+* Un servicio gratuito **se duerme a los 15 minutos sin tráfico** y tarda **alrededor de un minuto** en despertar. Antes de mostrar la app (o de grabar), abrí las tres URLs de salud y esperá el `200`.
+* Hay **750 horas gratis por mes para todo el workspace** (se comparten entre los tres servicios; dormidos no consumen). Si se agotan, Render suspende los servicios hasta el mes siguiente.
+* Sin consola ni tareas sueltas (no hay `shell` ni `preDeployCommand`): las migraciones corren al arrancar (`dockerCommand` de Django) y los datos de demo se cargan desde la PC (8.5).
+* Sin red privada: los servicios se hablan por sus URLs públicas `https://…onrender.com`.
+* El disco es efímero: nada se guarda en el contenedor; los datos viven en Aiven y Atlas.
+
+### 8.2 Claves JWT (obligatorias)
+Con `DJANGO_DEBUG=False`, Django **no arranca** sin `DJANGO_JWT_PRIVATE_KEY` y `DJANGO_JWT_PUBLIC_KEY`
+(con un par efímero, cada worker de gunicorn firmaría con su propia clave y Node no podría validar los tokens).
+Se genera un par nuevo para la nube (no reutilizar el de desarrollo):
+
+```bash
+openssl genrsa -out /tmp/jwt_privada.pem 2048 && openssl rsa -in /tmp/jwt_privada.pem -pubout -out /tmp/jwt_publica.pem
+```
+
+El contenido completo de cada archivo (con `-----BEGIN…` y `-----END…`) se pega en el panel de Render.
+Se acepta multilínea o en una sola línea con `\n` literales. La **pública** va también en Node (`JWT_PUBLIC_KEY`).
+
+### 8.3 Variables por servicio
+| Servicio | Variable | Valor |
+|---|---|---|
+| Django | `DJANGO_ALLOWED_HOSTS` | `sapori-backend-django.onrender.com` (el host propio de Render también se suma solo con `RENDER_EXTERNAL_HOSTNAME`) |
+| Django | `DATABASE_URL` | URL de Aiven, con `?sslmode=require` |
+| Django | `CORS_ALLOWED_ORIGINS` | `https://<proyecto>.vercel.app,https://sapori-backend-node.onrender.com` (sin barra final, sin `*`) |
+| Django | `DJANGO_JWT_PRIVATE_KEY` / `DJANGO_JWT_PUBLIC_KEY` | par de 8.2 |
+| Django | `NODE_BASE_URL` | `https://sapori-backend-node.onrender.com` |
+| Django | `EVENTOS_INTERNOS_CLAVE` | misma clave larga al azar que en Node (`openssl rand -hex 32`) |
+| Django | `POSTGRES_*` | se pueden dejar vacías si `DATABASE_URL` está completa |
+| Node | `MONGO_URI` | cadena `mongodb+srv://…` de Atlas (en Atlas, permitir acceso desde `0.0.0.0/0`: Render gratis no tiene IP fija) |
+| Node | `DJANGO_BASE_URL` | `https://sapori-backend-django.onrender.com/api` (**con** `/api`) |
+| Node | `AI_SERVICE_URL` | `https://sapori-ai-service.onrender.com` |
+| Node | `CORS_ALLOWED_ORIGINS` | `https://<proyecto>.vercel.app` (también habilita Socket.IO) |
+| Node | `JWT_PUBLIC_KEY` | pública de 8.2 |
+| Node | `EVENTOS_INTERNOS_CLAVE` | la misma que en Django |
+| IA | `GROQ_API_KEY` | clave de Groq (regenerada; la anterior se expuso en un chat) |
+
+`DEMO_ACCESO_RAPIDO` no está en `render.yaml`: en la nube el acceso en un clic queda **apagado** y se entra
+con usuario y contraseña. Activarlo expone tres cuentas sin contraseña en un sitio público: decisión del equipo.
+
+### 8.4 Vercel
+* Importar el repo con la raíz en la carpeta del repositorio (usa `vercel.json`; no hace falta build).
+* Las URLs de los backends están en `web/js/config.js` (`urlsNube`). Si Render asigna otros nombres
+  (por ejemplo, porque `sapori-backend-django` ya estaba tomado), hay que cambiarlas ahí **y** en la CSP
+  (`connect-src`, con `https://` y `wss://` para Node) de `vercel.json`, `web/nginx.conf` y `backend-node/app.js`.
+* El cliente de Socket.IO se sirve desde `web/vendor/socket.io/` (Vercel no tiene Node detrás).
+
+### 8.5 Datos de demo en la base de la nube
+Render gratis no tiene consola: el seed se corre desde la PC apuntando a Aiven (las variables puestas en la
+línea pisan las del `.env` local):
+
+```bash
+cd backend-django && USE_SQLITE=False DATABASE_URL='<url de Aiven>' SEED_DEMO_PASSWORD='<contraseña de demo>' .venv/bin/python manage.py seed_demo --video --force-production
+```
+
+### 8.6 QR de la carta
+El QR se arma con el dominio desde donde se abre la app. Para imprimirlo, abrí la app **desde la URL de
+Vercel** (no desde `localhost`): el QR apuntará a `https://<proyecto>.vercel.app/app/carta.html`
+(o `/carta.html` si se entró por la raíz; ambas rutas tienen rewrite). Si después cambia el dominio, hay que
+reimprimirlo. La carta consulta a Django, así que también depende de que Render esté despierto.
+
+### 8.7 Verificación después de desplegar
+```bash
+curl -s https://sapori-backend-django.onrender.com/api/health/profundo/ && echo && curl -s https://sapori-backend-node.onrender.com/health/profundo && echo && curl -s https://sapori-ai-service.onrender.com/health
+```
+Tienen que responder `"estado":"ok"` (la primera vez puede tardar un minuto por el arranque en frío).
+En la web, el indicador de la cabecera tiene que decir **Conectado** (Socket.IO).

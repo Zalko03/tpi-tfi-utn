@@ -25,6 +25,7 @@ const formatearHoraConsulta = (fecha = new Date()) =>
     fecha.toLocaleTimeString('es-AR', {
         hour: '2-digit',
         minute: '2-digit',
+        hourCycle: 'h23',
     });
 
 const resolverEndpointsCandidatos = () => {
@@ -54,7 +55,7 @@ const resolverEndpointsCandidatos = () => {
     if (!esLocalhost) {
         return [
             `${origin}/api/carta-publica/`,
-            'https://sapori-backend-django.onrender.com/api/carta-publica/',
+            `${String(configGlobal.urlsNube?.django || 'https://sapori-backend-django.onrender.com').replace(/\/+$/, '')}/api/carta-publica/`,
         ];
     }
     if (port === '' || port === '80' || port === '443') {

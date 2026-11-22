@@ -63,6 +63,9 @@ services:
       DJANGO_REFRESH_TOKEN_DAYS: ${DJANGO_REFRESH_TOKEN_DAYS:-1}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1,http://localhost:5173,http://localhost:3000}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+      NODE_BASE_URL: http://backend-node:3000
+      NODE_EVENTOS_TIMEOUT_SECONDS: ${NODE_EVENTOS_TIMEOUT_SECONDS:-2.0}
+      EVENTOS_INTERNOS_CLAVE: ${EVENTOS_INTERNOS_CLAVE:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,6 +118,7 @@ services:
       MONGO_URI: mongodb://mongodb:27017/${POSTGRES_DB:-cafe_gestion}
       DJANGO_BASE_URL: http://backend-django:8000/api
       AI_SERVICE_URL: http://ai-service:8001
+      EVENTOS_INTERNOS_CLAVE: ${EVENTOS_INTERNOS_CLAVE:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1,http://localhost:5173,http://localhost:3000}
     depends_on:
       mongodb:

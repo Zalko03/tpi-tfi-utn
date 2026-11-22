@@ -13,14 +13,20 @@ import {
     calcularCostosExtraReceta,
     calcularDimensionesReescaladoImagen,
     calcularFactorConversionReceta,
+    calcularPrecioSugeridoLocal,
     calcularResumenCarrito,
     CALIDAD_JPEG_IMAGEN_IMPORTACION,
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
     consultarDisponibilidadDemoApi,
+    describirAcotamientoSugerido,
+    evaluarAvisoCondicionFiscal,
+    evaluarEstadoStockInsumo,
     fechaIsoATexto,
     fechaTextoAIso,
+    formatearCantidadStock,
     formatearEntradaFecha,
+    formatearEtiquetaCondicionFiscal,
     crearFetchConSesion,
     construirQueryRangoFechas,
     ejecutarSincronizacionConLock,
@@ -58,19 +64,24 @@ import {
     obtenerContenidoPlantillaCsv,
     obtenerPermisosInicialesEmpleado,
     obtenerPlantillaRol,
+    obtenerResumenStockBajo,
     obtenerSonidoParaEvento,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
     parsearCsvProveedor,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    puedeConfigurarLocal,
     puedeGestionarQrCarta,
     resolverPerfilDemoDesdeBoton,
     seccionesVisiblesParaUsuario,
+    seleccionarTurnoPropio,
     siguienteIdCarga,
     SONIDOS,
     unificarTrazabilidadRegistros,
     usuarioTienePermiso,
+    registroMuestraBotonAnular,
+    validarMotivoAnulacion,
     validarArchivoImportacionGeneral,
     validarCarritoContraCatalogo,
     validarRangoFechas,
@@ -88,6 +99,20 @@ const CLAVE_NODE_URL = 'sapori_node_url';
  * - Si corre en localhost o 127.0.0.1, usa http://localhost:8000 y http://localhost:3000 (salvo override en localStorage).
  * - Si corre en dominio externo (ej. Vercel), lee window.__SAPORI_CONFIG__ o localStorage.
  */
+// Último recurso si web/js/config.js no cargó; el lugar para cambiarlas es config.js (urlsNube).
+const URLS_NUBE_POR_DEFECTO = {
+    django: 'https://sapori-backend-django.onrender.com',
+    node: 'https://sapori-backend-node.onrender.com',
+};
+
+const obtenerUrlsNube = () => {
+    const urls = (window.__SAPORI_CONFIG__ || {}).urlsNube || {};
+    return {
+        django: urls.django || URLS_NUBE_POR_DEFECTO.django,
+        node: urls.node || URLS_NUBE_POR_DEFECTO.node,
+    };
+};
+
 export const resolverEndpointsServidor = () => {
     const host = window.location.hostname;
     const esLocalhost = host === 'localhost' || host === '127.0.0.1';
@@ -99,11 +124,11 @@ export const resolverEndpointsServidor = () => {
 
     const DJANGO_API_URL = esLocalhost
         ? djangoGuardado || 'http://localhost:8000'
-        : djangoGuardado || configGlobal.DJANGO_API_URL || 'https://sapori-backend-django.onrender.com';
+        : djangoGuardado || configGlobal.DJANGO_API_URL || obtenerUrlsNube().django;
 
     const NODE_API_URL = esLocalhost
         ? nodeGuardado || (window.location.origin.includes('3000') ? window.location.origin : 'http://localhost:3000')
-        : nodeGuardado || configGlobal.NODE_API_URL || 'https://sapori-backend-node.onrender.com';
+        : nodeGuardado || configGlobal.NODE_API_URL || obtenerUrlsNube().node;
 
     return {
         modoConexion: modoGuardado,
@@ -166,10 +191,12 @@ export const estadoApp = {
     ultimoOrigenArchivo: 'texto',
     insumos: [],
     proveedores: [],
+    configuracionFiscal: null,
     turnosHistorial: [],
     usuariosEquipo: [],
     empleadoEditandoPermisos: null,
     empleadoParaBaja: null,
+    ventaParaAnular: null,
     productoDesgloseId: null,
     filtroCategoriaActual: 'todos',
     idCargaReportes: 0,
@@ -601,6 +628,9 @@ export const sincronizarVentasPendientes = async () => {
             }
             await cargarTurnoActivo();
             await cargarCatalogo();
+            if (usuarioTienePermiso(estadoApp.usuario, 'insumos.ver')) {
+                await cargarInsumos();
+            }
             if (estadoApp.usuario?.rol !== 'CAJERO') {
                 await cargarFinanzas();
             }
@@ -752,8 +782,16 @@ const aplicarAccionesCajaVisibles = () => {
     }
 };
 
+const obtenerSeccionesPermitidas = (usuario) => {
+    const secciones = [...seccionesVisiblesParaUsuario(usuario)];
+    if (puedeConfigurarLocal(usuario) && !secciones.includes('configuracion')) {
+        secciones.push('configuracion');
+    }
+    return secciones;
+};
+
 const configurarVisibilidadPorRol = (rol) => {
-    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
+    const seccionesVisibles = obtenerSeccionesPermitidas(estadoApp.usuario);
     const esCajero = rol === 'CAJERO';
 
     const btnConfigHeader = $('btn-config-servidor-header');
@@ -1085,6 +1123,12 @@ export const conectarSocketTiempoReal = () => {
         cargarTurnoActivo();
     });
 
+    socket.on('venta.anulada', (payload) => {
+        registrarEventoEnFeed('venta.anulada', payload);
+        cargarFinanzas();
+        cargarTurnoActivo();
+    });
+
     socket.on('costo.actualizado', (payload) => {
         registrarEventoEnFeed('costo.actualizado', payload);
         cargarCatalogo();
@@ -1092,6 +1136,10 @@ export const conectarSocketTiempoReal = () => {
 
     socket.on('stock.bajo', (payload) => {
         registrarEventoEnFeed('stock.bajo', payload);
+        mostrarToast(
+            `Stock bajo: ${payload?.nombre || 'Insumo'} (${formatearCantidadStock(payload?.stockActual, payload?.unidadBase)})`,
+            'advertencia'
+        );
         cargarInsumos();
     });
 
@@ -1121,7 +1169,7 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
         li.innerHTML = `
             <div class="evento-titulo">
                 <span>${escaparHtml(item.titulo)}</span>
-                <small>${new Date(item.emitidoEn).toLocaleTimeString('es-AR')}</small>
+                <small>${new Date(item.emitidoEn).toLocaleTimeString('es-AR', { hourCycle: 'h23' })}</small>
             </div>
             <div class="evento-detalle">${escaparHtml(item.detalle)}</div>
         `;
@@ -1130,6 +1178,8 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 
     if (nombreEvento === 'venta.registrada') {
         estadoApp.contadores.ventas += 1;
+    } else if (nombreEvento === 'venta.anulada') {
+        estadoApp.contadores.ventas = Math.max(0, estadoApp.contadores.ventas - 1);
     } else if (nombreEvento === 'costo.actualizado' && item.alertaMargenBajo) {
         estadoApp.contadores.alertasMargen += 1;
     } else if (nombreEvento === 'stock.bajo') {
@@ -1156,7 +1206,7 @@ export const cargarCatalogo = async () => {
             $('grilla-productos').innerHTML = construirCargandoPos();
         }
         if ($('tabla-recetas-productos-body')) {
-            $('tabla-recetas-productos-body').innerHTML = construirFilasCargandoTabla(7, 'Cargando recetas…', 3);
+            $('tabla-recetas-productos-body').innerHTML = construirFilasCargandoTabla(8, 'Cargando recetas…', 3);
         }
         try {
             const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/?limite=100`, {
@@ -1489,6 +1539,9 @@ const cobrarTicketVenta = async () => conCargando($('btn-cobrar-ticket'), async 
             estadoApp.carrito = [];
             renderizarCarritoTicket();
             cargarTurnoActivo();
+            if (usuarioTienePermiso(estadoApp.usuario, 'insumos.ver')) {
+                cargarInsumos();
+            }
         } else {
             const err = data.mensaje || data.detail || 'No se pudo registrar la venta';
             mostrarToast(err, 'peligro');
@@ -1509,7 +1562,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
         : `#${String(datosVenta.id).padStart(4, '0')}`;
 
     if ($('ticket-termico-id')) $('ticket-termico-id').textContent = idFormateado;
-    if ($('ticket-termico-fecha')) $('ticket-termico-fecha').textContent = new Date().toLocaleString('es-AR');
+    if ($('ticket-termico-fecha')) $('ticket-termico-fecha').textContent = new Date().toLocaleString('es-AR', { hourCycle: 'h23' });
     if ($('ticket-termico-cajero')) $('ticket-termico-cajero').textContent = estadoApp.usuario?.username || 'Operador';
     if ($('ticket-termico-turno')) $('ticket-termico-turno').textContent = datosVenta.turno_caja ? `#${datosVenta.turno_caja}` : '-';
 
@@ -1548,7 +1601,7 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
 // ============================================================
 export const cargarTurnoActivo = async () => {
     if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
-        const turnoCache = leerCacheTurnoLocal();
+        const turnoCache = leerCacheTurnoPropio();
         if (turnoCache) {
             estadoApp.turnoActivo = turnoCache;
             actualizarCardTurnoActivo(turnoCache);
@@ -1568,25 +1621,45 @@ export const cargarTurnoActivo = async () => {
             const turnos = Array.isArray(data) ? data : (data.datos || data.results || []);
             estadoApp.turnosHistorial = turnos;
 
-            const turnoAbierto = turnos.find((t) => t.estado === 'ABIERTO');
-            if (turnoAbierto) {
-                estadoApp.turnoActivo = turnoAbierto;
-                localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnoAbierto));
-                actualizarCardTurnoActivo(turnoAbierto);
-            } else if (turnos.length > 0) {
-                estadoApp.turnoActivo = turnos[0];
-                localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnos[0]));
-                actualizarCardTurnoActivo(turnos[0]);
+            // Solo turnos propios: el dueño/encargado ven los de todo el equipo (ver seleccionarTurnoPropio).
+            const turnoPropio = seleccionarTurnoPropio(turnos, estadoApp.usuario?.id);
+            if (turnoPropio) {
+                estadoApp.turnoActivo = turnoPropio;
+                localStorage.setItem(CLAVE_TURNO_CACHE, JSON.stringify(turnoPropio));
+                actualizarCardTurnoActivo(turnoPropio);
+            } else {
+                estadoApp.turnoActivo = null;
+                localStorage.removeItem(CLAVE_TURNO_CACHE);
+                mostrarSinTurnoPropio();
             }
             renderizarTablaTurnosAuditoria();
         }
     } catch {
-        const turnoCache = leerCacheTurnoLocal();
+        const turnoCache = leerCacheTurnoPropio();
         if (turnoCache) {
             estadoApp.turnoActivo = turnoCache;
             actualizarCardTurnoActivo(turnoCache);
         }
     }
+};
+
+// El caché de turno es por navegador: si otro usuario lo usó antes, no se toma como propio.
+const leerCacheTurnoPropio = () => seleccionarTurnoPropio([leerCacheTurnoLocal()], estadoApp.usuario?.id);
+
+const mostrarSinTurnoPropio = () => {
+    for (const id of ['texto-turno-cabecera', 'caja-turno-estado-texto']) {
+        if ($(id)) $(id).textContent = 'Sin turno abierto';
+    }
+    if ($('caja-turno-estado-texto')) $('caja-turno-estado-texto').className = 'badge-estado-rojo text-peligro';
+    if ($('caja-turno-cajero-texto')) $('caja-turno-cajero-texto').textContent = `Responsable: ${estadoApp.usuario?.username || '-'}`;
+    for (const id of ['caja-turno-fondo-inicial', 'caja-turno-ventas-efectivo']) {
+        if ($(id)) $(id).textContent = formatearMoneda(0);
+    }
+    if ($('caja-turno-apertura-hora')) $('caja-turno-apertura-hora').textContent = '';
+    if ($('caja-turno-cant-tickets')) $('caja-turno-cant-tickets').textContent = '0 tickets emitidos';
+    if ($('input-turno-id')) $('input-turno-id').value = '';
+    renderizarMovimientosCaja([]);
+    aplicarAccionesCajaVisibles();
 };
 
 const actualizarCardTurnoActivo = (turno) => {
@@ -1617,7 +1690,7 @@ const actualizarCardTurnoActivo = (turno) => {
     }
 
     if ($('caja-turno-apertura-hora') && turno.apertura) {
-        $('caja-turno-apertura-hora').textContent = `Apertura: ${new Date(turno.apertura).toLocaleString('es-AR')}`;
+        $('caja-turno-apertura-hora').textContent = `Apertura: ${new Date(turno.apertura).toLocaleString('es-AR', { hourCycle: 'h23' })}`;
     }
 
     if ($('caja-turno-ventas-efectivo')) {
@@ -1662,7 +1735,7 @@ const renderizarMovimientosCaja = (movimientos = []) => {
     for (const m of lista) {
         const tr = document.createElement('tr');
         const esIngreso = m.tipo === 'ENTRADA' || m.tipo === 'INGRESO';
-        const hora = m.fecha ? new Date(m.fecha).toLocaleTimeString('es-AR') : '-';
+        const hora = m.fecha ? new Date(m.fecha).toLocaleTimeString('es-AR', { hourCycle: 'h23' }) : '-';
         tr.innerHTML = `
             <td class="col-centro">${hora}</td>
             <td class="col-centro"><span class="${esIngreso ? 'badge-diferencia-sobrante' : 'badge-diferencia-faltante'}">${escaparHtml(m.tipo)}</span></td>
@@ -1704,7 +1777,7 @@ const renderizarTablaTurnosAuditoria = () => {
             <td class="col-centro"><strong>#${t.id}</strong></td>
             <td class="col-texto">${escaparHtml(t.usuario_nombre || 'Operador')}</td>
             <td class="col-centro">${t.apertura ? new Date(t.apertura).toLocaleDateString('es-AR') : '-'}</td>
-            <td class="col-centro">${t.cierre ? new Date(t.cierre).toLocaleTimeString('es-AR') : '<span class="badge-estado-verde">Abierto</span>'}</td>
+            <td class="col-centro">${t.cierre ? new Date(t.cierre).toLocaleTimeString('es-AR', { hourCycle: 'h23' }) : '<span class="badge-estado-verde">Abierto</span>'}</td>
             <td class="col-numero">${t.efectivo_inicial !== null && t.efectivo_inicial !== undefined ? formatearMoneda(t.efectivo_inicial) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero">${t.efectivo_esperado !== null ? formatearMoneda(t.efectivo_esperado) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-numero">${t.efectivo_contado !== null ? formatearMoneda(t.efectivo_contado) : '-'}</td>
@@ -1788,25 +1861,106 @@ export const cargarProveedores = async () => {
     }
 };
 
+const abrirModalAjustarStock = (insumo) => {
+    const modal = $('modal-ajustar-stock');
+    if (!modal || !insumo) return;
+    if ($('input-ajustar-stock-insumo-id')) $('input-ajustar-stock-insumo-id').value = String(insumo.id);
+    if ($('ajustar-stock-insumo-nombre')) $('ajustar-stock-insumo-nombre').textContent = insumo.nombre;
+    if ($('ajustar-stock-actual-texto')) {
+        $('ajustar-stock-actual-texto').textContent = formatearCantidadStock(
+            insumo.stock_actual,
+            insumo.unidad_base
+        );
+    }
+    if ($('label-unidad-stock-minimo')) $('label-unidad-stock-minimo').textContent = insumo.unidad_base || 'un';
+    if ($('label-unidad-ajuste-stock')) $('label-unidad-ajuste-stock').textContent = insumo.unidad_base || 'un';
+    if ($('input-insumo-stock-minimo')) {
+        $('input-insumo-stock-minimo').value = String(Number(insumo.stock_minimo ?? 0));
+    }
+    if ($('input-ajuste-stock-cantidad')) $('input-ajuste-stock-cantidad').value = '';
+    if ($('input-ajuste-stock-motivo')) $('input-ajuste-stock-motivo').value = '';
+    if ($('select-ajuste-stock-tipo')) $('select-ajuste-stock-tipo').value = 'INGRESO';
+    modal.style.display = 'flex';
+};
+
 const renderizarTablaInsumos = () => {
     const tbody = $('tabla-insumos-body');
+    const avisoBanner = $('aviso-stock-bajo-insumos');
+    const thAcciones = $('th-insumos-acciones');
+    const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'insumos.editar');
+    if (thAcciones) thAcciones.style.display = puedeEditar ? '' : 'none';
+
+    if (avisoBanner) {
+        const resumen = obtenerResumenStockBajo(estadoApp.insumos);
+        if (resumen.totalBajos > 0) {
+            const nombres = resumen.insumosBajos
+                .slice(0, 4)
+                .map((i) => `${escaparHtml(i.nombre)} (${escaparHtml(formatearCantidadStock(i.stock_actual, i.unidad_base))})`)
+                .join(', ');
+            const extra = resumen.totalBajos > 4 ? ` y ${resumen.totalBajos - 4} más` : '';
+            avisoBanner.style.display = 'block';
+            avisoBanner.innerHTML =
+                resumen.totalBajos === 1
+                    ? `Alerta de stock bajo: ${nombres}.`
+                    : `${resumen.totalBajos} insumos por debajo del mínimo: ${nombres}${escaparHtml(extra)}.`;
+        } else {
+            avisoBanner.style.display = 'none';
+            avisoBanner.innerHTML = '';
+        }
+    }
+
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    const columnas = puedeEditar ? 7 : 6;
     if (estadoApp.insumos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="col-centro text-muted py-4">No hay insumos registrados.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${columnas}" class="col-centro text-muted py-4">No hay insumos registrados.</td></tr>`;
         return;
     }
 
     for (const ins of estadoApp.insumos) {
+        const estadoStock = evaluarEstadoStockInsumo(ins);
+        const stockActualTxt = formatearCantidadStock(ins.stock_actual, ins.unidad_base);
+        const stockMinTxt =
+            Number(ins.stock_minimo || 0) > 0
+                ? formatearCantidadStock(ins.stock_minimo, ins.unidad_base)
+                : 'Sin definir';
+
+        let badgeEstadoHtml = '<span class="badge-estado-verde">Normal</span>';
+        if (estadoStock.nivel === 'bajo') {
+            badgeEstadoHtml = '<span class="badge-traza peligro">Stock bajo</span>';
+        } else if (estadoStock.nivel === 'sin_minimo') {
+            badgeEstadoHtml = '<span class="text-muted">Sin mínimo</span>';
+        } else if (estadoStock.nivel === 'inactivo') {
+            badgeEstadoHtml = '<span class="badge-traza advertencia">Inactivo</span>';
+        }
+
         const tr = document.createElement('tr');
+        if (estadoStock.esBajo) {
+            tr.classList.add('fila-stock-bajo');
+        }
+        const accionHtml = puedeEditar
+            ? `<td class="col-centro">
+                    <button type="button" class="btn-refrescar-mini btn-ajustar-stock-insumo" data-id="${escaparHtml(ins.id)}">
+                        Ajustar / Mínimo
+                    </button>
+               </td>`
+            : '';
+
         tr.innerHTML = `
-            <td class="col-centro">#${ins.id}</td>
+            <td class="col-centro">#${escaparHtml(ins.id)}</td>
             <td class="col-texto"><strong>${escaparHtml(ins.nombre)}</strong></td>
-            <td class="col-centro"><span class="producto-codigo-badge">${escaparHtml(ins.unidad_base)}</span></td>
+            <td class="col-numero"><strong>${escaparHtml(stockActualTxt)}</strong></td>
+            <td class="col-numero">${escaparHtml(stockMinTxt)}</td>
             <td class="col-numero"><strong>${formatearMoneda(ins.costo_unitario)}</strong> / ${escaparHtml(ins.unidad_base)}</td>
-            <td class="col-centro"><span class="badge-estado-verde">Activo</span></td>
+            <td class="col-centro">${badgeEstadoHtml}</td>
+            ${accionHtml}
         `;
+        if (puedeEditar) {
+            tr.querySelector('.btn-ajustar-stock-insumo')?.addEventListener('click', () => {
+                abrirModalAjustarStock(ins);
+            });
+        }
         tbody.appendChild(tr);
     }
 };
@@ -2807,6 +2961,23 @@ const abrirModalEditarPrecioProducto = (producto) => {
     if ($('input-editar-precio-venta')) {
         $('input-editar-precio-venta').value = producto.precio_venta ?? '';
     }
+    const ayudaEl = $('editar-precio-sugerido-ayuda');
+    const textoAyudaEl = $('editar-precio-sugerido-texto');
+    const btnUsar = $('btn-usar-precio-sugerido');
+    const tieneSugerido =
+        usuarioTienePermiso(estadoApp.usuario, 'recetas.ver_costos') &&
+        producto.precio_sugerido !== null &&
+        producto.precio_sugerido !== undefined;
+    if (ayudaEl && textoAyudaEl && btnUsar) {
+        if (tieneSugerido) {
+            textoAyudaEl.textContent = `Precio sugerido actual: ${formatearMoneda(producto.precio_sugerido)}`;
+            btnUsar.dataset.precioSugerido = String(producto.precio_sugerido);
+            ayudaEl.style.display = 'flex';
+        } else {
+            btnUsar.dataset.precioSugerido = '';
+            ayudaEl.style.display = 'none';
+        }
+    }
     modal.style.display = 'flex';
 };
 
@@ -2820,13 +2991,14 @@ const renderizarTablaRecetas = () => {
     if (!Array.isArray(estadoApp.catalogo) || estadoApp.catalogo.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="col-centro text-muted py-4">No hay productos cargados en la carta.</td>
+                <td colspan="8" class="col-centro text-muted py-4">No hay productos cargados en la carta.</td>
             </tr>
         `;
         return;
     }
 
     const esCajero = estadoApp.usuario?.rol === 'CAJERO';
+    const puedeVerCostos = !esCajero && usuarioTienePermiso(estadoApp.usuario, 'recetas.ver_costos');
     const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'recetas.editar');
 
     for (const p of estadoApp.catalogo) {
@@ -2844,8 +3016,31 @@ const renderizarTablaRecetas = () => {
             ? Math.round(Number(p.margen_bruto) * 100)
             : (costo !== null && precio > 0 ? Math.round(((precio - costo) / precio) * 100) : null);
 
+        const sugerencia = p.sugerencia_precio || null;
+        const precioSugerido = p.precio_sugerido !== null && p.precio_sugerido !== undefined
+            ? Number(p.precio_sugerido)
+            : null;
+
+        let sugeridoHtml = `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`;
+        if (puedeVerCostos && precioSugerido !== null) {
+            const margenObjPct = Math.round(Number(p.margen_objetivo ?? 0.3) * 100);
+            const multiplo = Number(p.redondeo_multiplo ?? 50);
+            let subtexto = `Obj. ${margenObjPct}% · $${multiplo}`;
+            if (sugerencia?.acotado_por === 'PROMEDIO') {
+                subtexto = 'Acotado prom. comp.';
+            } else if (sugerencia?.acotado_por === 'MINIMO') {
+                subtexto = 'Acotado mín. comp.';
+            }
+            sugeridoHtml = `
+                <div class="sugerencia-celda">
+                    <span class="font-bold">${formatearMoneda(precioSugerido)}</span>
+                    <span class="sugerencia-subtexto">${escaparHtml(subtexto)}</span>
+                </div>
+            `;
+        }
+
         let margenBarraHtml = `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`;
-        if (!esCajero && margenPct !== null) {
+        if (puedeVerCostos && margenPct !== null) {
             let claseColor = 'margen-verde';
             let estadoTexto = 'Saludable';
             if (margenPct < 30) {
@@ -2881,8 +3076,9 @@ const renderizarTablaRecetas = () => {
             </td>
             <td class="col-centro"><span class="producto-codigo-badge">${escaparHtml(p.codigo_barras || 'S/C')}</span></td>
             <td class="col-numero font-bold">${formatearMoneda(p.precio_venta)}</td>
-            <td class="col-numero">${!esCajero && costo !== null ? formatearMoneda(costo) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
-            <td class="col-numero text-exito">${!esCajero && ganancia !== null ? formatearMoneda(ganancia) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-numero">${sugeridoHtml}</td>
+            <td class="col-numero">${puedeVerCostos && costo !== null ? formatearMoneda(costo) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
+            <td class="col-numero text-exito">${puedeVerCostos && ganancia !== null ? formatearMoneda(ganancia) : `<span class="candado-confidencial">${SVG_ICONOS.candado} Confidencial</span>`}</td>
             <td class="col-texto">${margenBarraHtml}</td>
             <td class="col-centro">
                 <div class="receta-acciones-fila">
@@ -3070,31 +3266,202 @@ const mostrarDesgloseReceta = (producto) => {
 
     // Mano de obra, descartables y total: suman igual que el costo total del backend.
     const extras = calcularCostosExtraReceta(producto);
-    if (esCajero || !extras || !costosInsumosVisibles) return;
-    const celdaAcciones = mostrarAcciones ? '<td></td>' : '';
-    const minutosTexto = extras.minutos.toLocaleString('es-AR', { maximumFractionDigits: 2 });
-    const filasExtra = [
-        `<tr class="fila-receta-extra">
-            <td class="col-texto"><strong>Mano de obra</strong></td>
-            <td class="col-centro">${escaparHtml(minutosTexto)} <span class="producto-codigo-badge">min</span></td>
-            <td class="col-numero">${formatearMoneda(extras.costoHora)} / hora</td>
-            <td class="col-numero font-bold">${formatearMoneda(extras.manoObra)}</td>
-            ${celdaAcciones}
-        </tr>`,
-        `<tr class="fila-receta-extra">
-            <td class="col-texto"><strong>Descartables</strong></td>
-            <td class="col-centro">-</td>
-            <td class="col-numero">-</td>
-            <td class="col-numero font-bold">${formatearMoneda(extras.descartables)}</td>
-            ${celdaAcciones}
-        </tr>`,
-        `<tr class="fila-receta-total">
-            <td class="col-texto" colspan="3"><strong>Costo total por porción</strong></td>
-            <td class="col-numero font-bold">${formatearMoneda(costoInsumos + extras.manoObra + extras.descartables)}</td>
-            ${celdaAcciones}
-        </tr>`,
-    ];
-    tbody.insertAdjacentHTML('beforeend', filasExtra.join(''));
+    if (!esCajero && extras && costosInsumosVisibles) {
+        const celdaAcciones = mostrarAcciones ? '<td></td>' : '';
+        const minutosTexto = extras.minutos.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+        const filasExtra = [
+            `<tr class="fila-receta-extra">
+                <td class="col-texto"><strong>Mano de obra</strong></td>
+                <td class="col-centro">${escaparHtml(minutosTexto)} <span class="producto-codigo-badge">min</span></td>
+                <td class="col-numero">${formatearMoneda(extras.costoHora)} / hora</td>
+                <td class="col-numero font-bold">${formatearMoneda(extras.manoObra)}</td>
+                ${celdaAcciones}
+            </tr>`,
+            `<tr class="fila-receta-extra">
+                <td class="col-texto"><strong>Descartables</strong></td>
+                <td class="col-centro">-</td>
+                <td class="col-numero">-</td>
+                <td class="col-numero font-bold">${formatearMoneda(extras.descartables)}</td>
+                ${celdaAcciones}
+            </tr>`,
+            `<tr class="fila-receta-total">
+                <td class="col-texto" colspan="3"><strong>Costo total por porción</strong></td>
+                <td class="col-numero font-bold">${formatearMoneda(costoInsumos + extras.manoObra + extras.descartables)}</td>
+                ${celdaAcciones}
+            </tr>`,
+        ];
+        tbody.insertAdjacentHTML('beforeend', filasExtra.join(''));
+    }
+
+    renderizarPanelSugerenciaYCompetencia(producto);
+};
+
+const eliminarPrecioCompetencia = async (refId) => {
+    try {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/precios-competencia/${refId}/`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+            },
+        });
+        if (res.ok) {
+            mostrarToast('Referencia de competencia quitada.', 'exito');
+            await cargarCatalogo();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            mostrarToast(extraerMensajeErrorApi(data, 'No se pudo quitar la referencia.'), 'peligro');
+        }
+    } catch {
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+    }
+};
+
+const actualizarMetricasSugerenciaUI = (producto, sugerencia) => {
+    if (!sugerencia) return;
+    if ($('sugerencia-precio-valor')) {
+        $('sugerencia-precio-valor').textContent = formatearMoneda(sugerencia.precio_sugerido);
+    }
+    if ($('sugerencia-precio-base')) {
+        $('sugerencia-precio-base').textContent = formatearMoneda(sugerencia.precio_base_redondeado);
+    }
+    if ($('sugerencia-comp-minimo')) {
+        $('sugerencia-comp-minimo').textContent = sugerencia.competencia_minimo !== null
+            ? formatearMoneda(sugerencia.competencia_minimo)
+            : 'Sin datos';
+    }
+    if ($('sugerencia-comp-promedio')) {
+        $('sugerencia-comp-promedio').textContent = sugerencia.competencia_promedio !== null
+            ? formatearMoneda(sugerencia.competencia_promedio)
+            : 'Sin datos';
+    }
+    const badgeEl = $('sugerencia-acotamiento-badge');
+    if (badgeEl) {
+        badgeEl.textContent = describirAcotamientoSugerido(sugerencia);
+        badgeEl.className = sugerencia.alerta_bajo_costo
+            ? 'badge-alerta-amarilla'
+            : 'badge-estado-verde';
+    }
+    const detalleEl = $('sugerencia-precio-detalle');
+    if (detalleEl) {
+        if (sugerencia.alerta_bajo_costo) {
+            detalleEl.textContent = 'Atención: queda por debajo del costo actual.';
+        } else if (producto) {
+            const precioActual = Number(producto.precio_venta || 0);
+            const sugeridoNum = Number(sugerencia.precio_sugerido || 0);
+            if (precioActual < sugeridoNum) {
+                detalleEl.textContent = `Precio en carta (${formatearMoneda(precioActual)}) debajo del sugerido.`;
+            } else {
+                detalleEl.textContent = `Precio en carta actual: ${formatearMoneda(precioActual)}`;
+            }
+        }
+    }
+};
+
+const actualizarVistaPreviaSugerencia = () => {
+    if (estadoApp.productoDesgloseId === null) return;
+    const producto = estadoApp.catalogo.find(
+        (p) => Number(p.id) === Number(estadoApp.productoDesgloseId)
+    );
+    if (!producto) return;
+    const margenPct = Number($('input-sugerencia-margen-pct')?.value ?? 30);
+    const multiplo = Number($('select-sugerencia-redondeo')?.value ?? 50);
+    if (!Number.isFinite(margenPct) || margenPct < 0 || margenPct >= 100) return;
+
+    try {
+        const preview = calcularPrecioSugeridoLocal({
+            costoTotal: producto.costo_total_calculado ?? 0,
+            margenObjetivo: (margenPct / 100).toFixed(4),
+            redondeoMultiplo: multiplo,
+            preciosCompetencia: producto.precios_competencia || [],
+        });
+        actualizarMetricasSugerenciaUI(producto, preview);
+    } catch {
+        // Ignora entrada parcial mientras el usuario escribe
+    }
+};
+
+const renderizarPanelSugerenciaYCompetencia = (producto) => {
+    const bloque = $('panel-sugerencia-competencia');
+    if (!bloque) return;
+
+    const esCajero = estadoApp.usuario?.rol === 'CAJERO';
+    const puedeVerCostos = !esCajero && usuarioTienePermiso(estadoApp.usuario, 'recetas.ver_costos');
+    if (!puedeVerCostos || !producto || producto.precio_sugerido === null) {
+        bloque.style.display = 'none';
+        return;
+    }
+
+    bloque.style.display = 'flex';
+    const puedeCrear = usuarioTienePermiso(estadoApp.usuario, 'recetas.crear');
+    const puedeEditar = usuarioTienePermiso(estadoApp.usuario, 'recetas.editar');
+    const puedeEliminar = usuarioTienePermiso(estadoApp.usuario, 'recetas.eliminar');
+
+    const formConfig = $('form-sugerencia-producto');
+    if (formConfig) {
+        formConfig.style.display = puedeEditar ? 'block' : 'none';
+    }
+    if ($('input-sugerencia-margen-pct')) {
+        const pct = Math.round(Number(producto.margen_objetivo ?? 0.3) * 1000) / 10;
+        $('input-sugerencia-margen-pct').value = String(pct);
+    }
+    if ($('select-sugerencia-redondeo')) {
+        $('select-sugerencia-redondeo').value = String(producto.redondeo_multiplo ?? 50);
+    }
+
+    const sugerencia = producto.sugerencia_precio || calcularPrecioSugeridoLocal({
+        costoTotal: producto.costo_total_calculado ?? 0,
+        margenObjetivo: producto.margen_objetivo ?? 0.3,
+        redondeoMultiplo: producto.redondeo_multiplo ?? 50,
+        preciosCompetencia: producto.precios_competencia || [],
+    });
+    actualizarMetricasSugerenciaUI(producto, sugerencia);
+
+    if ($('th-competencia-acciones')) {
+        $('th-competencia-acciones').style.display = puedeEliminar ? '' : 'none';
+    }
+    if ($('form-agregar-competencia')) {
+        $('form-agregar-competencia').style.display = puedeCrear ? 'block' : 'none';
+    }
+
+    const tbodyComp = $('tabla-competencia-items-body');
+    if (!tbodyComp) return;
+    tbodyComp.innerHTML = '';
+
+    const referencias = Array.isArray(producto.precios_competencia)
+        ? producto.precios_competencia
+        : [];
+    if (referencias.length === 0) {
+        tbodyComp.innerHTML = `
+            <tr>
+                <td colspan="${puedeEliminar ? 4 : 3}" class="col-centro text-muted py-3">
+                    Todavía no cargaste precios de la competencia para este producto.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    for (const ref of referencias) {
+        const tr = document.createElement('tr');
+        const accionHtml = puedeEliminar
+            ? `<td class="col-centro">
+                    <button type="button" class="btn-refrescar-mini btn-quitar-competencia" data-id="${escaparHtml(ref.id)}">Quitar</button>
+               </td>`
+            : '';
+        tr.innerHTML = `
+            <td class="col-texto"><strong>${escaparHtml(ref.nombre_competidor || 'Referencia de mercado')}</strong></td>
+            <td class="col-numero font-bold">${formatearMoneda(ref.precio)}</td>
+            <td class="col-texto">${escaparHtml(ref.observacion || '-')}</td>
+            ${accionHtml}
+        `;
+        if (puedeEliminar) {
+            const btnQuitar = tr.querySelector('.btn-quitar-competencia');
+            btnQuitar?.addEventListener('click', async () => {
+                await conCargando(btnQuitar, () => eliminarPrecioCompetencia(ref.id));
+            });
+        }
+        tbodyComp.appendChild(tr);
+    }
 };
 
 const recalcularProducto = async (productoId) => {
@@ -3217,7 +3584,7 @@ const renderizarTablaTrazabilidad = () => {
     if (filtrados.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="col-centro text-muted py-4">No se encontraron movimientos en el rango de fechas seleccionado.</td>
+                <td colspan="6" class="col-centro text-muted py-4">No se encontraron movimientos en el rango de fechas seleccionado.</td>
             </tr>
         `;
         return;
@@ -3233,6 +3600,7 @@ const renderizarTablaTrazabilidad = () => {
                 year: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit',
+                hourCycle: 'h23',
             })
             : '-';
 
@@ -3242,9 +3610,76 @@ const renderizarTablaTrazabilidad = () => {
             <td class="col-texto">${escaparHtml(item.detalle)}</td>
             <td class="col-numero font-bold">${escaparHtml(item.montoCantidad)}</td>
             <td class="col-texto">${escaparHtml(item.responsable)}</td>
+            <td class="col-centro"></td>
         `;
+        // El backend vuelve a validar permiso y turno: esto solo evita ofrecer un botón que va a fallar.
+        if (registroMuestraBotonAnular(estadoApp.usuario, item)) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn-refrescar-mini btn-anular-venta';
+            btn.textContent = 'Anular';
+            btn.title = `Anular ticket #${item.ventaId}`;
+            btn.addEventListener('click', () => abrirModalAnularVenta(item));
+            tr.lastElementChild.appendChild(btn);
+        }
         tbody.appendChild(tr);
     }
+};
+
+const abrirModalAnularVenta = (item) => {
+    const modal = $('modal-anular-venta');
+    if (!modal || !item) return;
+    estadoApp.ventaParaAnular = item;
+    if ($('anular-venta-titulo')) $('anular-venta-titulo').textContent = `Anular ticket #${item.ventaId}`;
+    if ($('anular-venta-descripcion')) {
+        $('anular-venta-descripcion').textContent = `${item.detalle} · ${item.montoCantidad}. `
+            + 'La venta queda registrada como anulada y deja de sumar en los reportes. No se puede deshacer.';
+    }
+    if ($('input-anular-venta-motivo')) $('input-anular-venta-motivo').value = '';
+    modal.style.display = 'flex';
+    $('input-anular-venta-motivo')?.focus();
+};
+
+const confirmarAnulacionVenta = async () => {
+    const item = estadoApp.ventaParaAnular;
+    if (!item) return false;
+    const validacion = validarMotivoAnulacion($('input-anular-venta-motivo')?.value);
+    if (!validacion.valido) {
+        mostrarToast(validacion.mensaje, 'advertencia');
+        return false;
+    }
+    try {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/ventas/${item.ventaId}/anular/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ motivo: validacion.motivo }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+            mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+            // Si el turno se cerró o ya estaba anulada, refrescamos para que desaparezca el botón.
+            if (res.status === 400) await refrescarTrasAnulacion();
+            return false;
+        }
+        if ($('modal-anular-venta')) $('modal-anular-venta').style.display = 'none';
+        estadoApp.ventaParaAnular = null;
+        mostrarToast(data?.mensaje || `Venta #${item.ventaId} anulada.`, 'exito');
+        await refrescarTrasAnulacion();
+        return true;
+    } catch {
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+        return false;
+    }
+};
+
+const refrescarTrasAnulacion = async () => {
+    if (estadoApp.usuario?.rol === 'CAJERO') {
+        const { fechaDesde = '', fechaHasta = '' } = estadoApp.trazabilidad || {};
+        await cargarTrazabilidadReportes(fechaDesde, fechaHasta);
+        return;
+    }
+    await cargarFinanzas();
 };
 
 const limpiarTarjetasFinanzas = () => {
@@ -3272,7 +3707,7 @@ export const cargarTrazabilidadReportes = async (fechaDesde = '', fechaHasta = '
 
     const tbodyTraza = $('tabla-trazabilidad-body');
     if (tbodyTraza) {
-        tbodyTraza.innerHTML = construirFilasCargandoTabla(5, 'Cargando reportes…', 4);
+        tbodyTraza.innerHTML = construirFilasCargandoTabla(6, 'Cargando reportes…', 4);
     }
 
     const queryFechas = construirQueryRangoFechas(fechaDesde, fechaHasta, { limite: 100 });
@@ -3463,10 +3898,16 @@ export const cargarFinanzas = async () => {
         }
     };
 
+    // Sin el permiso correspondiente el backend responde 403: no se pide y no se avisa como error
+    // (el encargado no ve métricas financieras y recibía el aviso en cada venta en vivo).
+    const veFinancieros = usuarioTienePermiso(estadoApp.usuario, 'reportes.ver_financieros');
+    const veOperativos = usuarioTienePermiso(estadoApp.usuario, 'reportes.ver_operativos');
+    if (!veFinancieros) limpiarTarjetasFinanzas();
+
     const [okGanancia, okRanking, okPuntoEquilibrio] = await Promise.all([
-        cargarTarjetasGanancia(),
-        cargarRanking(),
-        calcularPuntoEquilibrio(fechaDesde, fechaHasta, idCarga),
+        veFinancieros ? cargarTarjetasGanancia() : true,
+        veOperativos ? cargarRanking() : true,
+        veFinancieros ? calcularPuntoEquilibrio(fechaDesde, fechaHasta, idCarga) : true,
         cargarTrazabilidadReportes(fechaDesde, fechaHasta, idCarga),
     ]);
 
@@ -3654,10 +4095,14 @@ const consultarDiagnosticoStockIA = async () => {
             }
         }
 
+        const insumosConStockBajo = insumos.filter((i) => evaluarEstadoStockInsumo(i).esBajo);
         const insumosOrdenadosPorCosto = [...insumos].sort(
             (a, b) => Number(b.costo_unitario || 0) - Number(a.costo_unitario || 0)
         );
-        const insumosCriticos = insumosOrdenadosPorCosto.slice(0, 5);
+        const insumosCriticos =
+            insumosConStockBajo.length > 0
+                ? insumosConStockBajo.slice(0, 5)
+                : insumosOrdenadosPorCosto.slice(0, 5);
 
         const productosConReceta = catalogo.filter(
             (p) => Array.isArray(p.receta_items) && p.receta_items.length > 0
@@ -3726,8 +4171,10 @@ const consultarDiagnosticoStockIA = async () => {
                     ganancia_bruta_total: String(Number(gananciaData?.ganancia_bruta_diaria || 0).toFixed(2)),
                     cantidad_tickets: Number(gananciaData?.cantidad_tickets || 0),
                     productos: productosPayload,
-                    alertas_insumos: insumosCriticos.map(
-                        (i) => `Insumo ${i.nombre}: costo unitario $${i.costo_unitario} por ${i.unidad_base}`
+                    alertas_insumos: insumosCriticos.map((i) =>
+                        evaluarEstadoStockInsumo(i).esBajo
+                            ? `Stock bajo de ${i.nombre}: disponible ${i.stock_actual} ${i.unidad_base} (mínimo ${i.stock_minimo} ${i.unidad_base})`
+                            : `Insumo ${i.nombre}: costo unitario $${i.costo_unitario} por ${i.unidad_base}`
                     ),
                     version_prompt: 'v1',
                 };
@@ -3756,7 +4203,7 @@ const consultarDiagnosticoStockIA = async () => {
 
         const evalResumen = evaluarEstadoResumenIA(dataAi, errorAi);
 
-        const fechaDictamen = new Date().toLocaleString('es-AR');
+        const fechaDictamen = new Date().toLocaleString('es-AR', { hourCycle: 'h23' });
         const itemsCriticosHtml = insumosCriticos.length > 0
             ? insumosCriticos.map((ins) => `<li><strong>${escaparHtml(ins.nombre)}:</strong> Costo base ${formatearMoneda(ins.costo_unitario)} por ${escaparHtml(ins.unidad_base)}. Nivel de prioridad de adquisición: ALTO.</li>`).join('')
             : '<li>No se registran insumos con desvíos de costo extraordinarios.</li>';
@@ -3933,9 +4380,9 @@ const auditarCierreCajaIA = async () => {
             dictamenDiferencia = 'TURNO EN CURSO — ARQUEO CIEGO PENDIENTE AL CIERRE';
         }
 
-        const fechaDictamen = new Date().toLocaleString('es-AR');
-        const aperturaStr = turnoAuditado.apertura ? new Date(turnoAuditado.apertura).toLocaleString('es-AR') : '-';
-        const cierreStr = turnoAuditado.cierre ? new Date(turnoAuditado.cierre).toLocaleString('es-AR') : 'Turno en curso';
+        const fechaDictamen = new Date().toLocaleString('es-AR', { hourCycle: 'h23' });
+        const aperturaStr = turnoAuditado.apertura ? new Date(turnoAuditado.apertura).toLocaleString('es-AR', { hourCycle: 'h23' }) : '-';
+        const cierreStr = turnoAuditado.cierre ? new Date(turnoAuditado.cierre).toLocaleString('es-AR', { hourCycle: 'h23' }) : 'Turno en curso';
 
         const totalIngresosChica = movimientos.filter((m) => m.tipo === 'ENTRADA' || m.tipo === 'INGRESO').reduce((a, m) => a + Number(m.monto || 0), 0);
         const totalEgresosChica = movimientos.filter((m) => m.tipo === 'SALIDA' || m.tipo === 'EGRESO').reduce((a, m) => a + Number(m.monto || 0), 0);
@@ -4242,12 +4689,212 @@ const abrirModalConfigServidor = () => {
 };
 
 // ============================================================
+// CONFIGURACIÓN FISCAL DEL LOCAL (EXCLUSIVO DUEÑO · HU14)
+// ============================================================
+const renderizarAvisosCondicionFiscal = () => {
+    const evaluacion = evaluarAvisoCondicionFiscal(estadoApp.configuracionFiscal, estadoApp.usuario);
+    const contenedores = [
+        $('aviso-condicion-fiscal-compras'),
+        $('aviso-condicion-fiscal-recetas'),
+        $('aviso-condicion-fiscal-config'),
+    ].filter(Boolean);
+
+    for (const el of contenedores) {
+        if (!evaluacion.mostrarAviso) {
+            el.style.display = 'none';
+            el.innerHTML = '';
+            continue;
+        }
+        const esPanelConfig = el.id === 'aviso-condicion-fiscal-config';
+        const botonHtml =
+            evaluacion.puedeDeclarar && !esPanelConfig
+                ? `<button type="button" class="btn-secundario-comercial btn-ir-config-fiscal">Declarar ahora</button>`
+                : '';
+        el.style.display = 'flex';
+        el.innerHTML = `
+            <div class="aviso-fiscal-banner-texto">
+                ${SVG_ICONOS.alerta}
+                <span>${escaparHtml(evaluacion.mensaje)}</span>
+            </div>
+            ${botonHtml}
+        `;
+        el.querySelector('.btn-ir-config-fiscal')?.addEventListener('click', () => {
+            cambiarSeccion('configuracion');
+        });
+    }
+
+    const textoCompraIva = $('texto-compra-criterio-iva');
+    if (textoCompraIva) {
+        const cfg = estadoApp.configuracionFiscal;
+        if (!cfg) {
+            textoCompraIva.textContent = '';
+        } else if (cfg.costear_con_iva === false) {
+            textoCompraIva.textContent =
+                'Tu local es Responsable Inscripto: calculamos el costo unitario descontando el IVA.';
+        } else {
+            textoCompraIva.textContent = cfg.declarada
+                ? `Tu local es ${formatearEtiquetaCondicionFiscal(cfg.condicion_fiscal)}: el costo unitario incluye IVA.`
+                : 'Sin condición fiscal declarada: por defecto el costo incluye IVA (lo realmente pagado).';
+        }
+    }
+};
+
+const renderizarVistaConfiguracionFiscal = () => {
+    renderizarAvisosCondicionFiscal();
+    if (!puedeConfigurarLocal(estadoApp.usuario)) return;
+
+    const cfg = estadoApp.configuracionFiscal || {
+        condicion_fiscal: 'NO_DECLARADA',
+        declarada: false,
+        costear_con_iva: true,
+        historial: [],
+    };
+
+    const badge = $('badge-estado-condicion-fiscal');
+    if (badge) {
+        const etiqueta =
+            cfg.condicion_fiscal_etiqueta || formatearEtiquetaCondicionFiscal(cfg.condicion_fiscal);
+        badge.textContent = etiqueta;
+        badge.className = cfg.declarada ? 'badge-estado-verde' : 'badge-alerta-amarilla';
+    }
+
+    document
+        .querySelectorAll('#form-configuracion-fiscal input[name="condicion_fiscal"]')
+        .forEach((radio) => {
+            radio.checked = radio.value === cfg.condicion_fiscal;
+        });
+
+    const ultimoEl = $('texto-ultimo-cambio-fiscal');
+    if (ultimoEl) {
+        if (cfg.actualizado_en && cfg.declarada) {
+            const fechaTxt = new Date(cfg.actualizado_en).toLocaleString('es-AR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+            });
+            ultimoEl.textContent = `Última actualización: ${fechaTxt}${cfg.actualizado_por_username ? ` por @${cfg.actualizado_por_username}` : ''}`;
+        } else {
+            ultimoEl.textContent = '';
+        }
+    }
+
+    const tbody = $('tabla-historial-fiscal-body');
+    if (!tbody) return;
+    const historial = Array.isArray(cfg.historial) ? cfg.historial : [];
+    if (historial.length === 0) {
+        tbody.innerHTML =
+            '<tr><td colspan="5" class="col-centro text-muted py-4">Todavía no registraste cambios de condición fiscal.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = '';
+    for (const reg of historial) {
+        const tr = document.createElement('tr');
+        const fechaTxt = reg.fecha
+            ? new Date(reg.fecha).toLocaleString('es-AR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hourCycle: 'h23',
+              })
+            : '-';
+        const antEtiqueta =
+            reg.condicion_anterior_etiqueta ||
+            formatearEtiquetaCondicionFiscal(reg.condicion_anterior);
+        const nuevaEtiqueta =
+            reg.condicion_nueva_etiqueta || formatearEtiquetaCondicionFiscal(reg.condicion_nueva);
+        tr.innerHTML = `
+            <td class="col-centro">${escaparHtml(fechaTxt)}</td>
+            <td class="col-texto">${escaparHtml(antEtiqueta)}</td>
+            <td class="col-texto"><strong>${escaparHtml(nuevaEtiqueta)}</strong></td>
+            <td class="col-centro">${escaparHtml(String(reg.insumos_recalculados ?? 0))} insumos · ${escaparHtml(String(reg.productos_recalculados ?? 0))} recetas</td>
+            <td class="col-texto">${escaparHtml(reg.modificado_por_username ? `@${reg.modificado_por_username}` : 'Dueño')}</td>
+        `;
+        tbody.appendChild(tr);
+    }
+};
+
+export const cargarConfiguracionFiscal = async () => {
+    if (!estadoApp.tokenJwt || !estadoApp.usuario) return;
+
+    const esDuenio = puedeConfigurarLocal(estadoApp.usuario);
+    const puedeVerEstado =
+        esDuenio ||
+        usuarioTienePermiso(estadoApp.usuario, 'insumos.ver') ||
+        usuarioTienePermiso(estadoApp.usuario, 'compras.ver') ||
+        usuarioTienePermiso(estadoApp.usuario, 'recetas.ver_costos');
+
+    if (!puedeVerEstado) return;
+
+    const ruta = esDuenio
+        ? `${estadoApp.djangoUrl}/api/configuracion-fiscal/`
+        : `${estadoApp.djangoUrl}/api/configuracion-fiscal/estado/`;
+
+    try {
+        const res = await fetchConSesion(ruta, {
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        if (res.ok) {
+            estadoApp.configuracionFiscal = await res.json();
+            renderizarVistaConfiguracionFiscal();
+        }
+    } catch {
+        // Fallback offline
+    }
+};
+
+const guardarCondicionFiscal = async () => {
+    if (!puedeConfigurarLocal(estadoApp.usuario)) return;
+    const seleccionado = document.querySelector(
+        '#form-configuracion-fiscal input[name="condicion_fiscal"]:checked'
+    );
+    if (!seleccionado) {
+        mostrarToast('Elegí una condición fiscal antes de guardar.', 'advertencia');
+        return;
+    }
+
+    try {
+        const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/configuracion-fiscal/`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ condicion_fiscal: seleccionado.value }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            estadoApp.configuracionFiscal = data;
+            renderizarVistaConfiguracionFiscal();
+            mostrarToast(
+                data.mensaje || 'Condición fiscal guardada y costos actualizados.',
+                'exito'
+            );
+            await cargarInsumos();
+            await cargarCatalogo();
+        } else {
+            const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+            mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+        }
+    } catch {
+        mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+    }
+};
+
+// ============================================================
 // CARGA INICIAL Y NAVEGACIÓN
 // ============================================================
 const cargarDatosIniciales = async () => {
-    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
+    const seccionesVisibles = obtenerSeccionesPermitidas(estadoApp.usuario);
     await cargarTurnoActivo();
     await cargarCatalogo();
+    await cargarConfiguracionFiscal();
     if (seccionesVisibles.includes('compras') || seccionesVisibles.includes('recetas')) {
         await cargarInsumos();
         await cargarProveedores();
@@ -4262,7 +4909,7 @@ const cargarDatosIniciales = async () => {
 };
 
 const cambiarSeccion = (nombreSeccion) => {
-    const seccionesVisibles = seccionesVisiblesParaUsuario(estadoApp.usuario);
+    const seccionesVisibles = obtenerSeccionesPermitidas(estadoApp.usuario);
     let destino = nombreSeccion;
     if (estadoApp.usuario) {
         if (seccionesVisibles.length === 0) {
@@ -4289,6 +4936,7 @@ const cambiarSeccion = (nombreSeccion) => {
         recetas: { titulo: 'Ingeniería de Recetas & Rentabilidad', sub: 'Costeo dinámico por insumos, descartables y mano de obra' },
         finanzas: { titulo: 'Reportes, Trazabilidad & Finanzas', sub: 'Trazabilidad por fechas, facturación real, margen bruto y punto de equilibrio' },
         personal: { titulo: 'Equipo & Permisos', sub: 'Sumá personas al equipo y elegí qué puede hacer cada una' },
+        configuracion: { titulo: 'Configuración del local', sub: 'Definí tu condición fiscal para calcular costos con o sin IVA' },
     };
 
     if (titulos[destino]) {
@@ -4301,6 +4949,8 @@ const cambiarSeccion = (nombreSeccion) => {
         if (input) setTimeout(() => input.focus(), 100);
     } else if (destino === 'finanzas' && estadoApp.tokenJwt && seccionesVisibles.includes('finanzas')) {
         cargarFinanzas();
+    } else if (destino === 'configuracion' && estadoApp.tokenJwt && puedeConfigurarLocal(estadoApp.usuario)) {
+        cargarConfiguracionFiscal();
     }
 };
 
@@ -4879,6 +5529,9 @@ Flete y entrega a local: $4500`;
 
     // 17. Compra Manual de Insumos
     $('btn-modal-nueva-compra')?.addEventListener('click', () => {
+        renderizarAvisosCondicionFiscal();
+        if ($('check-compra-iva-incluido')) $('check-compra-iva-incluido').checked = true;
+        if ($('select-compra-alicuota')) $('select-compra-alicuota').value = '21.00';
         if ($('modal-nueva-compra')) $('modal-nueva-compra').style.display = 'flex';
     });
     $('form-nueva-compra')?.addEventListener('submit', async (e) => {
@@ -4889,6 +5542,10 @@ Flete y entrega a local: $4500`;
         const unidad = $('select-compra-unidad').value;
         const precioTotal = $('input-compra-total').value;
         const envio = $('input-compra-envio').value || '0.00';
+        const ivaIncluido = $('check-compra-iva-incluido')
+            ? $('check-compra-iva-incluido').checked
+            : true;
+        const alicuota = $('select-compra-alicuota')?.value || '21.00';
 
         const btnSubmit = e.submitter || $('btn-confirmar-nueva-compra');
         await conCargando(btnSubmit, async () => {
@@ -4906,23 +5563,98 @@ Flete y entrega a local: $4500`;
                         unidad,
                         precio_total: precioTotal,
                         envio,
-                        iva_incluido: true,
+                        iva_incluido: ivaIncluido,
+                        alicuota,
                     }),
                 });
+                const data = await res.json().catch(() => ({}));
                 if (res.ok) {
-                    mostrarToast('Compra registrada y costo base ponderado recalculado.', 'exito');
+                    mostrarToast('Compra registrada y costo base recalculado.', 'exito');
+                    if (data.aviso_fiscal) {
+                        mostrarToast(data.aviso_fiscal, 'advertencia');
+                    }
                     if ($('modal-nueva-compra')) $('modal-nueva-compra').style.display = 'none';
                     $('form-nueva-compra').reset();
+                    if ($('check-compra-iva-incluido')) $('check-compra-iva-incluido').checked = true;
+                    if ($('select-compra-alicuota')) $('select-compra-alicuota').value = '21.00';
                     cargarInsumos();
                     cargarCatalogo();
                 } else {
-                    mostrarToast('Error al registrar compra.', 'peligro');
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi || 'Error al registrar compra.'), 'peligro');
                 }
             } catch (err) {
                 console.error('Error al registrar movimiento:', err);
                 mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
+    });
+
+    // 17c. Ajuste de stock y mínimo por insumo (HU12)
+    $('form-stock-minimo')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const insumoId = $('input-ajustar-stock-insumo-id')?.value;
+        const stockMinimo = $('input-insumo-stock-minimo')?.value;
+        if (!insumoId) return;
+
+        await conCargando($('btn-guardar-stock-minimo'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/insumos/${insumoId}/`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stock_minimo: stockMinimo }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    mostrarToast('Stock mínimo actualizado.', 'exito');
+                    await cargarInsumos();
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    $('form-ajustar-stock')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const insumoId = $('input-ajustar-stock-insumo-id')?.value;
+        const tipo = $('select-ajuste-stock-tipo')?.value || 'INGRESO';
+        const cantidad = $('input-ajuste-stock-cantidad')?.value;
+        const motivo = ($('input-ajuste-stock-motivo')?.value || '').trim();
+        if (!insumoId) return;
+
+        await conCargando($('btn-confirmar-ajuste-stock'), async () => {
+            try {
+                const res = await fetchConSesion(
+                    `${estadoApp.djangoUrl}/api/insumos/${insumoId}/ajustar-stock/`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tipo, cantidad, motivo }),
+                    }
+                );
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    mostrarToast(data.mensaje || 'Stock actualizado correctamente.', 'exito');
+                    if ($('modal-ajustar-stock')) $('modal-ajustar-stock').style.display = 'none';
+                    await cargarInsumos();
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    // 17b. Configuración fiscal del local (exclusivo Dueño)
+    $('form-configuracion-fiscal')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await conCargando($('btn-guardar-condicion-fiscal'), guardarCondicionFiscal);
     });
 
     // 18. Recalcular toda la carta y Gestión de Productos / Recetas
@@ -5064,6 +5796,105 @@ Flete y entrega a local: $4500`;
         });
     });
 
+    $('btn-usar-precio-sugerido')?.addEventListener('click', () => {
+        const sugerido = $('btn-usar-precio-sugerido')?.dataset?.precioSugerido;
+        if (sugerido && $('input-editar-precio-venta')) {
+            $('input-editar-precio-venta').value = sugerido;
+            $('input-editar-precio-venta').focus();
+        }
+    });
+
+    $('input-sugerencia-margen-pct')?.addEventListener('input', actualizarVistaPreviaSugerencia);
+    $('select-sugerencia-redondeo')?.addEventListener('change', actualizarVistaPreviaSugerencia);
+
+    $('form-sugerencia-producto')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.editar')) return;
+
+        const productoId = estadoApp.productoDesgloseId;
+        const margenPct = Number($('input-sugerencia-margen-pct')?.value);
+        const redondeoMultiplo = Number($('select-sugerencia-redondeo')?.value || 50);
+
+        if (!productoId) return;
+        if (!Number.isFinite(margenPct) || margenPct < 0 || margenPct >= 100) {
+            mostrarToast('Ingresá un margen objetivo entre 0% y 99%.', 'advertencia');
+            return;
+        }
+
+        const margenRatio = (margenPct / 100).toFixed(4);
+        const btnSubmit = e.submitter || $('btn-guardar-sugerencia-producto');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/productos/${productoId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        margen_objetivo: margenRatio,
+                        redondeo_multiplo: redondeoMultiplo,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    mostrarToast('Margen objetivo y redondeo guardados.', 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo guardar el objetivo.'), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    $('form-agregar-competencia')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!usuarioTienePermiso(estadoApp.usuario, 'recetas.crear')) return;
+
+        const productoId = estadoApp.productoDesgloseId;
+        const nombreCompetidor = ($('input-competencia-local')?.value || '').trim();
+        const precio = $('input-competencia-precio')?.value;
+        const observacion = ($('input-competencia-observacion')?.value || '').trim();
+
+        if (!productoId || !precio || Number(precio) <= 0) {
+            mostrarToast('Ingresá un precio de competencia mayor a cero.', 'advertencia');
+            return;
+        }
+
+        const btnSubmit = e.submitter || $('btn-agregar-competencia');
+        await conCargando(btnSubmit, async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/precios-competencia/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${estadoApp.tokenJwt}`,
+                    },
+                    body: JSON.stringify({
+                        producto: Number(productoId),
+                        nombre_competidor: nombreCompetidor || 'Referencia de mercado',
+                        precio,
+                        observacion,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('input-competencia-local')) $('input-competencia-local').value = '';
+                    if ($('input-competencia-precio')) $('input-competencia-precio').value = '';
+                    if ($('input-competencia-observacion')) $('input-competencia-observacion').value = '';
+                    mostrarToast('Precio de competencia agregado.', 'exito');
+                    await cargarCatalogo();
+                } else {
+                    mostrarToast(extraerMensajeErrorApi(data, 'No se pudo agregar la referencia.'), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
     $('select-receta-insumo')?.addEventListener('change', actualizarSelectUnidadReceta);
 
     $('form-agregar-receta-item')?.addEventListener('submit', async (e) => {
@@ -5128,8 +5959,8 @@ Flete y entrega a local: $4500`;
             if ($('input-config-node-url')) $('input-config-node-url').value = 'http://localhost:3000';
         } else if (modo === 'cloud') {
             const cfg = window.__SAPORI_CONFIG__ || {};
-            if ($('input-config-django-url')) $('input-config-django-url').value = cfg.DJANGO_API_URL || 'https://sapori-backend-django.onrender.com';
-            if ($('input-config-node-url')) $('input-config-node-url').value = cfg.NODE_API_URL || 'https://sapori-backend-node.onrender.com';
+            if ($('input-config-django-url')) $('input-config-django-url').value = cfg.DJANGO_API_URL || obtenerUrlsNube().django;
+            if ($('input-config-node-url')) $('input-config-node-url').value = cfg.NODE_API_URL || obtenerUrlsNube().node;
         }
     });
 
@@ -5413,6 +6244,11 @@ Flete y entrega a local: $4500`;
                 mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
             }
         });
+    });
+
+    $('form-anular-venta')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await conCargando($('btn-confirmar-anular-venta'), () => confirmarAnulacionVenta());
     });
 
     $('form-baja-empleado')?.addEventListener('submit', async (e) => {

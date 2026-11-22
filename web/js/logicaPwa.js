@@ -159,8 +159,23 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
                 nivel: 'exito',
                 titulo: `Venta #${payload.ventaId ?? '-'} registrada`,
                 detalle: tieneTotal
-                    ? `Total $${payload.total} · Turno #${turno}${metodo ? ` (${metodo})` : ''}`
+                    ? `Total ${formatearMontoSimple(payload.total)} · Turno #${turno}${metodo ? ` (${metodo})` : ''}`
                     : `Turno #${turno} · Operación confirmada`,
+                alertaMargenBajo: false,
+                emitidoEn: marcaTiempo,
+            };
+        }
+        case 'venta.anulada': {
+            const turno = payload.turnoId ?? payload.turno_caja ?? 'Local';
+            const tieneTotal = payload.total !== undefined && payload.total !== null;
+            const motivo = String(payload.motivoAnulacion || payload.motivo_anulacion || '').trim();
+            return {
+                evento: nombreEvento,
+                nivel: 'advertencia',
+                titulo: `Venta #${payload.ventaId ?? '-'} anulada`,
+                detalle: tieneTotal
+                    ? `Total ${formatearMontoSimple(payload.total)} · Turno #${turno}${motivo ? ` · ${motivo}` : ''}`
+                    : `Turno #${turno}${motivo ? ` · ${motivo}` : ' · Anulación confirmada'}`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
             };
@@ -176,7 +191,7 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
                 titulo: esCritico
                     ? `Alerta de margen bajo: ${payload.nombre || 'Producto'}`
                     : `Costo actualizado: ${payload.nombre || 'Producto'}`,
-                detalle: `Costo $${payload.costoAnterior ?? '-'} -> $${payload.costoNuevo ?? '-'} · Margen: ${margenPct}%`,
+                detalle: `Costo ${formatearMontoSimple(payload.costoAnterior)} -> ${formatearMontoSimple(payload.costoNuevo)} · Margen: ${margenPct}%`,
                 alertaMargenBajo: esCritico,
                 emitidoEn: marcaTiempo,
             };
@@ -186,7 +201,7 @@ export const formatearEventoTiempoReal = (nombreEvento, payload = {}) => {
                 evento: nombreEvento,
                 nivel: 'peligro',
                 titulo: `Stock crítico: ${payload.nombre || 'Insumo'}`,
-                detalle: `Disponible: ${payload.stockActual ?? '0'} ${payload.unidadBase || ''} (mínimo ${payload.stockMinimo ?? '0'})`,
+                detalle: `Disponible: ${formatearCantidadStock(payload.stockActual, payload.unidadBase)} (mínimo ${formatearCantidadStock(payload.stockMinimo, payload.unidadBase)})`,
                 alertaMargenBajo: false,
                 emitidoEn: marcaTiempo,
             };
@@ -1156,6 +1171,49 @@ const formatearMontoSimple = (valor) => {
 };
 
 /**
+ * Una venta se puede anular solo si sigue EMITIDA y su turno de caja está abierto
+ * (misma regla que apps/ventas/services.anular_venta). Si el backend no informa el
+ * turno, no se ofrece el botón: es preferible ocultarlo a mostrar uno que falle.
+ */
+export const esVentaAnulable = (venta) => {
+    if (!venta || venta.id === undefined || venta.id === null) return false;
+    const estado = String(venta.estado || '').toUpperCase();
+    const turnoEstado = String(venta.turno_estado || '').toUpperCase();
+    return estado === 'EMITIDA' && turnoEstado === 'ABIERTO';
+};
+
+/** Combina la regla del ticket con el permiso del usuario (ventas.anular_ticket). */
+export const puedeAnularVenta = (usuario, venta) =>
+    usuarioTienePermiso(usuario, 'ventas.anular_ticket') && esVentaAnulable(venta);
+
+/** Para la tabla de Reportes: fila de venta del servidor, anulable y usuario con permiso. */
+export const registroMuestraBotonAnular = (usuario, registro) =>
+    Boolean(registro)
+    && registro.categoria === 'venta'
+    && registro.anulable === true
+    && registro.ventaId !== undefined
+    && registro.ventaId !== null
+    && usuarioTienePermiso(usuario, 'ventas.anular_ticket');
+
+export const LARGO_MAXIMO_MOTIVO_ANULACION = 255;
+
+/** Valida el motivo que se pide en el modal antes de llamar a /anular/. */
+export const validarMotivoAnulacion = (motivo) => {
+    const texto = String(motivo ?? '').trim();
+    if (texto.length < 3) {
+        return { valido: false, motivo: texto, mensaje: 'Escribí el motivo de la anulación (al menos 3 letras).' };
+    }
+    if (texto.length > LARGO_MAXIMO_MOTIVO_ANULACION) {
+        return {
+            valido: false,
+            motivo: texto,
+            mensaje: `El motivo puede tener hasta ${LARGO_MAXIMO_MOTIVO_ANULACION} caracteres.`,
+        };
+    }
+    return { valido: true, motivo: texto, mensaje: '' };
+};
+
+/**
  * Unifica y ordena cronológicamente Ventas, Movimientos de Stock (o Compras fallback),
  * Cierres de Caja y Ventas Offline pendientes dentro del rango de fechas seleccionado.
  */
@@ -1224,6 +1282,8 @@ export const unificarTrazabilidadRegistros = ({
         }
         registros.push({
             id: `venta-${v.id}`,
+            ventaId: v.id,
+            anulable: esVentaAnulable(v),
             categoria: 'venta',
             fechaIso: v.fecha || v.creado_en || '',
             tipoEtiqueta: esAnulada ? `${etiquetaBase} · Anulada` : etiquetaBase,
@@ -2155,6 +2215,22 @@ export const PERMISOS_POR_SECCION = {
  * Indica qué acciones rápidas de caja puede ver el usuario según sus permisos.
  * "Abrir turno" además se oculta mientras ya hay un turno abierto.
  */
+/**
+ * Elige el turno que la pantalla de Caja trata como "activo" para el usuario logueado.
+ * El dueño y el encargado reciben en la lista los turnos de todo el equipo; si se tomara
+ * el primer turno ABIERTO de cualquiera, cobrarían o cerrarían caja sobre el turno de otro
+ * cajero. Por eso solo se consideran turnos propios: primero el abierto y, si no hay,
+ * el más reciente (la lista llega ordenada por apertura descendente). Sin turnos propios → null.
+ */
+export const seleccionarTurnoPropio = (turnos = [], usuarioId = null) => {
+    const miId = Number(usuarioId || 0);
+    if (!miId || !Array.isArray(turnos)) {
+        return null;
+    }
+    const propios = turnos.filter((t) => t && Number(t.usuario) === miId);
+    return propios.find((t) => t.estado === 'ABIERTO') || propios[0] || null;
+};
+
 export const accionesCajaVisiblesParaUsuario = (usuario, turnoActivo = null) => ({
     movimiento: usuarioTienePermiso(usuario, 'caja.registrar_movimiento'),
     abrirTurno: usuarioTienePermiso(usuario, 'caja.abrir_turno') && turnoActivo?.estado !== 'ABIERTO',
@@ -3507,4 +3583,236 @@ export const consultarDisponibilidadDemoApi = async ({ fetchFn, djangoUrl }) => 
         return false;
     }
 };
+
+// ============================================================
+// CONFIGURACIÓN FISCAL DEL LOCAL (HU14)
+// ============================================================
+export const ETIQUETAS_CONDICION_FISCAL = {
+    NO_DECLARADA: 'Sin declarar',
+    RESPONSABLE_INSCRIPTO: 'Responsable Inscripto',
+    MONOTRIBUTISTA: 'Monotributista',
+    EXENTO: 'IVA Exento',
+};
+
+/**
+ * Solo el Dueño (o superusuario) puede ver y modificar la pantalla de configuración del local.
+ */
+export const puedeConfigurarLocal = (usuario) => {
+    if (!usuario || typeof usuario !== 'object') {
+        return false;
+    }
+    return Boolean(usuario.is_superuser) || String(usuario.rol || '').toUpperCase() === 'DUENIO';
+};
+
+/**
+ * Devuelve la etiqueta legible en español de una condición fiscal.
+ */
+export const formatearEtiquetaCondicionFiscal = (codigo = 'NO_DECLARADA') => {
+    const clave = String(codigo || 'NO_DECLARADA')
+        .trim()
+        .toUpperCase();
+    return ETIQUETAS_CONDICION_FISCAL[clave] || 'Sin declarar';
+};
+
+/**
+ * Evalúa si corresponde mostrar el aviso por falta de declaración fiscal y si el
+ * usuario actual puede ir a declararla.
+ */
+export const evaluarAvisoCondicionFiscal = (configFiscal, usuario = null) => {
+    if (!configFiscal || typeof configFiscal !== 'object') {
+        return { mostrarAviso: false, puedeDeclarar: false, mensaje: '' };
+    }
+    const declarada =
+        configFiscal.declarada !== undefined
+            ? Boolean(configFiscal.declarada)
+            : String(configFiscal.condicion_fiscal || 'NO_DECLARADA').toUpperCase() !==
+              'NO_DECLARADA';
+
+    if (declarada) {
+        return { mostrarAviso: false, puedeDeclarar: false, mensaje: '' };
+    }
+
+    const puedeDeclarar = puedeConfigurarLocal(usuario);
+    const mensajeDefecto = puedeDeclarar
+        ? 'Todavía no declaraste la condición fiscal del local. Por ahora los costos se calculan incluyendo IVA (lo que realmente pagás).'
+        : 'El dueño todavía no declaró la condición fiscal del local. Por ahora los costos se calculan incluyendo IVA (lo que realmente se paga).';
+
+    return {
+        mostrarAviso: true,
+        puedeDeclarar,
+        mensaje:
+            puedeDeclarar && configFiscal.aviso
+                ? String(configFiscal.aviso)
+                : mensajeDefecto,
+    };
+};
+
+// ============================================================
+// PRECIO SUGERIDO CON MARGEN OBJETIVO Y COMPETENCIA (HU9)
+// ============================================================
+export const MULTIPLOS_REDONDEO_SUGERIDO = [50, 100];
+
+/**
+ * Redondea un monto en pesos al múltiplo configurado ($50 o $100) operando en centavos enteros.
+ */
+export const redondearAMultiplo = (monto, multiplo = 50) => {
+    const multiploNum = Number(multiplo);
+    if (!MULTIPLOS_REDONDEO_SUGERIDO.includes(multiploNum)) {
+        throw new Error('El múltiplo de redondeo debe ser $50 o $100.');
+    }
+
+    const montoCentavos = convertirMontoACentavos(monto);
+    if (montoCentavos < 0) {
+        throw new Error('El monto a redondear no puede ser negativo.');
+    }
+
+    const multiploCentavos = multiploNum * 100;
+    const unidades = Math.round(montoCentavos / multiploCentavos);
+    return formatearCentavosADecimal(unidades * multiploCentavos);
+};
+
+/**
+ * Calcula el precio sugerido en cliente para previsualización en vivo (HU9):
+ * 1. Base = redondeo(costo / (1 - margen_objetivo), múltiplo $50 o $100).
+ * 2. Si hay precios de competencia, acota el resultado a [mínimo, promedio].
+ * Nunca modifica el precio de venta vigente.
+ */
+export const calcularPrecioSugeridoLocal = ({
+    costoTotal = '0',
+    margenObjetivo = '0.30',
+    redondeoMultiplo = 50,
+    preciosCompetencia = [],
+} = {}) => {
+    const costoNum = Number(String(costoTotal ?? 0).replace(',', '.'));
+    if (!Number.isFinite(costoNum) || costoNum < 0) {
+        throw new Error('El costo del producto no es válido.');
+    }
+
+    const margenNum = Number(String(margenObjetivo ?? 0.3).replace(',', '.'));
+    if (!Number.isFinite(margenNum) || margenNum < 0 || margenNum >= 1) {
+        throw new Error('El margen objetivo debe ser mayor o igual a 0% y menor al 100%.');
+    }
+
+    const multiploNum = Number(redondeoMultiplo ?? 50);
+    if (!MULTIPLOS_REDONDEO_SUGERIDO.includes(multiploNum)) {
+        throw new Error('El múltiplo de redondeo debe ser $50 o $100.');
+    }
+
+    const precioTeorico = costoNum > 0 ? costoNum / (1 - margenNum) : 0;
+    const precioBaseRedondeado = redondearAMultiplo(precioTeorico.toFixed(2), multiploNum);
+    const baseCentavos = convertirMontoACentavos(precioBaseRedondeado);
+
+    const compCentavos = (Array.isArray(preciosCompetencia) ? preciosCompetencia : [])
+        .map((item) => {
+            const bruto = typeof item === 'object' && item !== null ? item.precio : item;
+            return convertirMontoACentavos(bruto);
+        })
+        .filter((c) => c > 0);
+
+    let competenciaMinimo = null;
+    let competenciaPromedio = null;
+    let precioSugeridoCentavos = baseCentavos;
+    let acotadoPor = 'NINGUNO';
+
+    if (compCentavos.length > 0) {
+        const minC = Math.min(...compCentavos);
+        const promC = Math.round(compCentavos.reduce((acc, c) => acc + c, 0) / compCentavos.length);
+        competenciaMinimo = formatearCentavosADecimal(minC);
+        competenciaPromedio = formatearCentavosADecimal(promC);
+
+        if (baseCentavos > promC) {
+            precioSugeridoCentavos = promC;
+            acotadoPor = 'PROMEDIO';
+        } else if (baseCentavos < minC) {
+            precioSugeridoCentavos = minC;
+            acotadoPor = 'MINIMO';
+        }
+    }
+
+    const costoCentavos = convertirMontoACentavos(costoNum.toFixed(2));
+
+    return {
+        redondeo_multiplo: multiploNum,
+        precio_base_redondeado: precioBaseRedondeado,
+        precio_sugerido: formatearCentavosADecimal(precioSugeridoCentavos),
+        competencia_cantidad: compCentavos.length,
+        competencia_minimo: competenciaMinimo,
+        competencia_promedio: competenciaPromedio,
+        acotado_por: acotadoPor,
+        alerta_bajo_costo: precioSugeridoCentavos < costoCentavos,
+    };
+};
+
+/**
+ * Devuelve una descripción clara del criterio aplicado al precio sugerido.
+ */
+export const describirAcotamientoSugerido = (sugerencia = {}) => {
+    if (!sugerencia || typeof sugerencia !== 'object') {
+        return 'Sin cálculo';
+    }
+    const multiplo = Number(sugerencia.redondeo_multiplo || 50);
+    if (sugerencia.acotado_por === 'PROMEDIO') {
+        return 'Acotado al promedio de competencia';
+    }
+    if (sugerencia.acotado_por === 'MINIMO') {
+        return 'Ajustado al mínimo de competencia';
+    }
+    return `Redondeado a múltiplos de $${multiplo}`;
+};
+
+// ============================================================
+// CONTROL DE STOCK REAL Y ALERTAS DE MÍNIMO (HU12)
+// ============================================================
+/**
+ * Evalúa el estado de stock de un insumo según su stock_actual y stock_minimo.
+ */
+export const evaluarEstadoStockInsumo = (insumo = {}) => {
+    if (!insumo || typeof insumo !== 'object') {
+        return { nivel: 'sin_minimo', etiqueta: 'Sin mínimo', esBajo: false };
+    }
+    if (insumo.estado_activo === false) {
+        return { nivel: 'inactivo', etiqueta: 'Inactivo', esBajo: false };
+    }
+
+    const actual = Number(String(insumo.stock_actual ?? 0).replace(',', '.'));
+    const minimo = Number(String(insumo.stock_minimo ?? 0).replace(',', '.'));
+    const actualVal = Number.isFinite(actual) ? actual : 0;
+    const minimoVal = Number.isFinite(minimo) ? minimo : 0;
+
+    if (minimoVal <= 0) {
+        return { nivel: 'sin_minimo', etiqueta: 'Sin mínimo', esBajo: false };
+    }
+    if (actualVal < minimoVal || insumo.stock_bajo === true) {
+        return { nivel: 'bajo', etiqueta: 'Stock bajo', esBajo: true };
+    }
+    return { nivel: 'ok', etiqueta: 'Normal', esBajo: false };
+};
+
+/**
+ * Formatea una cantidad de stock junto a su unidad base para mostrar al usuario.
+ */
+export const formatearCantidadStock = (cantidad, unidadBase = '') => {
+    const num = Number(String(cantidad ?? 0).replace(',', '.'));
+    const cantTxt = Number.isFinite(num)
+        ? num.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+        : String(cantidad ?? '0');
+    const unidad = String(unidadBase || '').trim();
+    return unidad ? `${cantTxt} ${unidad}` : cantTxt;
+};
+
+/**
+ * Resume cuántos insumos activos están por debajo de su stock mínimo.
+ */
+export const obtenerResumenStockBajo = (insumos = []) => {
+    const lista = Array.isArray(insumos) ? insumos : [];
+    const insumosBajos = lista.filter((ins) => {
+        if (!ins || ins.estado_activo === false) return false;
+        return evaluarEstadoStockInsumo(ins).esBajo;
+    });
+    return {
+        totalBajos: insumosBajos.length,
+        insumosBajos,
+    };
+};
+
 

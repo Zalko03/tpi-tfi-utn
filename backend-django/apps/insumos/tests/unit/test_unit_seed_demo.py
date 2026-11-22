@@ -7,6 +7,7 @@ from io import StringIO
 import pytest
 from django.contrib.auth.models import User
 from django.core.management import CommandError, call_command
+from django.db.models import F
 from django.test import override_settings
 from django.utils import timezone
 
@@ -504,3 +505,101 @@ class TestUnitSeedDemo:
         insumo.refresh_from_db()
         assert insumo.unidad_base == "g"
         assert insumo.estado_activo is True
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_carga_stock_inicial_en_base_previa_sin_ingresos(self, monkeypatch):
+        """
+        Base creada antes de HU12: hay compras pero ningún ingreso de stock y mínimo en 0.
+        seed_demo completa el mínimo y deja un stock inicial como ajuste manual, con solo
+        algunos insumos por debajo del mínimo (para mostrar la alerta), y es idempotente.
+        """
+        from apps.insumos.models import MovimientoStock
+
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        prov = Proveedor.objects.create(nombre="Proveedor histórico")
+        insumo = Insumo.objects.create(
+            nombre="Café Especialidad Colombia",
+            unidad_base="g",
+            costo_unitario=Decimal("30.0000"),
+            stock_minimo=Decimal("0.0000"),
+        )
+        Compra.objects.create(
+            proveedor=prov,
+            insumo=insumo,
+            precio_total=Decimal("30000.00"),
+            cantidad=Decimal("1000"),
+            unidad="g",
+            envio=Decimal("0.00"),
+        )
+
+        call_command("seed_demo")
+
+        insumo.refresh_from_db()
+        assert insumo.stock_minimo == Decimal("300.0000")
+        assert insumo.costo_unitario == Decimal("30.0000")
+        mov = MovimientoStock.objects.get(insumo=insumo, tipo="INGRESO")
+        assert mov.subtipo == "AJUSTE_MANUAL"
+        assert mov.cantidad_base == Decimal("2000.0000")
+        assert "seed_demo" in mov.motivo
+        # Las ventas de muestra descuentan por receta, pero queda holgado sobre el mínimo.
+        assert insumo.stock_actual > insumo.stock_minimo
+        stock_tras_primera = insumo.stock_actual
+
+        bajos = set(
+            Insumo.objects.filter(
+                stock_minimo__gt=0, stock_actual__lt=F("stock_minimo")
+            ).values_list("nombre", flat=True)
+        )
+        assert insumo.nombre not in bajos
+        assert len(bajos) <= 2
+
+        movimientos_antes = MovimientoStock.objects.count()
+        call_command("seed_demo")
+        insumo.refresh_from_db()
+        assert insumo.stock_actual == stock_tras_primera
+        assert MovimientoStock.objects.count() == movimientos_antes
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_no_pisa_stock_cargado_por_el_usuario(self, monkeypatch):
+        """Si el insumo ya tuvo un ingreso (aunque hoy esté en 0), seed_demo no le suma stock."""
+        from apps.insumos.models import MovimientoStock
+        from apps.insumos.services import ajustar_stock_insumo
+
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        insumo = Insumo.objects.create(
+            nombre="Queso Criollo",
+            unidad_base="g",
+            costo_unitario=Decimal("9.5000"),
+            stock_minimo=Decimal("800.0000"),
+        )
+        # Con una compra previa, seed_demo no registra la compra de muestra.
+        Compra.objects.create(
+            proveedor=Proveedor.objects.create(nombre="Quesería local"),
+            insumo=insumo,
+            precio_total=Decimal("9500.00"),
+            cantidad=Decimal("1000"),
+            unidad="g",
+            envio=Decimal("0.00"),
+        )
+        ajustar_stock_insumo(insumo.id, "INGRESO", Decimal("350"), unidad="g", motivo="Conteo")
+        ajustar_stock_insumo(insumo.id, "EGRESO", Decimal("350"), unidad="g", motivo="Merma")
+
+        call_command("seed_demo")
+
+        insumo.refresh_from_db()
+        # Las ventas de muestra pueden descontar, pero nunca se le suma stock de demo.
+        assert insumo.stock_actual <= Decimal("0.0000")
+        assert insumo.stock_minimo == Decimal("800.0000")
+        assert not MovimientoStock.objects.filter(
+            insumo=insumo, motivo__icontains="seed_demo"
+        ).exists()
+
+    @override_settings(DEBUG=True)
+    def test_seed_demo_video_en_base_nueva_deja_alguna_alerta_de_stock(self, monkeypatch):
+        """En base nueva, las compras y las ventas del video dejan pocos insumos bajos, sin negativos."""
+        monkeypatch.delenv("SEED_DEMO_PASSWORD", raising=False)
+        call_command("seed_demo", video=True)
+
+        assert not Insumo.objects.filter(stock_actual__lt=0).exists()
+        bajos = Insumo.objects.filter(stock_minimo__gt=0, stock_actual__lt=F("stock_minimo"))
+        assert 1 <= bajos.count() <= 3

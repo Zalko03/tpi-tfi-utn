@@ -2,6 +2,8 @@ services:
   # 1. Backend Transaccional (Django 5 + DRF + PostgreSQL en Aiven)
   - type: web
     name: sapori-backend-django
+    # Sin "plan", Render crea una instancia paga (0.5c-512mb): free es la gratuita.
+    plan: free
     runtime: docker
     rootDir: backend-django
     dockerfilePath: ./Dockerfile
@@ -32,10 +34,15 @@ services:
         sync: false
       - key: DJANGO_JWT_PUBLIC_KEY
         sync: false
+      - key: NODE_BASE_URL
+        sync: false
+      - key: EVENTOS_INTERNOS_CLAVE
+        sync: false
 
   # 2. Backend Tiempo Real & Proyecciones (Express + Socket.IO + MongoDB Atlas)
   - type: web
     name: sapori-backend-node
+    plan: free
     runtime: docker
     rootDir: backend-node
     dockerfilePath: ./Dockerfile
@@ -57,10 +64,13 @@ services:
         sync: false
       - key: JWT_PUBLIC_KEY
         sync: false
+      - key: EVENTOS_INTERNOS_CLAVE
+        sync: false
 
   # 3. Microservicio de Inteligencia Artificial (FastAPI + Groq LPU)
   - type: web
     name: sapori-ai-service
+    plan: free
     runtime: docker
     rootDir: ai-service
     dockerfilePath: ./Dockerfile

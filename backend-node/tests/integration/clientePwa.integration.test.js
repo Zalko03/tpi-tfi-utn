@@ -34,10 +34,22 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('modal-baja-empleado');
         expect(res.text).toContain('select-permisos-rol');
         expect(res.text).toContain('Siempre queda un dueño activo');
+        expect(res.text).toContain('vista-configuracion');
+        expect(res.text).toContain('form-configuracion-fiscal');
+        expect(res.text).toContain('aviso-condicion-fiscal-compras');
+        expect(res.text).toContain('aviso-condicion-fiscal-recetas');
+        expect(res.text).toContain('panel-sugerencia-competencia');
+        expect(res.text).toContain('form-sugerencia-producto');
+        expect(res.text).toContain('form-agregar-competencia');
+        expect(res.text).toContain('btn-usar-precio-sugerido');
+        expect(res.text).toContain('check-compra-iva-incluido');
         expect(res.text).toContain('archivo-lista-ia');
         expect(res.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(res.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');
         expect(res.text).toContain('/app/vendor/mammoth/mammoth.browser.min.js');
+        // En Vercel no hay Node detrás: el cliente de Socket.IO tiene que venir de vendor/.
+        expect(res.text).toContain('/app/vendor/socket.io/socket.io.min.js');
+        expect(res.text).not.toContain('src="/socket.io/socket.io.js"');
         expect(res.text).not.toMatch(/https?:\/\/[^"']*(?:pdfjs|sheetjs|xlsx|mammoth)|cdnjs|unpkg|jsdelivr/i);
         expect(res.text).toContain('/app/manifest.webmanifest');
         expect(res.text).toContain('/app/js/app.js');
@@ -111,6 +123,7 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
             resPdfWorker,
             resSheetJs,
             resMammoth,
+            resSocketIo,
         ] = await Promise.all([
             request(app).get('/app/sw.js'),
             request(app).get('/app/css/estilos.css'),
@@ -120,6 +133,7 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
             request(app).get('/app/vendor/pdfjs/pdf.worker.min.js'),
             request(app).get('/app/vendor/sheetjs/xlsx.full.min.js'),
             request(app).get('/app/vendor/mammoth/mammoth.browser.min.js'),
+            request(app).get('/app/vendor/socket.io/socket.io.min.js'),
         ]);
 
         expect(resSw.status).toBe(200);
@@ -127,7 +141,7 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         vm.runInNewContext(resSw.text, { URL, module: moduloSw, exports: moduloSw.exports });
         const { debeIgnorarPeticionSw, NOMBRE_CACHE } = moduloSw.exports;
 
-        expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v4');
+        expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v5');
         expect(typeof debeIgnorarPeticionSw).toBe('function');
         expect(
             debeIgnorarPeticionSw(
@@ -164,6 +178,8 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.min.js');
         expect(resSw.text).toContain('/app/vendor/pdfjs/pdf.worker.min.js');
         expect(resSw.text).toContain('/app/vendor/sheetjs/xlsx.full.min.js');
+        expect(resSw.text).toContain('/app/vendor/socket.io/socket.io.min.js');
+        expect(resSocketIo.status).toBe(200);
         expect(resSw.text).toContain('/app/vendor/mammoth/mammoth.browser.min.js');
 
         expect(resPdfJs.status).toBe(200);

@@ -59,6 +59,17 @@ class Producto(models.Model):
         default=Decimal("0.0000"),
         verbose_name="Margen bruto (ratio, ej. 0.5600 = 56%)",
     )
+    margen_objetivo = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        default=Decimal("0.3000"),
+        verbose_name="Margen objetivo (ratio, ej. 0.5000 = 50%)",
+    )
+    redondeo_multiplo = models.PositiveIntegerField(
+        choices=[(50, "Múltiplo de $50"), (100, "Múltiplo de $100")],
+        default=50,
+        verbose_name="Múltiplo de redondeo para precio sugerido ($)",
+    )
     estado_activo = models.BooleanField(
         default=True,
         verbose_name="Estado activo",
@@ -117,3 +128,46 @@ class RecetaItem(models.Model):
 
     def __str__(self):
         return f"{self.producto.nombre} -> {self.insumo.nombre} ({self.cantidad} {self.unidad})"
+
+
+class PrecioCompetencia(models.Model):
+    """Precio de referencia de un competidor cargado manualmente por producto (HU9)."""
+
+    producto = models.ForeignKey(
+        Producto,
+        on_delete=models.CASCADE,
+        related_name="precios_competencia",
+        verbose_name="Producto",
+    )
+    nombre_competidor = models.CharField(
+        max_length=150,
+        default="Referencia de mercado",
+        verbose_name="Local o competidor de referencia",
+    )
+    precio = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        verbose_name="Precio de referencia ($)",
+    )
+    observacion = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Observación",
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Precio de competencia"
+        verbose_name_plural = "Precios de competencia"
+        ordering = ["precio", "nombre_competidor", "id"]
+        indexes = [
+            models.Index(
+                fields=["producto", "precio"],
+                name="idx_preciocomp_prod_precio",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.producto.nombre} · {self.nombre_competidor}: ${self.precio}"

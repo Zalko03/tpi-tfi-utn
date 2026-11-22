@@ -61,7 +61,9 @@ class TestApiDemoAcceso:
         )
         return {"duenio": duenio, "encargado": encargado, "cajero": cajero}
 
-    def test_disponible_false_por_defecto(self, client):
+    # Se fuerza la configuración: el .env local de una demo puede tener DEMO_ACCESO_RAPIDO=true.
+    @override_settings(DEMO_ACCESO_RAPIDO=False)
+    def test_disponible_false_con_variable_apagada(self, client):
         assert settings.DEMO_ACCESO_RAPIDO is False
         res = client.get("/api/auth/demo/")
         assert res.status_code == 200

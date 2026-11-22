@@ -82,7 +82,7 @@ jobs:
         run: npm run lint
 
   test-django:
-    name: Tests Django (357+ pruebas)
+    name: Tests Django (571 pruebas)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -112,11 +112,11 @@ jobs:
       - name: Ejecutar migraciones en base de datos SQLite de prueba
         run: python manage.py migrate --noinput
 
-      - name: Ejecutar suite de pruebas Pytest
-        run: pytest
+      - name: Ejecutar suite de pruebas Pytest con reporte de cobertura
+        run: pytest --cov=apps --cov-report=term-missing
 
   test-node:
-    name: Tests Express + MongoDB (119+ pruebas)
+    name: Tests Express + MongoDB (244 pruebas)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -146,11 +146,11 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Ejecutar suite de pruebas Jest
-        run: npm test
+      - name: Ejecutar suite de pruebas Jest con reporte de cobertura
+        run: npm run test:coverage
 
   test-ai-service:
-    name: Tests FastAPI AI Service (57+ pruebas)
+    name: Tests FastAPI AI Service (87 pruebas)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -178,8 +178,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Ejecutar suite de pruebas Pytest
-        run: pytest
+      - name: Ejecutar suite de pruebas Pytest con reporte de cobertura
+        run: pytest --cov=app --cov-report=term-missing
 
   build-docker:
     name: Validación de Docker Compose e Imágenes

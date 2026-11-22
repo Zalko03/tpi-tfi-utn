@@ -4,9 +4,17 @@
  */
 window.__SAPORI_CONFIG__ = {
     ...(window.__SAPORI_CONFIG__ || {}),
+    // Backends publicados en Render (modo nube). Si Render asigna otros nombres, cambialos acá
+    // y en la CSP: vercel.json, web/nginx.conf y backend-node/app.js (connect-src, con https y wss).
+    urlsNube: {
+        django: 'https://sapori-backend-django.onrender.com',
+        node: 'https://sapori-backend-node.onrender.com',
+    },
     ubicacionLocal: {
-        direccion: 'Av. 25 de Mayo 100 (frente a Plaza 25 de Mayo), Resistencia, Chaco',
-        latitud: -27.4514,
-        longitud: -58.9867,
+        // Dirección real del local (Google Maps: "Sapori Café, Mariano I. Loza 475, Goya").
+        // Coordenadas de OpenStreetMap para el número 475.
+        direccion: 'Mariano I. Loza 475, Goya, Corrientes',
+        latitud: -29.1437,
+        longitud: -59.264,
     },
 };

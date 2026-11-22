@@ -11,26 +11,93 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.caja.models import TurnoCaja
+from apps.comun.notificaciones_node import notificar_evento_node
+from apps.insumos.services import (
+    descontar_stock_por_venta,
+    devolver_stock_por_anulacion_venta,
+    notificar_stock_bajo_alertas,
+)
 from apps.recetas.models import Producto
 from apps.ventas.models import Venta, VentaItem
 
 logger = logging.getLogger(__name__)
 
 
+def _construir_payload_evento_venta(venta: Venta, items: list | None = None) -> dict:
+    """Construye el payload de venta para difusión en vivo en backend-node."""
+    if items is None:
+        items = list(venta.items.select_related("producto").all())
+
+    items_payload = [
+        {
+            "productoId": item.producto_id,
+            "productoNombre": item.producto.nombre if item.producto_id else "",
+            "cantidad": str(item.cantidad),
+            "precioUnitario": str(item.precio_unitario),
+            "costoUnitarioSnapshot": str(item.costo_unitario_snapshot),
+        }
+        for item in items
+    ]
+
+    total_dec = (
+        venta.total if isinstance(venta.total, Decimal) else Decimal(str(venta.total or "0.00"))
+    )
+    costo_dec = (
+        venta.costo_total_snapshot
+        if isinstance(venta.costo_total_snapshot, Decimal)
+        else Decimal(str(venta.costo_total_snapshot or "0.0000"))
+    )
+    ganancia_dec = (total_dec - costo_dec).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+    turno = getattr(venta, "turno_caja", None)
+    usuario_turno = getattr(turno, "usuario", None) if turno is not None else None
+
+    payload = {
+        "ventaId": venta.id,
+        "turnoId": venta.turno_caja_id,
+        "usuarioNombre": getattr(usuario_turno, "username", None),
+        "fecha": venta.fecha.isoformat() if venta.fecha else None,
+        "estado": venta.estado,
+        "origen": venta.origen,
+        "medio_pago": venta.medio_pago,
+        "metodoPago": venta.medio_pago,
+        "total": str(total_dec),
+        "costoTotalSnapshot": str(costo_dec),
+        "gananciaBruta": str(ganancia_dec),
+        "cantidadItems": len(items_payload),
+        "items": items_payload,
+    }
+    if venta.estado == "ANULADA":
+        payload.update(
+            {
+                "anuladaEn": venta.anulada_en.isoformat() if venta.anulada_en else None,
+                "anuladaPorId": venta.anulada_por_id,
+                "anuladaPorNombre": getattr(venta.anulada_por, "username", None),
+                "motivoAnulacion": venta.motivo_anulacion,
+            }
+        )
+    return payload
+
+
+def _notificar_venta_en_vivo(evento: str, venta: Venta, items: list | None = None) -> None:
+    """Notifica a Node luego de confirmar la transacción; nunca falla la operación principal."""
+    try:
+        payload = _construir_payload_evento_venta(venta, items=items)
+        notificar_evento_node(evento, payload)
+    except Exception:
+        logger.exception("Error inesperado al notificar %s de venta #%s", evento, venta.id)
+
+
 @transaction.atomic
-def registrar_venta(
+def _persistir_venta_atomica(
     items_data: list[dict],
     medio_pago: str = "EFECTIVO",
     origen: str = "propio",
     turno_caja=None,
     fecha=None,
     id_operacion=None,
-) -> Venta:
-    """
-    Registra una venta cobrada en caja. Congela el costo unitario vigente
-    de cada producto (HU4 / CA4.2) para que futuros cambios de precio de insumos
-    no reescriban el pasado contable. Soporta idempotencia vía id_operacion.
-    """
+) -> tuple[Venta, bool, list[VentaItem]]:
+    """Persiste una venta y sus ítems en una transacción atómica."""
     id_operacion_uuid = None
     if id_operacion is not None and str(id_operacion).strip() != "":
         try:
@@ -50,7 +117,7 @@ def registrar_venta(
             .first()
         )
         if venta_existente is not None:
-            return venta_existente
+            return venta_existente, False, [], []
 
     if not items_data:
         raise ValueError("La venta debe contener al menos un producto.")
@@ -78,7 +145,7 @@ def registrar_venta(
                 .first()
             )
             if venta_existente is not None:
-                return venta_existente
+                return venta_existente, False, [], []
         raise
 
     if fecha:
@@ -86,6 +153,7 @@ def registrar_venta(
 
     total_cobrado = Decimal("0.00")
     total_costo = Decimal("0.0000")
+    items_creados: list[VentaItem] = []
 
     for item in items_data:
         producto_id = item.get("producto_id")
@@ -154,13 +222,14 @@ def registrar_venta(
         precio_unitario = precio_bd
         costo_snapshot = producto.costo_total_calculado
 
-        VentaItem.objects.create(
+        venta_item = VentaItem.objects.create(
             venta=venta,
             producto=producto,
             cantidad=cantidad,
             precio_unitario=precio_unitario,
             costo_unitario_snapshot=costo_snapshot,
         )
+        items_creados.append(venta_item)
 
         total_cobrado += precio_unitario * cantidad
         total_costo += costo_snapshot * cantidad
@@ -169,20 +238,53 @@ def registrar_venta(
     venta.costo_total_snapshot = total_costo
     venta.save(update_fields=["total", "costo_total_snapshot", "fecha"])
 
+    usuario_venta = getattr(turno_caja, "usuario", None) if turno_caja is not None else None
+    alertas_stock_bajo = descontar_stock_por_venta(
+        venta=venta,
+        items_venta=items_creados,
+        usuario=usuario_venta,
+    )
+
+    return venta, True, items_creados, alertas_stock_bajo
+
+
+def registrar_venta(
+    items_data: list[dict],
+    medio_pago: str = "EFECTIVO",
+    origen: str = "propio",
+    turno_caja=None,
+    fecha=None,
+    id_operacion=None,
+) -> Venta:
+    """
+    Registra una venta cobrada en caja. Congela el costo unitario vigente
+    de cada producto (HU4 / CA4.2), descuenta el stock de insumos por receta
+    (HU12 / CA12.1) y notifica a Node si algún insumo quedó bajo mínimo (CA12.2).
+    Soporta idempotencia vía id_operacion.
+    """
+    venta, fue_creada, items_creados, alertas_stock_bajo = _persistir_venta_atomica(
+        items_data=items_data,
+        medio_pago=medio_pago,
+        origen=origen,
+        turno_caja=turno_caja,
+        fecha=fecha,
+        id_operacion=id_operacion,
+    )
+    if fue_creada:
+        _notificar_venta_en_vivo("venta.registrada", venta, items=items_creados)
+        if alertas_stock_bajo:
+            notificar_stock_bajo_alertas(alertas_stock_bajo)
     return venta
 
 
 @transaction.atomic
-def anular_venta(
+def _persistir_anulacion_atomica(
     venta: Venta,
     usuario,
     motivo: str = "",
     permiso_verificado: bool = False,
 ) -> Venta:
-    """
-    Anula una venta emitida sin borrar el registro contable.
-    Regla conservadora: no se permite anular si el turno de caja de la venta ya fue cerrado.
-    """
+    """Persiste la anulación lógica de una venta dentro de una transacción atómica."""
     if not permiso_verificado:
         if (
             usuario is None
@@ -214,7 +316,31 @@ def anular_venta(
     )
     venta_bloqueada.motivo_anulacion = motivo_limpio
     venta_bloqueada.save(update_fields=["estado", "anulada_en", "anulada_por", "motivo_anulacion"])
+    devolver_stock_por_anulacion_venta(
+        venta=venta_bloqueada,
+        usuario=venta_bloqueada.anulada_por,
+    )
     return venta_bloqueada
+
+
+def anular_venta(
+    venta: Venta,
+    usuario,
+    motivo: str = "",
+    permiso_verificado: bool = False,
+) -> Venta:
+    """
+    Anula una venta emitida sin borrar el registro contable.
+    Regla conservadora: no se permite anular si el turno de caja de la venta ya fue cerrado.
+    """
+    venta_anulada = _persistir_anulacion_atomica(
+        venta=venta,
+        usuario=usuario,
+        motivo=motivo,
+        permiso_verificado=permiso_verificado,
+    )
+    _notificar_venta_en_vivo("venta.anulada", venta_anulada)
+    return venta_anulada
 
 
 def construir_queryset_reporte_ventas_por_producto(fecha_inicio=None, fecha_fin=None):

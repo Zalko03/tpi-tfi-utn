@@ -169,3 +169,26 @@ class TestUnitJwtRs256:
         priv_pem, pub_pem = obtener_claves_jwt()
         assert "BEGIN PRIVATE KEY" in priv_pem
         assert "BEGIN PUBLIC KEY" in pub_pem
+
+
+def test_obtener_claves_jwt_sin_claves_y_sin_efimero_falla(monkeypatch, tmp_path):
+    """Con DEBUG apagado no se permite el par efímero (cada worker tendría el suyo)."""
+    monkeypatch.delenv("DJANGO_JWT_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("DJANGO_JWT_PUBLIC_KEY", raising=False)
+    monkeypatch.setenv("DJANGO_JWT_PRIVATE_KEY_PATH", str(tmp_path / "priv.pem"))
+    monkeypatch.setenv("DJANGO_JWT_PUBLIC_KEY_PATH", str(tmp_path / "pub.pem"))
+
+    with pytest.raises(ValueError, match="DJANGO_JWT_PRIVATE_KEY"):
+        obtener_claves_jwt(permitir_efimero=False)
+
+
+def test_obtener_claves_jwt_acepta_pem_en_una_linea(monkeypatch):
+    """Un PEM pegado con '\\n' literales (paneles de hosting) se normaliza."""
+    priv, pub = generar_par_rsa_strings()
+    monkeypatch.setenv("DJANGO_JWT_PRIVATE_KEY", priv.replace("\n", "\\n"))
+    monkeypatch.setenv("DJANGO_JWT_PUBLIC_KEY", pub.replace("\n", "\\n"))
+
+    priv_leida, pub_leida = obtener_claves_jwt(permitir_efimero=False)
+
+    assert priv_leida == priv.strip()
+    assert pub_leida == pub.strip()

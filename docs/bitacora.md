@@ -21,6 +21,56 @@ Cómo probarlo:
 (Las entradas nuevas se agregan arriba)
 
 ---
+Fecha: 2026-11-21
+Tarea: F6 — Documentación para la cátedra y actualización de matriz HU
+Rama: docs/entrega-final
+Cambios realizados:
+- **README por módulo (`backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`, `web/README.md`):** responsabilidades, árbol de carpetas verificado contra el código real, endpoints principales y comandos de ejecución, migraciones/seed, tests y linters.
+- **Documentación académica (`docs/FUNDAMENTACION_TECNICA.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`):** comparación honesta entre lo visto en clase (proyecto de referencia de la cátedra y plan original) y la implementación real; auditoría técnica de `backend-node` contra `.agents/rules/convenciones-node.md` (incluyendo desvíos justificados como `String` monetario, `verificarPermiso` y el acoplamiento menor en `productoResumen.controller.js`). La guía de preguntas para la defensa oral se conserva fuera del repositorio.
+- **Matriz final de HUs (`docs/MATRIZ_HU.md`):** actualizada a **15/15 Historias de Usuario implementadas** (incorporando `HU8`, `HU9`, `HU12` y `HU14` con rutas, modelos, servicios y archivos de test verificados).
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- Ninguna (solo documentación sobre código existente).
+Problemas y decisiones técnicas:
+- En `backend-django`, al existir `DEMO_ACCESO_RAPIDO=true` en el `.env` local de demo, el test `test_disponible_false_por_defecto` requiere correr `pytest` con `DEMO_ACCESO_RAPIDO=false` para validar el valor por defecto `False`.
+- Se documentaron con transparencia las diferencias respecto del borrador de `PLAN_IMPLEMENTACION.md` (sin GraphQL/Apollo ni `drf-spectacular`; OpenAPI nativo en FastAPI `/docs`).
+Archivos tocados:
+- `backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`, `web/README.md`
+- `docs/FUNDAMENTACION_TECNICA.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/MATRIZ_HU.md`, `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+---
+Fecha: 2026-11-21
+Tarea: F5 — HU12: Stock real por insumo, descuento por receta, devolución al anular y alertas de stock bajo
+Rama: feat/hu12-stock
+Cambios realizados:
+- **Django (`apps/insumos/`, `apps/ventas/`):** Se agregaron `stock_actual`, `stock_minimo` y `stock_bajo` en `Insumo`, junto con el modelo auditable `MovimientoStock` y la migración `0003_movimientostock_insumo_stock_actual_and_more.py` (sin aplicar sobre `db.sqlite3`). `registrar_compra_y_actualizar_costo` suma stock convertido a unidad base; `registrar_venta` descuenta de forma atómica cada insumo de la receta (`descontar_stock_por_venta`, bloqueando insumos en orden determinístico de ID) y emite `stock.bajo` hacia Node cuando `stock_actual < stock_minimo` (con `stock_minimo > 0`); `anular_venta` devuelve el stock descontado (`devolver_stock_por_anulacion_venta`). Se expusieron `POST /api/insumos/:id/ajustar-stock/`, `GET /api/insumos/stock-bajo/` y `GET /api/insumos/movimientos-stock/`, además de `stock_minimo` inicial en `seed_demo`.
+- **Node (`backend-node/src/routes/eventosInternos.routes.js`, `src/services/eventosInternos.service.js`):** Se habilitó el evento interno `'stock.bajo'` validando `insumoId` y `nombre` y conectándolo con `emitirStockBajo` hacia la sala `rol:stock_alertas` (`DUENIO` / `ENCARGADO`).
+- **Web (`web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`):** Se mostró el stock actual, stock mínimo, estado y banner de alertas en Insumos; se sumó el modal `#modal-ajustar-stock` (`insumos.editar`); se reactivó el contador `#metrica-alertas-stock` en el Tablero en Tiempo Real y se integraron alertas de stock bajo al diagnóstico de reposición IA.
+- **Tests y docs:** Se agregaron pruebas unitarias y de API en Django (`test_unit_stock_services.py`, `test_unit_stock_ventas.py`, `test_api_stock.py`) y pruebas en Node/Jest (`eventosInternos.integration.test.js`, `logicaPwa.unit.test.js`), actualizando `docs/CONNECTIONS.md` y `docs/ARCHITECTURE.md`.
+Conexiones nuevas o modificadas (reflejadas en docs/CONNECTIONS.md):
+- `backend-django` → `backend-node` (`POST /api/internos/eventos` con `evento: 'stock.bajo'` hacia `emitirStockBajo`).
+- `web/` → `backend-django` (`/api/insumos/:id/ajustar-stock/`, `/api/insumos/stock-bajo/`, `/api/insumos/movimientos-stock/`).
+Problemas y decisiones técnicas:
+- Se permitió `stock_actual` negativo (con `stock_minimo >= 0`) para no bloquear ventas en mostrador cuando falta cargar una factura y para que al anular una venta la devolución restituya exactamente el saldo previo; los ajustes manuales y descuentos quedan auditados en `MovimientoStock`.
+Archivos tocados:
+- `backend-django/apps/insumos/{models.py,services.py,serializers.py,views.py,management/commands/seed_demo.py,migrations/0003_movimientostock_insumo_stock_actual_and_more.py}`
+- `backend-django/apps/ventas/services.py`
+- `backend-django/apps/insumos/tests/{unit/test_unit_stock_services.py,api/test_api_stock.py}`, `backend-django/apps/ventas/tests/unit/test_unit_stock_ventas.py`
+- `backend-node/src/{routes/eventosInternos.routes.js,services/eventosInternos.service.js}`, `backend-node/tests/{integration/eventosInternos.integration.test.js,unit/logicaPwa.unit.test.js}`
+- `web/{index.html,css/estilos.css,js/logicaPwa.js,js/app.js}`
+- `docs/{CONNECTIONS.md,ARCHITECTURE.md,bitacora.md}`
+Cómo probarlo:
+- `cd backend-django && .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test && npm run lint`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+---
 Fecha: 2026-11-20
 Tarea: Acceso rápido de demostración (1 clic en login solo en demo local)
 Rama: feat/demo-acceso-rapido
@@ -2166,7 +2216,7 @@ Fecha: 2026-11-20
 Tarea: T12 — Correcciones post-auditoría de Tanda 2/3 y accesibilidad pre-video (T11)
 Rama: fix/post-auditoria-tanda2 (base `test/e2e-flujo-demo`)
 Qué se hizo y por qué:
-- **Seguridad y robustez de `scripts/ensayo_demo.py` y `scripts/ensayo_demo.sh` (A.4 + revisión Claude):**
+- **Seguridad y robustez de `scripts/ensayo_demo.py` y `scripts/ensayo_demo.sh` (A.4 + revisión):**
   - Guarda obligatoria contra `backend-django/db.sqlite3`: sin `DJANGO_URL` y `NODE_URL` explícitas (salvo flag `--confirmo-base-real`), el script rechaza ejecutar e indica qué variables o flag pasar; `scripts/ensayo_demo.sh` reenvía `"$@"`.
   - `correr_paso` captura `(KeyError, AttributeError, TypeError, ValueError)` ante JSON con forma inesperada y lo reporta como fallo controlado del paso.
   - Limpieza ante falla intermedia: si falla Paso 4 o Paso 5 luego de crear `venta_temp`, intenta anularla en limpieza y evita cerrar el turno si quedó una venta huérfana o falló el cobro.
@@ -2213,16 +2263,156 @@ Cómo probarlo:
 - `node --check web/js/app.js && node --check web/js/logicaPwa.js && node --check web/js/carta.js && node --check web/sw.js`
 ---
 
-## 20/11 — CSP de la web: Google Fonts y hosts de Render (Claude)
+## 20/11 — CSP de la web: Google Fonts y hosts de Render
 - **Qué:** la CSP que se agregó en T12 a `web/nginx.conf` y `vercel.json` bloqueaba la hoja de Google Fonts (`style-src` sin `fonts.googleapis.com`, sin `font-src` para `fonts.gstatic.com`) y la web caía a Times New Roman. La de Node (`backend-node/app.js`) tenía lo mismo desde antes, y su `connect-src` no incluía los hosts de Render (la web abierta desde `/app` del Node publicado no podía hablar con Django).
 - **Cambio:** las tres CSP permiten `https://fonts.googleapis.com` (estilos) y `https://fonts.gstatic.com` (fuentes), y comparten `connect-src` (Render + localhost). nginx y Vercel quedan idénticas.
 - **Test:** `backend-node/tests/integration/cspConsistencia.integration.test.js` lee `vercel.json`, `web/nginx.conf` y la cabecera real de Node, y verifica fuentes, mapa, `script-src 'self'`, sin comodines e iguales entre sí.
-- **Cómo probarlo:** `npm test` en `backend-node`. A mano: servir `web/` bajo `/app/` con la CSP de nginx y comprobar en la consola del navegador que `getComputedStyle(document.body).fontFamily` empieza con "Plus Jakarta Sans" (verificado por Claude).
+- **Cómo probarlo:** `npm test` en `backend-node`. A mano: servir `web/` bajo `/app/` con la CSP de nginx y comprobar en la consola del navegador que `getComputedStyle(document.body).fontFamily` empieza con "Plus Jakarta Sans" (verificado).
 
-## 20/11 — Ensayo de la demo sin romper el turno del video + botones de Equipo (Claude)
+## 20/11 — Ensayo de la demo sin romper el turno del video + botones de Equipo
 - **Problema encontrado al ensayar sobre una copia de la base:** `scripts/ensayo_demo.py` reutilizaba el turno abierto que deja `seed_demo --video` (el que se prepara para grabar) y lo cerraba al final con un faltante. El historial de Reportes quedaba con un cierre de caja que no se quería mostrar.
 - **Cambio:** el ensayo solo cierra los turnos que abrió él. Si el turno ya estaba abierto, el paso 6 se informa como ✅ "No se cerró el turno #N porque ya estaba abierto antes del ensayo" (queda con 1 venta de prueba y 1 anulada). El test de doble corrida verifica que el turno del video sigue ABIERTO y, para cubrir el arqueo, lo cierra a mano antes de la segunda corrida.
 - **Igual conviene no correr el ensayo sobre la base con la que se graba:** usarlo en una copia (servidores en otros puertos o una copia de `db.sqlite3`).
 - **Antes de `seed_demo --video` en la base local:** hay que cerrar el Turno #1 de cajero_demo (abierto desde el 16/11). El comando se niega a correr mientras haya un turno viejo abierto, y lo explica.
 - **Equipo:** los botones de cada tarjeta ("Permisos", "Dar de baja", "Reactivar") ahora tienen el mismo ancho y no se parten en varios renglones.
-- **Verificado por Claude** sobre una copia de la base (Django 8000 + Node 3000 con Mongo `sapori_ensayo`): `seed_demo --video` dos veces (idempotente), ensayo 8/8 dos veces, el turno del video sigue abierto, y sin URLs el ensayo se niega a correr.
+- **Verificado** sobre una copia de la base (Django 8000 + Node 3000 con Mongo `sapori_ensayo`): `seed_demo --video` dos veces (idempotente), ensayo 8/8 dos veces, el turno del video sigue abierto, y sin URLs el ensayo se niega a correr.
+
+
+
+Fecha: 2026-11-21
+Tarea: Dirección real del local en el ticket y en la carta pública
+Rama: fix/direccion-real-local
+Qué se hizo y por qué:
+- Evilkitty pasó la ubicación real del local (Google Maps: "Sapori Café, Mariano I. Loza 475, Goya, Corrientes") para que figure en el ticket, la carta y cualquier lugar con dirección. Coordenadas del número 475 tomadas de OpenStreetMap (Nominatim): -29.1437, -59.264.
+- Ticket (`web/index.html`): "Mariano I. Loza 475 · Goya, Corrientes". Se sacó la línea con un CUIT inventado y "IVA Responsable Inscripto", porque no son datos reales del local.
+- Carta pública (`web/js/config.js`): dirección y coordenadas del mapa.
+- Test de `renderizarUbicacionCarta` actualizado (lee la configuración real).
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint` (230 tests).
+- Abrir `/app/carta.html`: la sección de ubicación muestra la dirección nueva y el mapa centrado en Goya.
+---
+
+Fecha: 2026-11-21
+Tarea: F2 — HU8 tablero en vivo de ventas y anulaciones
+Rama: feat/hu8-ventas-en-vivo
+Qué se hizo y por qué:
+- **Notificación interna Django -> Node (`backend-django/apps/comun/notificaciones_node.py`, `apps/ventas/services.py`):** al registrar una venta nueva (no en reintentos idempotentes por `id_operacion`) o al anular una venta, luego de confirmar la transacción atómica en PostgreSQL, Django envía un `POST` a `{NODE_BASE_URL}/api/internos/eventos` con cabecera `X-Clave-Interna` (`EVENTOS_INTERNOS_CLAVE` desde `.env`, nunca en código) y `X-Request-ID`. Ante falla, timeout o falta de configuración de Node, registra un aviso y la operación local igual se guarda.
+- **Endpoint interno y filtrado por salas en Node (`backend-node/`):** se agregó `POST /api/internos/eventos` protegido con `verificarClaveInterna` (`crypto.timingSafeEqual` sobre SHA-256) y validaciones con `express-validator` en formato único de error. En `src/sockets/index.js` y `src/sockets/emitter.js` se unificó la emisión de `venta.registrada` y `venta.anulada` filtrando estrictamente por salas: solo `permiso:recetas.ver_costos` recibe costos (`costoTotalSnapshot`, `costoUnitarioSnapshot`), solo `permiso:caja.ver_efectivo_esperado` recibe montos y medio de pago (`total`, `medio_pago`, `metodoPago`, `precioUnitario`), y `gananciaBruta` requiere ambos permisos.
+- **Tablero en vivo PWA (`web/js/logicaPwa.js`, `web/js/app.js`):** se sumó el manejo de `venta.anulada` en `formatearEventoTiempoReal` y el listener Socket.IO en `app.js` para actualizar el feed, el contador y refrescar finanzas/turno sin recargar.
+- **Documentación y entorno:** actualización de `.env.example`, `docker-compose.yml`, `render.yaml`, `docs/CONNECTIONS.md` y `docs/ARCHITECTURE.md`.
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+Fecha: 2026-11-21
+Tarea: F3 — HU14 condición fiscal del local y tratamiento de IVA
+Rama: feat/hu14-condicion-fiscal
+Qué se hizo y por qué:
+- **Modelos, migración y servicios en Django (`backend-django/apps/insumos/`):** se agregaron `ConfiguracionLocal` (`NO_DECLARADA`, `RESPONSABLE_INSCRIPTO`, `MONOTRIBUTISTA`, `EXENTO`) e `HistorialCondicionFiscal` (solo migración `0002_configuracionlocal_historialcondicionfiscal.py`, sin aplicar sobre `db.sqlite3`). En `services.py`, `registrar_compra_y_actualizar_costo` y `registrar_lote_compras_importacion` toman la condición vigente: `RESPONSABLE_INSCRIPTO` calcula el costo unitario sin IVA, mientras `MONOTRIBUTISTA`, `EXENTO` y `NO_DECLARADA` (criterio por defecto) incluyen IVA y adjuntan aviso si falta declarar (CA14.1, CA14.2). Al cambiar la condición fiscal (`actualizar_condicion_fiscal`), se recalculan los insumos desde su última compra, se actualizan las recetas afectadas en lote, se guarda `HistorialCondicionFiscal` y se notifica a Node por `POST /api/internos/eventos` (`costos.recalculados`) tras confirmar la transacción (CA14.3).
+- **API y permisos (`backend-django/apps/insumos/views.py`, `urls.py`, `serializers.py`):** endpoints `GET/PUT/PATCH /api/configuracion-fiscal/` y `GET /api/configuracion-fiscal/historial/` exclusivos del Dueño (`EsDuenio`), `GET /api/configuracion-fiscal/estado/` de solo lectura para personal con permisos de insumos/compras/costos, y campos `costear_con_iva` y `aviso_fiscal` en compras y recálculo. Tests unitarios, de API y negativos (`403` para Encargado y Cajero).
+- **Historial documental y tiempo real (`backend-node/src/routes/eventosInternos.routes.js`, `src/services/eventosInternos.service.js`):** soporte para evento interno `costos.recalculados` que registra `HistorialPrecio` + `SnapshotCosteo` en MongoDB (si está conectado) y emite `costo.actualizado` por Socket.IO a `recetas.ver_costos`.
+- **Pantalla para el dueño y avisos (`web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`):** sección "Configuración del local" visible solo para el Dueño con selector de condición fiscal e historial, banners de aviso cuando falta declarar en Compras y Recetas (con acceso directo para el Dueño) y controles de `iva_incluido` / `alicuota` en compra manual.
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
+- `.venv/bin/ruff check backend-django/`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+---
+
+Fecha: 2026-11-21
+Tarea: F4 — HU9 precio sugerido con margen objetivo y competencia
+Rama: feat/hu9-precio-sugerido
+Qué se hizo y por qué:
+- **Modelos y migración en Django (`backend-django/apps/recetas/models.py`):** se sumaron `margen_objetivo` (por defecto `0.3000`, 30%) y `redondeo_multiplo` (`$50` o `$100`, por defecto `50`) a `Producto`, y se creó el modelo `PrecioCompetencia` para cargar precios de referencia de competidores por producto. Se generó la migración `0003_producto_margen_objetivo_producto_redondeo_multiplo_and_more.py` sin aplicarla sobre `db.sqlite3`.
+- **Servicio de cálculo (`backend-django/apps/recetas/services.py`):** se implementaron `redondear_a_multiplo`, `calcular_precio_sugerido` y `obtener_sugerencia_precio_producto`. Calcula `costo ÷ (1 − margen_objetivo)` redondeado al múltiplo de `$50` o `$100` configurado (CA9.1), acota el resultado entre el mínimo y el promedio de los precios de competencia cargados cuando existen (CA9.2) y nunca modifica `precio_venta` automáticamente. Se mantuvo `listar_productos_con_costos_optimizado` con el parámetro opcional `incluir_competencia=False` para conservar las 2 consultas SQL de T3.4 y evitar N+1 en `ProductoViewSet`.
+- **API, permisos y pruebas (`backend-django/apps/recetas/` y `apps/comun/tests/api/test_api_permisos_negativos.py`):** se agregó `GET /api/productos/:id/precio-sugerido/` (permiso `recetas.ver_costos`), CRUD `/api/precios-competencia/` y los campos `precio_sugerido` y `sugerencia_precio` en `ProductoSerializer` (ocultos para quienes no tienen `recetas.ver_costos`, como Cajero). Se agregaron tests unitarios, de API y negativos (`403`).
+- **Recetas en PWA (`web/index.html`, `web/css/estilos.css`, `web/js/logicaPwa.js`, `web/js/app.js`):** nueva columna "Precio sugerido" en la tabla de Recetas (enmascarada con candado para Cajero), panel de margen objetivo, redondeo `$50`/`$100`, previsualización en vivo (`calcularPrecioSugeridoLocal`) y carga/eliminación manual de precios de competencia en el detalle de la receta, más botón opcional "Usar precio sugerido" en el modal de edición manual de precio. Tests unitarios y de integración en `backend-node/tests/`.
+Cómo probarlo:
+- `cd backend-node && npm test && npm run lint`
+- `cd backend-django && DEMO_ACCESO_RAPIDO=false .venv/bin/python -m pytest -q`
+- `node --check web/js/app.js && node --check web/js/logicaPwa.js`
+Fecha: 2026-11-21
+Tarea: Cierre de documentación integral de entrega final, auditoría de los 8 ejes de evaluación docente y configuración de reportes de cobertura
+Rama: feature/ajustes-evaluacion
+Qué se hizo y por qué:
+- Se elaboró el conjunto completo de documentación técnica y de defensa exigido para la entrega final dentro de `docs/`:
+  - `docs/ESTRUCTURA_Y_MANUAL_MODULOS.md`: guía de instalación desde cero, orden estricto de inicio de los servicios y explicación archivo por archivo de las tres ramas/módulos del sistema.
+  - `docs/REVISION_TECNICA_BACKEND_NODE.md`: análisis técnico de `backend-node` cubriendo arquitectura de capas, responsabilidades de controladores, tabla de endpoints REST, validación JWT RS256, permisos, WebSockets (`Socket.IO`) y manejo de secretos.
+  - `docs/capturas/`: capturas de pantalla reales del flujo del frontend (caja, importación con IA y tablero en vivo).
+  - `docs/AUDITORIA_PROYECTO.md`: informe de auditoría integral verificando requerimientos funcionales, arquitectura, seguridad, resiliencia y calidad.
+  - La guía de defensa oral y las notas internas de correcciones y novedades se conservan fuera del repositorio.
+- Se crearon los archivos `README.md` individuales por módulo (`backend-django/README.md`, `backend-node/README.md` y `ai-service/README.md`).
+- Se incorporó la medición de cobertura de código (`pytest-cov>=5.0.0` en `backend-django/requirements.txt` y `ai-service/requirements.txt`, script `test:coverage` en `backend-node/package.json` y banderas `--cov` en `.github/workflows/ci.yml`).
+- `web/dev-server.js` (servidor estático auxiliar para pruebas locales) quedó fuera de la integración: se publicaría como archivo estático y en local Node ya sirve la PWA en `http://localhost:3000/app/`.
+Archivos tocados:
+- `backend-django/README.md`, `backend-node/README.md`, `ai-service/README.md`
+- `backend-django/requirements.txt`, `ai-service/requirements.txt`, `backend-node/package.json`, `.github/workflows/ci.yml`
+- `docs/ESTRUCTURA_Y_MANUAL_MODULOS.md`, `docs/REVISION_TECNICA_BACKEND_NODE.md`, `docs/AUDITORIA_PROYECTO.md`, `docs/capturas/*`
+- `docs/bitacora.md`
+Cómo probarlo:
+- `cd backend-django && USE_SQLITE=True pytest --cov=apps --cov-report=term-missing`
+- `cd backend-node && npm run test:coverage && npm run lint`
+- `cd ai-service && pytest --cov=app --cov-report=term-missing`
+---
+
+## 21/11 — Integración y auditoría de la cadena F2→F6
+Rama: `integracion/entrega-final` (cadena HU8 → HU14 → HU9 → HU12 → docs + commit `ef0f6a5` de `feature/ajustes-evaluacion`).
+Qué se hizo y por qué:
+- **Integración:** se aplicó el commit del compañero sobre la cadena. En los README de módulo y en `REVISION_TECNICA_BACKEND_NODE.md` se conservaron las versiones de la cadena, que ya cubren HU8, HU9, HU12 y HU14, y se sumaron los comandos de cobertura.
+- **Guía de defensa fuera del repo:** `docs/GUIA_DEFENSA.md` se quitó de todos los commits sin publicar y se agregó al `.gitignore` junto con las notas internas, porque el repositorio es público.
+- **Tests frágiles:** `test_api_demo_acceso` leía `DEMO_ACCESO_RAPIDO` del `.env` local y fallaba en la PC de la demo; ahora fuerza la configuración. El test de importación con pdf.js real superaba los 5 s con cobertura y suites en paralelo; ahora tiene 20 s.
+- **Límite de movimientos de stock:** `GET /api/insumos/movimientos-stock/?limite=` no tenía tope; ahora devuelve como máximo 500 filas (test nuevo).
+- **Auditoría sin hallazgos bloqueantes:** permisos de las vistas nuevas (`EsDuenio` en condición fiscal, `recetas.*` en precios de competencia), clave interna Django→Node comparada en tiempo constante, eventos de venta filtrados por sala sin filtrar costos ni montos al cajero, descuento y devolución de stock con `select_for_update()` en orden de id e idempotentes, `makemigrations --check` sin cambios pendientes.
+- **Riesgo conocido para el deploy:** las notificaciones a Node son síncronas después del commit (timeout de 2 s por llamada). Si Node está dormido, cada cobro puede tardar unos segundos más, aunque la venta se guarda igual.
+Resultados verificados: Django 571 pruebas (96 % de cobertura, con `USE_SQLITE=True`), Node 244 (88,5 % de líneas), AI Service 87 (92 %). Ruff y ESLint sin errores.
+Cómo probarlo:
+- `cd backend-django && USE_SQLITE=True .venv/bin/python -m pytest -q --cov=apps`
+- `cd backend-node && npm run test:coverage && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q --cov=app`
+
+---
+
+## 21/11 — Prueba en el navegador, arreglos del frontend y avisos a Node en segundo plano
+Rama: `integracion/entrega-final`. Base local respaldada (`~/orq/backups/db.sqlite3.20261121-220907.antes-integracion`) y migrada (insumos 0002 y 0003, recetas 0003).
+Qué se probó en el navegador (dueño, encargado y cajero demo):
+- Anduvo: login demo, apertura de turno propio, cobro con ticket (dirección real), venta y anulación en vivo en el tablero del encargado (HU8), condición fiscal con recálculo de 19 insumos y 12 recetas e historial (HU14), precio sugerido, vista previa del margen, competencia con tope al mínimo y al promedio (HU9), ajuste manual, mínimo y alerta de stock bajo en vivo (HU12), importación con IA (Groq) y carta pública. El cajero solo ve Punto de Venta y Caja; la API le devuelve los costos en `null` y 403 en insumos, competencia, finanzas y condición fiscal.
+- No hay botón para anular ventas en la web: la anulación existe solo como `POST /api/ventas/{id}/anular/` (se probó por API).
+Arreglos y por qué:
+- **Turno ajeno en Caja:** el dueño y el encargado tomaban como propio el primer turno ABIERTO de la lista (el del cajero) y podían cobrar o cerrar caja sobre él. `seleccionarTurnoPropio` (en `logicaPwa.js`, con tests) solo considera turnos del usuario; el caché de turno de otro usuario se ignora.
+- **Hora en 24 h:** Chrome formatea `es-AR` con reloj de 12 h sin "a. m./p. m." (un ticket de las 22:16 decía 10:16). Se fuerza `hourCycle: 'h23'` en ticket, caja, auditoría, tablero y carta.
+- **Tablero en vivo:** montos con formato de moneda (antes "$2200.0000") y cantidades de stock legibles en el toast y el tablero (antes "492.0000 g").
+- **Reportes del encargado:** sin `reportes.ver_financieros` ya no se piden ganancia diaria ni punto de equilibrio (daban 403 y el aviso "No se pudieron cargar algunas métricas" en cada venta en vivo).
+- **Avisos a Node en segundo plano:** `notificar_evento_node` arma la petición en el hilo del request (el correlation id es un `ContextVar` y no pasa a otros hilos) y la encola en un `ThreadPoolExecutor` de un solo hilo, que conserva el orden (venta → stock bajo). Así un cobro no espera el timeout de 2 s por aviso si Node está dormido en Render. Se descartaron: agrupar avisos (no evita la espera), bajar el timeout (sigue demorando y pierde avisos) y un ping para mantener Node despierto (en Render gratis las 750 horas mensuales se comparten entre los tres servicios). Nueva variable `NODE_EVENTOS_EN_SEGUNDO_PLANO` (por defecto `True`); `conftest.py` la apaga para que los tests existentes sigan verificando el envío de forma síncrona, y `test_unit_notificaciones_node_segundo_plano.py` prueba el modo real (no bloquea, orden, correlation id, errores y cobro sin demora).
+Archivos tocados: `web/js/app.js`, `web/js/logicaPwa.js`, `web/js/carta.js`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-django/apps/comun/notificaciones_node.py`, `backend-django/apps/comun/tests/unit/test_unit_notificaciones_node_segundo_plano.py`, `backend-django/config/settings/base.py`, `backend-django/conftest.py`, `.env.example`, `docs/bitacora.md`.
+Resultados verificados: Django 578 pruebas (`USE_SQLITE=True`), Node 247, AI Service 87; ruff, `npm run lint` y `node --check` de la web sin errores.
+Pendiente antes del deploy: el cliente Socket.IO se carga desde `/socket.io/socket.io.js`, que en Vercel no existe (lo sirve Node), así que el tablero en vivo no conectaría; además `seed_demo` define `stock_minimo` pero no `stock_actual`, por lo que tras sembrar los insumos con mínimo aparecerían en "Stock bajo".
+Cómo probarlo:
+- `cd backend-django && USE_SQLITE=True .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test -- --silent`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+
+## 21/11 — Anular ventas desde la web, stock inicial de demo, Socket.IO en Vercel y revisión del deploy
+Rama: `integracion/entrega-final`. Backup previo a la prueba en el navegador: `~/orq/backups/db.sqlite3.20261121-225235.antes-prueba-anular`.
+Qué se hizo y por qué:
+- **Anular ventas desde Reportes:** columna "Acción" en la tabla de trazabilidad con botón "Anular" solo para ventas EMITIDA de turnos abiertos y usuarios con `ventas.anular_ticket`. Abre un modal que pide motivo (3 a 255 caracteres), llama a `POST /api/ventas/{id}/anular/`, muestra el error de la API con `extraerMensajeErrorApi` y refresca reportes y tarjetas (si el backend responde 400, por ejemplo porque el turno se cerró, también refresca para que el botón desaparezca). Para saber si el turno sigue abierto, `VentaSerializer` suma el campo de solo lectura `turno_estado`. La lógica pura (`esVentaAnulable`, `puedeAnularVenta`, `registroMuestraBotonAnular`, `validarMotivoAnulacion`) está en `logicaPwa.js` con tests. El backend sigue validando permiso y turno: el botón solo evita ofrecer algo que va a fallar.
+- **Stock inicial en `seed_demo`:** en una base nueva las compras de muestra ya cargaban stock; el problema era en bases creadas antes de HU12 (compras viejas, stock en 0 y mínimo en 0, como la local). Ahora el mínimo se completa si está en 0 aunque haya compras, y si el insumo nunca tuvo un INGRESO se carga un stock inicial inventado como ajuste manual ("Stock inicial de demo (seed_demo)", queda en la trazabilidad). Almendras (600/1000 ml) y vasos (20/30 un) quedan bajos a propósito para mostrar la alerta. No se toca un insumo que ya tuvo un ingreso, y correrlo dos veces no suma nada. Probado sobre una copia de la base local: `--video` frena por el Turno #1 abierto (esperado); con el turno cerrado en la copia, quedan bajos solo vasos y almendras.
+- **Socket.IO en Vercel:** `index.html` cargaba `/socket.io/socket.io.js`, que solo existe si Node sirve la página. Se copió el cliente 4.8.4 (misma versión que el servidor) a `web/vendor/socket.io/` con su SHA-256 en el README; el Service Worker lo cachea (caché `v5`) y `vendorSocketIo.unit.test.js` falla si la versión o el hash no coinciden.
+- **Revisión del deploy:**
+  - `render.yaml` no decía `plan`: según la doc de Render, así crea instancias pagas (`0.5c-512mb`). Se agregó `plan: free` a los tres servicios.
+  - Las claves JWT no están en el repo; sin `DJANGO_JWT_*` Django generaba un par efímero por worker de gunicorn (login intermitente y Node sin poder validar). Con `DEBUG` apagado ahora no arranca (`ImproperlyConfigured`), y los PEM pegados en una línea con `\n` se normalizan (Node ya lo hacía).
+  - `ALLOWED_HOSTS` suma solo `RENDER_EXTERNAL_HOSTNAME`.
+  - `index.html` no cargaba `config.js`; las URLs de Render quedan en `config.js` (`urlsNube`) y `app.js`/`carta.js` las leen de ahí. La CSP sigue con los nombres fijos en `vercel.json`, `web/nginx.conf` y `backend-node/app.js`.
+  - `vercel.json` no tenía rewrite para `/carta.html`: el QR generado desde la raíz del sitio daba 404.
+  - `docs/despliegue.md` suma la sección 8 (Render + Vercel): límites del plan gratis, claves JWT, variables por servicio, CORS, seed desde la PC (Render gratis no tiene consola), QR y verificación.
+  - `DEMO_ACCESO_RAPIDO` sigue fuera de `render.yaml` (en la nube queda apagado): decisión del equipo.
+Prueba en el navegador integrado (dueño demo): se abrió el Turno #7 propio, se cobró el ticket #65 (Café Espresso, $ 2.200), apareció "Anular" en su fila y en las 18 ventas del Turno #1 de `cajero_demo` (abierto), no en las 34 de turnos cerrados. Con motivo vacío frena la validación del navegador; con "ab" aparece "Escribí el motivo de la anulación". Con motivo válido la venta quedó ANULADA en la base, la fila pasó a "Venta · Anulada", el botón desapareció y la facturación bajó de $ 618.000 (64 tickets) a $ 615.800 (63). Después se cerró el Turno #7 desde Caja; el Turno #1 no se tocó. El tablero muestra "Conectado" con el cliente de `vendor/`.
+Sin verificar: el registro del Service Worker falla en el navegador integrado ("unknown error when fetching the script") aunque `sw.js` responde 200 y tiene la sintaxis bien; hay que mirarlo en Chrome (DevTools → Application).
+Archivos tocados: `backend-django/apps/ventas/serializers.py`, `backend-django/apps/ventas/tests/api/test_api_anulacion_ventas.py`, `backend-django/apps/insumos/management/commands/seed_demo.py`, `backend-django/apps/insumos/tests/unit/test_unit_seed_demo.py`, `backend-django/apps/usuarios/claves.py`, `backend-django/apps/usuarios/tests/unit/test_unit_jwt_rs256.py`, `backend-django/config/settings/base.py`, `web/index.html`, `web/js/app.js`, `web/js/logicaPwa.js`, `web/js/carta.js`, `web/js/config.js`, `web/sw.js`, `web/vendor/socket.io/`, `web/README.md`, `backend-node/tests/unit/logicaPwa.unit.test.js`, `backend-node/tests/unit/vendorSocketIo.unit.test.js`, `backend-node/tests/integration/clientePwa.integration.test.js`, `render.yaml`, `vercel.json`, `docs/despliegue.md`, `docs/CONNECTIONS.md`, `docs/bitacora.md`.
+Resultados verificados: Django 584 pruebas (`USE_SQLITE=True`), Node 254 (28 suites), AI Service 87; `npm run lint` y ruff (`check` y `format --check`) sin errores.
+Cómo probarlo:
+- `cd backend-django && USE_SQLITE=True .venv/bin/python -m pytest -q`
+- `cd backend-node && npm test -- --silent && npm run lint`
+- `cd ai-service && .venv/bin/python -m pytest -q`
+- En la web: abrir un turno propio, cobrar, ir a Reportes y anular la venta con un motivo.

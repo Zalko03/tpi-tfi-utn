@@ -250,6 +250,39 @@ class TestApiPermisosNegativosSistematicos:
         res = client.post("/api/recetas-items/", payload, format="json")
         self._verificar_403(res)
 
+    def test_productos_precio_sugerido_rechaza_cajero_sin_recetas_ver_costos(
+        self, client, cajero, producto
+    ):
+        """Cajero recibe 403 al consultar /api/productos/:id/precio-sugerido/."""
+        client.force_authenticate(user=cajero)
+        res = client.get(f"/api/productos/{producto.id}/precio-sugerido/")
+        self._verificar_403(res)
+
+    def test_precios_competencia_rechaza_cajero_y_encargado_en_borrado(
+        self, client, cajero, encargado, producto
+    ):
+        """Cajero recibe 403 en lectura/alta y Encargado recibe 403 al eliminar referencias."""
+        from apps.recetas.models import PrecioCompetencia
+
+        ref = PrecioCompetencia.objects.create(
+            producto=producto,
+            nombre_competidor="Competidor Test",
+            precio=Decimal("3100.00"),
+        )
+
+        client.force_authenticate(user=cajero)
+        self._verificar_403(client.get("/api/precios-competencia/"))
+        self._verificar_403(
+            client.post(
+                "/api/precios-competencia/",
+                {"producto": producto.id, "precio": "3200.00"},
+                format="json",
+            )
+        )
+
+        client.force_authenticate(user=encargado)
+        self._verificar_403(client.delete(f"/api/precios-competencia/{ref.id}/"))
+
     # ==========================================
     # MÓDULO VENTAS
     # ==========================================
@@ -651,3 +684,31 @@ class TestApiPermisosNegativosSistematicos:
         detalle = res_detalle.json()
         assert detalle["ventas_efectivo_total"] == "3200.00"
         assert detalle["efectivo_esperado"] is not None
+
+    # ==========================================
+    # CONFIGURACIÓN FISCAL DEL LOCAL (HU14)
+    # ==========================================
+
+    def test_configuracion_fiscal_rechaza_encargado_y_cajero(self, client, encargado, cajero):
+        """Solo el Dueño puede consultar o modificar /api/configuracion-fiscal/ y su historial."""
+        for usuario in (encargado, cajero):
+            client.force_authenticate(user=usuario)
+            self._verificar_403(client.get("/api/configuracion-fiscal/"))
+            self._verificar_403(
+                client.put(
+                    "/api/configuracion-fiscal/",
+                    {"condicion_fiscal": "RESPONSABLE_INSCRIPTO"},
+                    format="json",
+                )
+            )
+            self._verificar_403(
+                client.patch(
+                    "/api/configuracion-fiscal/",
+                    {"condicion_fiscal": "MONOTRIBUTISTA"},
+                    format="json",
+                )
+            )
+            self._verificar_403(client.get("/api/configuracion-fiscal/historial/"))
+
+        client.force_authenticate(user=cajero)
+        self._verificar_403(client.get("/api/configuracion-fiscal/estado/"))

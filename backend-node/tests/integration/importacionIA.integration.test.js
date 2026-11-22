@@ -703,7 +703,7 @@ describe('Integración: Importaciones con IA y Aprobación Humana (T3.2 y T3.3)'
             'Azucar Organica',
             'Cacao Amargo',
         ]);
-    });
+    }, 20000); // pdf.js real: con cobertura y carga en CI supera los 5 s por defecto
 
     it('acepta POST /api/importaciones con imagen válida (>100KB), no guarda la imagen en MongoDB y rechaza entradas inválidas', async () => {
         const resSinDatos = await request(app)

@@ -29,6 +29,14 @@ export const djangoBaseUrl = process.env.DJANGO_BASE_URL || 'http://localhost:80
 export const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8001';
 
 /**
+ * Retorna la clave compartida para autenticar notificaciones internas desde Django.
+ */
+export const obtenerClaveInternaEventos = () => {
+    const clave = process.env.EVENTOS_INTERNOS_CLAVE;
+    return typeof clave === 'string' ? clave.trim() : '';
+};
+
+/**
  * Obtiene la lista blanca de orígenes permitidos para CORS (docs/seguridad.md T2.5).
  * Se rechaza el uso de comodines '*' para salvaguardar credenciales y tokens.
  */

@@ -385,7 +385,13 @@ class TestReglasArqueoCiegoYCostosUnitario:
             costo_total_calculado=Decimal("2181.3333"),
             ganancia_bruta=Decimal("1818.6667"),
             margen_bruto=Decimal("45.47"),
+            margen_objetivo=Decimal("0.3000"),
+            redondeo_multiplo=50,
             receta_items=MagicMock(all=lambda: []),
+            precios_competencia=MagicMock(
+                all=lambda: [],
+                order_by=lambda *args, **kwargs: [],
+            ),
             estado_activo=True,
             creado_en="2026-10-28T10:00:00Z",
             actualizado_en="2026-10-28T10:00:00Z",
@@ -399,6 +405,11 @@ class TestReglasArqueoCiegoYCostosUnitario:
         assert data["costo_total_calculado"] is None
         assert data["ganancia_bruta"] is None
         assert data["margen_bruto"] is None
+        assert data["margen_objetivo"] is None
+        assert data["redondeo_multiplo"] is None
+        assert data["precio_sugerido"] is None
+        assert data["sugerencia_precio"] is None
+        assert data["precios_competencia"] == []
         assert data["precio_venta"] == "4000.00"
 
     def test_duenio_ve_costos_completos_en_producto_serializer(self):
@@ -420,7 +431,13 @@ class TestReglasArqueoCiegoYCostosUnitario:
             costo_total_calculado=Decimal("2181.3333"),
             ganancia_bruta=Decimal("1818.6667"),
             margen_bruto=Decimal("0.4547"),
+            margen_objetivo=Decimal("0.3000"),
+            redondeo_multiplo=50,
             receta_items=MagicMock(all=lambda: []),
+            precios_competencia=MagicMock(
+                all=lambda: [],
+                order_by=lambda *args, **kwargs: [],
+            ),
             estado_activo=True,
             creado_en="2026-10-28T10:00:00Z",
             actualizado_en="2026-10-28T10:00:00Z",
@@ -434,3 +451,4 @@ class TestReglasArqueoCiegoYCostosUnitario:
         assert data["costo_total_calculado"] == "2181.3333"
         assert data["ganancia_bruta"] == "1818.6667"
         assert data["margen_bruto"] == "0.4547"
+        assert data["precio_sugerido"] == "3100.00"

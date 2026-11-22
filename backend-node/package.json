@@ -11,6 +11,7 @@
         "dev": "nodemon server.js",
         "start": "node server.js",
         "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+        "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
         "lint": "eslint .",
         "format": "prettier --check ."
     },

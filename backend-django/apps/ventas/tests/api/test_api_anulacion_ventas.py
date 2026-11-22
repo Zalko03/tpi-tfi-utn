@@ -239,3 +239,24 @@ class TestApiAnulacionVentas:
         origenes = {m["origen_id"] for m in resp_movs.data["datos"]}
         assert venta_ok.id in origenes
         assert venta_baja.id not in origenes
+
+    def test_listado_informa_estado_del_turno_para_habilitar_anular(
+        self, client, cajero, duenio, producto
+    ):
+        """La web necesita turno_estado para mostrar el botón "Anular" solo en turnos abiertos."""
+        turno = TurnoCaja.objects.create(usuario=cajero, efectivo_inicial=Decimal("1000.00"))
+        venta = registrar_venta(
+            items_data=[{"producto_id": producto.id, "cantidad": 1}],
+            medio_pago="EFECTIVO",
+            turno_caja=turno,
+        )
+        client.force_authenticate(user=duenio)
+
+        resp = client.get("/api/ventas/")
+        item = next(v for v in resp.data["datos"] if v["id"] == venta.id)
+        assert item["turno_estado"] == "ABIERTO"
+
+        TurnoCaja.objects.filter(pk=turno.pk).update(estado="CERRADO")
+        resp = client.get("/api/ventas/")
+        item = next(v for v in resp.data["datos"] if v["id"] == venta.id)
+        assert item["turno_estado"] == "CERRADO"

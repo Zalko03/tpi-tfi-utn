@@ -41,12 +41,23 @@ else:
         )
 
 ALLOWED_HOSTS = []
-for _h in [*(h.strip() for h in _hosts.split(",") if h.strip()), "localhost", "127.0.0.1"]:
+# Render publica el dominio propio del servicio (ej. sapori-backend-django.onrender.com)
+# en RENDER_EXTERNAL_HOSTNAME: se suma solo para no depender de escribirlo a mano.
+_host_render = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+for _h in [
+    *(h.strip() for h in _hosts.split(",") if h.strip()),
+    *([_host_render] if _host_render else []),
+    "localhost",
+    "127.0.0.1",
+]:
     if _h not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(_h)
 
 # Par de claves criptográficas asimétricas para SimpleJWT RS256 (ADR-0001)
-JWT_PRIVATE_KEY, JWT_PUBLIC_KEY = obtener_claves_jwt(BASE_DIR)
+try:
+    JWT_PRIVATE_KEY, JWT_PUBLIC_KEY = obtener_claves_jwt(BASE_DIR, permitir_efimero=DEBUG)
+except ValueError as error_claves:
+    raise ImproperlyConfigured(str(error_claves)) from error_claves
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -223,6 +234,19 @@ else:
             "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         }
     }
+
+# Comunicación interna hacia backend-node para eventos en tiempo real (HU8)
+NODE_BASE_URL = os.environ.get("NODE_BASE_URL", "").strip().rstrip("/")
+EVENTOS_INTERNOS_CLAVE = os.environ.get("EVENTOS_INTERNOS_CLAVE", "").strip()
+try:
+    NODE_EVENTOS_TIMEOUT_SECONDS = float(os.environ.get("NODE_EVENTOS_TIMEOUT_SECONDS", "2.0"))
+except (TypeError, ValueError):
+    NODE_EVENTOS_TIMEOUT_SECONDS = 2.0
+# Los avisos a Node salen en un hilo de fondo para no demorar el cobro si Node está dormido.
+# Los tests lo apagan (conftest.py) para verificar el envío de forma síncrona.
+NODE_EVENTOS_EN_SEGUNDO_PLANO = os.environ.get(
+    "NODE_EVENTOS_EN_SEGUNDO_PLANO", "True"
+).strip().lower() in ("1", "true", "yes", "si", "sí")
 
 LANGUAGE_CODE = "es-ar"
 TIME_ZONE = "America/Argentina/Buenos_Aires"

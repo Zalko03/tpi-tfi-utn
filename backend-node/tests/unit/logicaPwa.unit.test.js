@@ -6,6 +6,7 @@ import vm from 'vm';
 import { jest } from '@jest/globals';
 import {
     accionesCajaVisiblesParaUsuario,
+    seleccionarTurnoPropio,
     accionesEmpleadoVisiblesParaUsuario,
     accionesEquipoVisiblesParaUsuario,
     agregarProductoAlCarrito,
@@ -13,11 +14,13 @@ import {
     calcularCostosExtraReceta,
     calcularDimensionesReescaladoImagen,
     calcularFactorConversionReceta,
+    calcularPrecioSugeridoLocal,
     calcularResumenCarrito,
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
     construirUrlsMapaOpenStreetMap,
     consultarDisponibilidadDemoApi,
+    describirAcotamientoSugerido,
     fechaIsoATexto,
     fechaTextoAIso,
     formatearEntradaFecha,
@@ -37,9 +40,11 @@ import {
     esCargaVigente,
     escaparHtml,
     estaFechaEnRango,
+    evaluarAvisoCondicionFiscal,
     evaluarCsvPlantillaDirecta,
     evaluarEstadoImportacionIA,
     evaluarEstadoResumenIA,
+    evaluarEstadoStockInsumo,
     evaluarTextoComoCsvDirecto,
     evaluarTextoExtraidoPdf,
     extraerBase64DeDataUrl,
@@ -50,12 +55,15 @@ import {
     extraerTextoDePdfBuffer,
     filtrarRegistrosPorRangoFechas,
     formatearCentavosADecimal,
+    formatearCantidadStock,
+    formatearEtiquetaCondicionFiscal,
     formatearEventoTiempoReal,
     formatearFechaLocalInput,
     generarIdOperacion,
     generarMatrizQr,
     generarSvgQrCarta,
     GRUPOS_PERMISOS_EQUIPO,
+    redondearAMultiplo,
     guardarPreferenciaSonidosSilenciados,
     LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
     leerPreferenciaSonidosSilenciados,
@@ -69,6 +77,7 @@ import {
     obtenerContenidoPlantillaCsv,
     obtenerPermisosInicialesEmpleado,
     obtenerPlantillaRol,
+    obtenerResumenStockBajo,
     obtenerSonidoParaEvento,
     obtenerUnidadesCompatiblesReceta,
     obtenerVentasOffline,
@@ -78,6 +87,7 @@ import {
     PERMISOS_POR_SECCION,
     prepararCatalogoParaCache,
     procesarColaVentasOffline,
+    puedeConfigurarLocal,
     puedeGestionarQrCarta,
     reconstruirLineasDeItemsPdf,
     renderizarUbicacionCarta,
@@ -89,6 +99,10 @@ import {
     SONIDOS,
     TAMANO_MAXIMO_ARCHIVO_IMPORTACION_BYTES,
     unificarTrazabilidadRegistros,
+    esVentaAnulable,
+    puedeAnularVenta,
+    registroMuestraBotonAnular,
+    validarMotivoAnulacion,
     usuarioTienePermiso,
     validarArchivoImagenImportacion,
     validarArchivoImportacionGeneral,
@@ -165,6 +179,19 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             });
             expect(evVenta.nivel).toBe('exito');
             expect(evVenta.titulo).toContain('#77');
+            // Montos con formato de moneda (no "$5400.00" crudo del backend).
+            expect(evVenta.detalle).toContain('Total $ 5.400,00');
+
+            const evVentaAnulada = formatearEventoTiempoReal('venta.anulada', {
+                ventaId: 77,
+                turnoId: 4,
+                motivoAnulacion: 'Ticket duplicado',
+            });
+            expect(evVentaAnulada.nivel).toBe('advertencia');
+            expect(evVentaAnulada.titulo).toContain('#77');
+            expect(evVentaAnulada.titulo).toContain('anulada');
+            expect(evVentaAnulada.detalle).toContain('Ticket duplicado');
+            expect(evVentaAnulada.detalle).not.toContain('Total');
 
             const evCostoCritico = formatearEventoTiempoReal('costo.actualizado', {
                 nombre: 'Cappuccino Italiano',
@@ -176,6 +203,7 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(evCostoCritico.nivel).toBe('peligro');
             expect(evCostoCritico.alertaMargenBajo).toBe(true);
             expect(evCostoCritico.detalle).toContain('22.0%');
+            expect(evCostoCritico.detalle).toContain('$ 900,00 -> $ 1.600,00');
 
             const evStock = formatearEventoTiempoReal('stock.bajo', {
                 nombre: 'Leche Entera',
@@ -185,6 +213,7 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             });
             expect(evStock.nivel).toBe('peligro');
             expect(evStock.titulo).toContain('Leche Entera');
+            expect(evStock.detalle).toBe('Disponible: 1.200 ml (mínimo 5.000 ml)');
 
             const evImp = formatearEventoTiempoReal('importacion.lista', {
                 estado: 'LISTA',
@@ -2369,8 +2398,8 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             expect(mostrado).toBe(true);
             expect(elementos.seccion.hidden).toBe(false);
             expect(elementos.direccionEl.hidden).toBe(false);
-            expect(elementos.direccionEl.textContent).toContain('Plaza 25 de Mayo');
-            expect(elementos.direccionEl.textContent).toContain('Resistencia, Chaco');
+            expect(elementos.direccionEl.textContent).toContain('Mariano I. Loza 475');
+            expect(elementos.direccionEl.textContent).toContain('Goya, Corrientes');
             expect(elementos.iframe.src).toMatch(
                 /^https:\/\/www\.openstreetmap\.org\/export\/embed\.html\?bbox=.*&layer=mapnik&marker=/
             );
@@ -2435,7 +2464,7 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
             const requireCjs = createRequire(import.meta.url);
             const { debeIgnorarPeticionSw, NOMBRE_CACHE } = requireCjs('../../../web/sw.js');
 
-            expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v4');
+            expect(NOMBRE_CACHE).toBe('cafe-gestion-pwa-v5');
             expect(debeIgnorarPeticionSw('', 'document', 'https://sapori.local')).toBe(true);
             expect(debeIgnorarPeticionSw(null, 'document', 'https://sapori.local')).toBe(true);
             expect(debeIgnorarPeticionSw('http://[', 'document', 'https://sapori.local')).toBe(true);
@@ -2556,6 +2585,224 @@ describe('Lógica del Cliente PWA (T3.6 - Tablero, Importación IA y Caja)', () 
                     djangoUrl: 'http://localhost:8000',
                 })
             ).toBe(false);
+        });
+    });
+
+    describe('Configuración fiscal del local (HU14)', () => {
+        it('puedeConfigurarLocal habilita la pantalla únicamente para Dueño o superusuario', () => {
+            expect(puedeConfigurarLocal({ rol: 'DUENIO' })).toBe(true);
+            expect(puedeConfigurarLocal({ rol: 'CAJERO', is_superuser: true })).toBe(true);
+            expect(puedeConfigurarLocal({ rol: 'ENCARGADO' })).toBe(false);
+            expect(puedeConfigurarLocal({ rol: 'CAJERO' })).toBe(false);
+            expect(puedeConfigurarLocal(null)).toBe(false);
+        });
+
+        it('formatearEtiquetaCondicionFiscal traduce cada código a texto legible', () => {
+            expect(formatearEtiquetaCondicionFiscal('RESPONSABLE_INSCRIPTO')).toBe(
+                'Responsable Inscripto'
+            );
+            expect(formatearEtiquetaCondicionFiscal('MONOTRIBUTISTA')).toBe('Monotributista');
+            expect(formatearEtiquetaCondicionFiscal('EXENTO')).toBe('IVA Exento');
+            expect(formatearEtiquetaCondicionFiscal('NO_DECLARADA')).toBe('Sin declarar');
+        });
+
+        it('evaluarAvisoCondicionFiscal muestra aviso con botón solo al Dueño si no está declarada', () => {
+            const sinDeclarar = { declarada: false, condicion_fiscal: 'NO_DECLARADA' };
+            const resDuenio = evaluarAvisoCondicionFiscal(sinDeclarar, { rol: 'DUENIO' });
+            expect(resDuenio.mostrarAviso).toBe(true);
+            expect(resDuenio.puedeDeclarar).toBe(true);
+            expect(resDuenio.mensaje).toContain('Todavía no declaraste');
+
+            const resEncargado = evaluarAvisoCondicionFiscal(sinDeclarar, { rol: 'ENCARGADO' });
+            expect(resEncargado.mostrarAviso).toBe(true);
+            expect(resEncargado.puedeDeclarar).toBe(false);
+            expect(resEncargado.mensaje).toContain('El dueño todavía no declaró');
+
+            const declarada = { declarada: true, condicion_fiscal: 'RESPONSABLE_INSCRIPTO' };
+            expect(evaluarAvisoCondicionFiscal(declarada, { rol: 'DUENIO' })).toEqual({
+                mostrarAviso: false,
+                puedeDeclarar: false,
+                mensaje: '',
+            });
+        });
+    });
+
+    describe('Precio sugerido con margen objetivo y competencia (HU9)', () => {
+        it('redondearAMultiplo redondea a $50 y $100 y rechaza múltiplos inválidos', () => {
+            expect(redondearAMultiplo('2483.61', 50)).toBe('2500.00');
+            expect(redondearAMultiplo('2140.00', 50)).toBe('2150.00');
+            expect(redondearAMultiplo('2140.00', 100)).toBe('2100.00');
+            expect(() => redondearAMultiplo('2100.00', 25)).toThrow();
+        });
+
+        it('calcularPrecioSugeridoLocal aplica margen objetivo y acota por competencia [min, promedio]', () => {
+            const sinComp = calcularPrecioSugeridoLocal({
+                costoTotal: '1092.79',
+                margenObjetivo: '0.56',
+                redondeoMultiplo: 50,
+            });
+            expect(sinComp.precio_base_redondeado).toBe('2500.00');
+            expect(sinComp.precio_sugerido).toBe('2500.00');
+            expect(sinComp.acotado_por).toBe('NINGUNO');
+
+            const acotadoProm = calcularPrecioSugeridoLocal({
+                costoTotal: '1500.00',
+                margenObjetivo: '0.60',
+                redondeoMultiplo: 50,
+                preciosCompetencia: [{ precio: '2800.00' }, { precio: '3200.00' }, { precio: '3600.00' }],
+            });
+            expect(acotadoProm.competencia_minimo).toBe('2800.00');
+            expect(acotadoProm.competencia_promedio).toBe('3200.00');
+            expect(acotadoProm.precio_sugerido).toBe('3200.00');
+            expect(acotadoProm.acotado_por).toBe('PROMEDIO');
+
+            const acotadoMin = calcularPrecioSugeridoLocal({
+                costoTotal: '1500.00',
+                margenObjetivo: '0.30',
+                redondeoMultiplo: 50,
+                preciosCompetencia: [{ precio: '2800.00' }, { precio: '3200.00' }],
+            });
+            expect(acotadoMin.precio_sugerido).toBe('2800.00');
+            expect(acotadoMin.acotado_por).toBe('MINIMO');
+        });
+
+        it('describirAcotamientoSugerido genera etiquetas claras en español', () => {
+            expect(describirAcotamientoSugerido({ acotado_por: 'PROMEDIO' })).toContain('promedio');
+            expect(describirAcotamientoSugerido({ acotado_por: 'MINIMO' })).toContain('mínimo');
+            expect(
+                describirAcotamientoSugerido({ acotado_por: 'NINGUNO', redondeo_multiplo: 100 })
+            ).toContain('$100');
+        });
+    });
+
+    describe('Control de stock real y alertas de mínimo (HU12)', () => {
+        it('evaluarEstadoStockInsumo clasifica bajo, normal, sin_minimo e inactivo', () => {
+            expect(
+                evaluarEstadoStockInsumo({
+                    stock_actual: '216.0000',
+                    stock_minimo: '300.0000',
+                    estado_activo: true,
+                })
+            ).toEqual({ nivel: 'bajo', etiqueta: 'Stock bajo', esBajo: true });
+
+            expect(
+                evaluarEstadoStockInsumo({
+                    stock_actual: '500.0000',
+                    stock_minimo: '300.0000',
+                    estado_activo: true,
+                })
+            ).toEqual({ nivel: 'ok', etiqueta: 'Normal', esBajo: false });
+
+            expect(
+                evaluarEstadoStockInsumo({
+                    stock_actual: '0.0000',
+                    stock_minimo: '0.0000',
+                    estado_activo: true,
+                })
+            ).toEqual({ nivel: 'sin_minimo', etiqueta: 'Sin mínimo', esBajo: false });
+
+            expect(
+                evaluarEstadoStockInsumo({
+                    stock_actual: '10.0000',
+                    stock_minimo: '50.0000',
+                    estado_activo: false,
+                })
+            ).toEqual({ nivel: 'inactivo', etiqueta: 'Inactivo', esBajo: false });
+        });
+
+        it('formatearCantidadStock y obtenerResumenStockBajo resumen insumos críticos', () => {
+            expect(formatearCantidadStock('1500.5', 'g')).toContain('1.500,5');
+            expect(formatearCantidadStock('1500.5', 'g')).toContain('g');
+
+            const resumen = obtenerResumenStockBajo([
+                { id: 1, nombre: 'Café', stock_actual: '100', stock_minimo: '300', estado_activo: true },
+                { id: 2, nombre: 'Leche', stock_actual: '5000', stock_minimo: '2000', estado_activo: true },
+                { id: 3, nombre: 'Inactivo', stock_actual: '0', stock_minimo: '100', estado_activo: false },
+            ]);
+            expect(resumen.totalBajos).toBe(1);
+            expect(resumen.insumosBajos[0].nombre).toBe('Café');
+        });
+    });
+});
+
+describe('seleccionarTurnoPropio (turno activo en Caja)', () => {
+    const turnos = [
+        { id: 1, usuario: 4, estado: 'ABIERTO' },
+        { id: 6, usuario: 4, estado: 'CERRADO' },
+        { id: 3, usuario: 2, estado: 'CERRADO' },
+        { id: 2, usuario: 2, estado: 'CERRADO' },
+    ];
+
+    it('el dueño no adopta el turno abierto de otro cajero: toma su último turno propio', () => {
+        expect(seleccionarTurnoPropio(turnos, 2)).toEqual({ id: 3, usuario: 2, estado: 'CERRADO' });
+    });
+
+    it('prioriza el turno propio abierto aunque haya cerrados más arriba', () => {
+        const lista = [{ id: 9, usuario: 7, estado: 'CERRADO' }, { id: 8, usuario: 7, estado: 'ABIERTO' }];
+        expect(seleccionarTurnoPropio(lista, 7).id).toBe(8);
+        expect(seleccionarTurnoPropio(turnos, '4').id).toBe(1);
+    });
+
+    it('sin turnos propios, sin usuario o con entrada inválida devuelve null', () => {
+        expect(seleccionarTurnoPropio(turnos, 99)).toBeNull();
+        expect(seleccionarTurnoPropio(turnos, null)).toBeNull();
+        expect(seleccionarTurnoPropio(null, 2)).toBeNull();
+        expect(seleccionarTurnoPropio([null], 2)).toBeNull();
+    });
+
+    describe('Anulación de ventas desde Reportes', () => {
+        const duenio = { rol: 'DUENIO', permisos: ['ventas.anular_ticket'] };
+        const cajero = { rol: 'CAJERO', permisos: ['ventas.cobrar_ticket'] };
+        const ventaAbierta = { id: 7, estado: 'EMITIDA', turno_estado: 'ABIERTO' };
+
+        it('esVentaAnulable exige EMITIDA y turno ABIERTO', () => {
+            expect(esVentaAnulable(ventaAbierta)).toBe(true);
+            expect(esVentaAnulable({ ...ventaAbierta, estado: 'ANULADA' })).toBe(false);
+            expect(esVentaAnulable({ ...ventaAbierta, turno_estado: 'CERRADO' })).toBe(false);
+            expect(esVentaAnulable({ id: 8, estado: 'EMITIDA' })).toBe(false);
+            expect(esVentaAnulable({ estado: 'EMITIDA', turno_estado: 'ABIERTO' })).toBe(false);
+            expect(esVentaAnulable(null)).toBe(false);
+        });
+
+        it('puedeAnularVenta combina regla del ticket y permiso', () => {
+            expect(puedeAnularVenta(duenio, ventaAbierta)).toBe(true);
+            expect(puedeAnularVenta(cajero, ventaAbierta)).toBe(false);
+            expect(puedeAnularVenta(duenio, { ...ventaAbierta, turno_estado: 'CERRADO' })).toBe(false);
+        });
+
+        it('unificarTrazabilidadRegistros marca ventaId y anulable en cada venta', () => {
+            const fecha = new Date(2026, 10, 20, 10, 0, 0).toISOString();
+            const { registros } = unificarTrazabilidadRegistros({
+                ventas: [
+                    { ...ventaAbierta, fecha, total: '100.00' },
+                    { id: 9, estado: 'EMITIDA', turno_estado: 'CERRADO', fecha, total: '50.00' },
+                ],
+            });
+            const r7 = registros.find((r) => r.id === 'venta-7');
+            const r9 = registros.find((r) => r.id === 'venta-9');
+            expect(r7).toMatchObject({ ventaId: 7, anulable: true });
+            expect(r9).toMatchObject({ ventaId: 9, anulable: false });
+            expect(registroMuestraBotonAnular(duenio, r7)).toBe(true);
+            expect(registroMuestraBotonAnular(duenio, r9)).toBe(false);
+            expect(registroMuestraBotonAnular(cajero, r7)).toBe(false);
+        });
+
+        it('registroMuestraBotonAnular ignora filas que no son ventas del servidor', () => {
+            expect(registroMuestraBotonAnular(duenio, { categoria: 'stock', anulable: true, ventaId: 1 })).toBe(false);
+            expect(registroMuestraBotonAnular(duenio, { categoria: 'venta', id: 'offline-1' })).toBe(false);
+            expect(registroMuestraBotonAnular(duenio, null)).toBe(false);
+        });
+
+        it('validarMotivoAnulacion pide texto y respeta el largo máximo', () => {
+            expect(validarMotivoAnulacion('  ').valido).toBe(false);
+            expect(validarMotivoAnulacion('ab').valido).toBe(false);
+            expect(validarMotivoAnulacion(undefined).valido).toBe(false);
+            expect(validarMotivoAnulacion('x'.repeat(256)).valido).toBe(false);
+            expect(validarMotivoAnulacion('  Cobrado dos veces ')).toEqual({
+                valido: true,
+                motivo: 'Cobrado dos veces',
+                mensaje: '',
+            });
         });
     });
 });
