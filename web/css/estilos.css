@@ -487,6 +487,17 @@ td.col-numero {
     display: none;
 }
 
+/* Algunos navegadores Chromium (Edge y otros) agregan su propio botón de "ver contraseña"
+   cuando se escribe o pega a mano; junto con .btn-toggle-visibilidad aparecían dos ojitos.
+   Van en reglas separadas: un selector desconocido invalida toda la regla que lo contiene. */
+input::-ms-reveal {
+    display: none;
+}
+
+input::reveal-icon {
+    display: none;
+}
+
 input[type="text"],
 input[type="password"],
 input[type="email"],

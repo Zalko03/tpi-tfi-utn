@@ -2432,3 +2432,10 @@ Qué se hizo: `#modal-config-servidor` pasa a `z-index: 9999`. Queda arriba del 
 Prueba: web de la rama servida en local en el navegador integrado: al tocar el enlace, el modal se ve encima del login con las direcciones cargadas y "Cancelar" lo cierra.
 Sin arreglar (detalle menor): al guardar, el formulario acepta direcciones sin `http://` (por ejemplo `localhost:8000`) y las guarda tal cual.
 Archivos tocados: `web/css/estilos.css`, `docs/bitacora.md`.
+
+## 22/11 — Doble ojito en la contraseña del login
+Rama: `fix/web-boton-menu`.
+Qué pasaba: al pegar la contraseña con Ctrl+V en Brave aparecían dos botones para verla. El nuestro (`.btn-toggle-visibilidad`) es uno solo; el segundo lo agrega el navegador cuando la contraseña se escribe o pega a mano (no cuando se autocompleta).
+Qué se hizo: `estilos.css` oculta el botón nativo con `::-ms-reveal` (Edge y derivados de Chromium que lo implementan, según la documentación de Microsoft) y `::reveal-icon` (el nombre que eligió la CSSWG en 2025). Cada uno va en su propia regla porque un selector desconocido invalida toda la regla.
+Sin verificar: en el navegador integrado (Chromium 156) no aparece el botón nativo y ninguno de los dos selectores está soportado, así que no se pudo reproducir; queda por confirmar en el Brave donde se vio.
+Archivos tocados: `web/css/estilos.css`, `docs/bitacora.md`.
