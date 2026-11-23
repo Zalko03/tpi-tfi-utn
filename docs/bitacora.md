@@ -2448,3 +2448,14 @@ Qué se hizo:
 - `web/js/app.js` (`consultarDetalleImportacion`): el sondeo pasa de 40 a 180 intentos de 500 ms (~90 s) para cubrir el reintento; igual el aviso `importacion.lista` refresca la propuesta cuando llega.
 Tests: 4 nuevos en `aiClient.unit.test.js` (reintento exitoso tras timeout, sin reintento ante HTTP 500, contingencia si el reintento falla, criterio de `esErrorReintentableIA`). Node: 258 tests, ESLint sin errores.
 Archivos tocados: `backend-node/src/clients/ai.client.js`, `backend-node/tests/unit/aiClient.unit.test.js`, `web/js/app.js`, `docs/bitacora.md`.
+
+## 23/11 — Scrolls propios en POS y Reportes; fuera "¿No podés conectarte?"
+Rama: `fix/web-boton-menu`. Pedido después de revisar la grabación del video.
+Qué pasaba y qué se hizo:
+- **POS:** con muchos productos en el ticket, la columna crecía (medido: 1480 px en una grilla de 770) y estiraba toda la página, dejando espacio en blanco bajo el catálogo. La grilla ya tenía altura fija y scrolls propios, pero la fila del grid y los hijos flex no se achican por debajo de su contenido sin `min-height: 0`. Se agregó `grid-template-rows: minmax(0, 1fr)` y `min-height: 0` en columnas y zonas de scroll. Ahora la página queda en el alto de la ventana, el catálogo y los ítems del ticket scrollean por separado y el botón de cobrar sigue visible. En pantallas de hasta 1024 px (una columna) el ticket tiene `max-height: 50vh`.
+- **Tablas de las secciones** (`.vista-modulo .tabla-contenedor-responsive`: historial de Reportes, carta de Recetas, caja, compras): cuadro de hasta `70vh` con scroll propio y cabecera fija. Con el cursor encima scrollea la tabla y fuera de ella la página. Se eligió 70vh en lugar de "20 filas" porque las filas del historial tienen alto variable y 20 filas pasan el alto de la pantalla (el scroll interno quedaría cortado). Medido en la nube con 202 registros: la tabla ocupa 630 px y la página bajó de ~16.000 a ~2.600 px.
+- **Ranking y "sin rotación"** (Reportes): listas con `max-height: 420px` y scroll; la grilla usa `align-items: start` para que la tarjeta corta no quede como un bloque blanco estirado.
+- **"¿No podés conectarte?"** se sacó del login: abría la configuración de direcciones del servidor y se confundía con recuperar la contraseña. El engranaje del dueño en la barra superior sigue abriendo ese modal.
+- El menú lateral ya es `position: sticky` con alto de pantalla; con el POS sin scroll de página deja de moverse ahí.
+Prueba: reglas inyectadas sobre la web publicada a 1650×900 (sesión de dueño): mediciones de arriba; después del deploy se repite sobre el CSS real.
+Archivos tocados: `web/css/estilos.css`, `web/index.html`, `docs/bitacora.md`.
