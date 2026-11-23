@@ -2439,3 +2439,12 @@ Qué pasaba: al pegar la contraseña con Ctrl+V en Brave aparecían dos botones 
 Qué se hizo: `estilos.css` oculta el botón nativo con `::-ms-reveal` (Edge y derivados de Chromium que lo implementan, según la documentación de Microsoft) y `::reveal-icon` (el nombre que eligió la CSSWG en 2025). Cada uno va en su propia regla porque un selector desconocido invalida toda la regla.
 Sin verificar: en el navegador integrado (Chromium 156) no aparece el botón nativo y ninguno de los dos selectores está soportado, así que no se pudo reproducir; queda por confirmar en el Brave donde se vio.
 Archivos tocados: `web/css/estilos.css`, `docs/bitacora.md`.
+
+## 22/11 — La importación con IA caía en contingencia en la nube (arranque en frío)
+Rama: `fix/web-boton-menu`.
+Qué pasaba: en Render gratis `sapori-ai-service` se duerme a los 15 minutos sin tráfico y tarda en despertar (medido: 12 s; puede llegar a ~1 minuto). Node espera la extracción como máximo 12 s (texto) o 25 s (foto), así que la primera importación después de un rato daba "No se pudo usar la IA, revisá la configuración". Con el servicio despierto, el mismo texto respondió bien (Groq, 2,4 s, 4 ítems y envío de $4.500).
+Qué se hizo:
+- `backend-node/src/clients/ai.client.js`: si el primer intento vence (`TimeoutError`/`AbortError`) o falla la red (`TypeError` de fetch), se reintenta una vez con 60 s (`timeoutReintentoIAMs`). Un error HTTP de ai-service no se reintenta. La importación ya corre en segundo plano (202 + aviso por Socket.IO), así que esperar más no traba la pantalla.
+- `web/js/app.js` (`consultarDetalleImportacion`): el sondeo pasa de 40 a 180 intentos de 500 ms (~90 s) para cubrir el reintento; igual el aviso `importacion.lista` refresca la propuesta cuando llega.
+Tests: 4 nuevos en `aiClient.unit.test.js` (reintento exitoso tras timeout, sin reintento ante HTTP 500, contingencia si el reintento falla, criterio de `esErrorReintentableIA`). Node: 258 tests, ESLint sin errores.
+Archivos tocados: `backend-node/src/clients/ai.client.js`, `backend-node/tests/unit/aiClient.unit.test.js`, `web/js/app.js`, `docs/bitacora.md`.

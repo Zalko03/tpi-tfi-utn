@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import {
+    esErrorReintentableIA,
     extraerPreciosIA,
     generarResumenSemanalIA,
     validarItemExtraido,
@@ -201,6 +202,62 @@ describe('Unit Tests - Cliente HTTP hacia ai-service (ai.client.js)', () => {
             });
             expect(cuerpoEnviado).not.toHaveProperty('texto_lista');
             expect(timeoutSpy).toHaveBeenCalledWith(25000);
+        });
+
+        it('reintenta una vez si ai-service no responde a tiempo (arranque en frío) y usa la respuesta', async () => {
+            const errorTimeout = new Error('The operation was aborted due to timeout');
+            errorTimeout.name = 'TimeoutError';
+            global.fetch = jest
+                .fn()
+                .mockRejectedValueOnce(errorTimeout)
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => ({
+                        proveedor_detectado: 'Tostadero Norte',
+                        envio_detectado: '0.00',
+                        moneda: 'ARS',
+                        items: [{ nombre_insumo: 'Café', cantidad: '1', unidad: 'kg', precio_total: '18000.00' }],
+                        advertencias: [],
+                        version_prompt: 'v1',
+                        proveedor_ia: 'groq',
+                        latencia_ms: 900,
+                        contingencia: false,
+                    }),
+                });
+
+            const resultado = await extraerPreciosIA({ textoLista: 'Café 1 kg $18000', proveedorNombre: 'Tostadero Norte' });
+
+            expect(global.fetch).toHaveBeenCalledTimes(2);
+            expect(resultado.contingencia).toBe(false);
+            expect(resultado.items).toHaveLength(1);
+        });
+
+        it('no reintenta ante un error HTTP de ai-service', async () => {
+            global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+
+            const resultado = await extraerPreciosIA({ textoLista: 'Café 1 kg $18000' });
+
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+            expect(resultado.contingencia).toBe(true);
+        });
+
+        it('pasa a contingencia si el reintento también falla', async () => {
+            global.fetch = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
+
+            const resultado = await extraerPreciosIA({ textoLista: 'Café 1 kg $18000' });
+
+            expect(global.fetch).toHaveBeenCalledTimes(2);
+            expect(resultado.contingencia).toBe(true);
+        });
+
+        it('esErrorReintentableIA solo acepta timeout, abort y fallas de red', () => {
+            const timeout = Object.assign(new Error('x'), { name: 'TimeoutError' });
+            const abort = Object.assign(new Error('x'), { name: 'AbortError' });
+            expect(esErrorReintentableIA(timeout)).toBe(true);
+            expect(esErrorReintentableIA(abort)).toBe(true);
+            expect(esErrorReintentableIA(new TypeError('fetch failed'))).toBe(true);
+            expect(esErrorReintentableIA(new Error('ai-service respondió con estado HTTP 500'))).toBe(false);
+            expect(esErrorReintentableIA(null)).toBe(false);
         });
 
         it('retorna objeto de contingencia cuando ai-service falla o no está disponible', async () => {
