@@ -61,6 +61,11 @@ import {
     MENSAJE_FOTO_LISTA_IA,
     MENSAJE_IA_NO_DISPONIBLE,
     mensajeErrorParaUsuario,
+    mensajeFallaImportacionIA,
+    MENSAJE_IMPORTACION_SIN_CONEXION,
+    MENSAJE_PDF_ESCANEADO_LISTO,
+    calcularLienzoPdfEscaneado,
+    MAX_PAGINAS_PDF_ESCANEADO,
     obtenerContenidoPlantillaCsv,
     obtenerPermisosInicialesEmpleado,
     obtenerPlantillaRol,
@@ -2054,7 +2059,19 @@ const procesarArchivoPdfSeleccionado = async (archivo, origenSelector = 'ia') =>
         const buffer = await leerArchivoComoArrayBuffer(archivo);
         const resultado = await extraerTextoDePdfBuffer(buffer, pdfjsLib);
 
-        if (!resultado.ok || resultado.esEscaneado) {
+        if (resultado.esEscaneado) {
+            // pdf.js puede transferir el buffer al worker: se vuelve a leer el archivo.
+            const bufferImagen = await leerArchivoComoArrayBuffer(archivo);
+            const { imagen, paginasOmitidas, paginasUsadas } =
+                await renderizarPdfEscaneadoComoImagen(bufferImagen, pdfjsLib);
+            const mensaje = paginasOmitidas > 0
+                ? `${MENSAJE_PDF_ESCANEADO_LISTO} (primeras ${paginasUsadas} de ${paginasUsadas + paginasOmitidas} páginas)`
+                : MENSAJE_PDF_ESCANEADO_LISTO;
+            aplicarImagenImportacion(imagen, archivo.name, origenSelector, mensaje);
+            return;
+        }
+
+        if (!resultado.ok) {
             estadoApp.ultimoOrigenArchivo = 'texto';
             if ($('textarea-lista-ia')) {
                 $('textarea-lista-ia').value = '';
@@ -2252,46 +2269,113 @@ const redimensionarImagenParaImportacion = async (archivo) => {
     };
 };
 
+// Deja una imagen ya preparada (JPEG en base64) como entrada del análisis con IA y muestra su vista previa.
+const aplicarImagenImportacion = (
+    { dataUrl, base64, mime, ancho, alto },
+    nombre,
+    origenSelector = 'ia',
+    mensaje = MENSAJE_FOTO_LISTA_IA
+) => {
+    estadoApp.imagenImportacionActual = {
+        base64,
+        mime,
+        dataUrl,
+        nombre,
+        ancho,
+        alto,
+    };
+    estadoApp.ultimoOrigenArchivo = 'imagen';
+    estadoApp.csvParseadoActual = null;
+    estadoApp.csvContingenciaFallback = null;
+    if ($('panel-preview-csv')) {
+        $('panel-preview-csv').style.display = 'none';
+    }
+    const textarea = $('textarea-lista-ia');
+    if (textarea) {
+        textarea.value = '';
+        textarea.required = false;
+    }
+    if ($('img-preview-foto-ia')) {
+        $('img-preview-foto-ia').src = dataUrl;
+    }
+    if ($('texto-preview-foto-ia')) {
+        $('texto-preview-foto-ia').textContent = mensaje;
+    }
+    if ($('preview-foto-lista-ia')) {
+        $('preview-foto-lista-ia').style.display = 'flex';
+    }
+    mostrarEstadoArchivoPdf(mensaje, 'info');
+    mostrarToast(mensaje, 'exito');
+    if (origenSelector === 'csv') {
+        $('preview-foto-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }
+};
+
+/**
+ * Un PDF escaneado no trae texto: se dibujan sus primeras páginas, una debajo de otra,
+ * en un único JPEG para que lo lea el modelo de visión igual que una foto.
+ */
+const renderizarPdfEscaneadoComoImagen = async (bufferPdf, pdfjsLib) => {
+    if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
+        throw new Error('La librería local pdf.js no está disponible.');
+    }
+    const pdfDoc = await pdfjsLib.getDocument({
+        data: new Uint8Array(bufferPdf),
+        verbosity: 0,
+        isEvalSupported: false,
+    }).promise;
+    try {
+        const paginas = [];
+        const dimensiones = [];
+        const cantidad = Math.min(pdfDoc.numPages, MAX_PAGINAS_PDF_ESCANEADO);
+        for (let numero = 1; numero <= cantidad; numero++) {
+            const pagina = await pdfDoc.getPage(numero);
+            const vista = pagina.getViewport({ scale: 1 });
+            paginas.push(pagina);
+            dimensiones.push({ ancho: vista.width, alto: vista.height });
+        }
+        const lienzo = calcularLienzoPdfEscaneado(dimensiones, { totalPaginas: pdfDoc.numPages });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = lienzo.ancho;
+        canvas.height = lienzo.alto;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            throw new Error('Tu navegador no pudo preparar el PDF para analizar.');
+        }
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, lienzo.ancho, lienzo.alto);
+
+        for (let i = 0; i < lienzo.paginas.length; i++) {
+            const pagina = paginas[i];
+            const vista = pagina.getViewport({ scale: lienzo.escala });
+            ctx.save();
+            ctx.translate(0, lienzo.paginas[i].y);
+            await pagina.render({ canvasContext: ctx, viewport: vista }).promise;
+            ctx.restore();
+        }
+
+        const dataUrl = canvas.toDataURL('image/jpeg', CALIDAD_JPEG_IMAGEN_IMPORTACION);
+        const base64 = extraerBase64DeDataUrl(dataUrl);
+        if (!base64) {
+            throw new Error('No se pudo preparar el PDF en formato JPEG.');
+        }
+        return {
+            imagen: { dataUrl, base64, mime: 'image/jpeg', ancho: lienzo.ancho, alto: lienzo.alto },
+            paginasOmitidas: lienzo.paginasOmitidas,
+            paginasUsadas: lienzo.paginasUsadas,
+        };
+    } finally {
+        await pdfDoc.destroy?.().catch?.(() => {});
+    }
+};
+
 const procesarArchivoImagenSeleccionado = async (archivo, origenSelector = 'ia') => {
     if (!archivo) return;
     mostrarEstadoArchivoPdf(`Preparando la foto “${archivo.name}”…`, 'info');
     try {
-        const { dataUrl, base64, mime, ancho, alto } =
-            await redimensionarImagenParaImportacion(archivo);
-
-        estadoApp.imagenImportacionActual = {
-            base64,
-            mime,
-            dataUrl,
-            nombre: archivo.name,
-            ancho,
-            alto,
-        };
-        estadoApp.ultimoOrigenArchivo = 'imagen';
-        estadoApp.csvParseadoActual = null;
-        estadoApp.csvContingenciaFallback = null;
-        if ($('panel-preview-csv')) {
-            $('panel-preview-csv').style.display = 'none';
-        }
-        const textarea = $('textarea-lista-ia');
-        if (textarea) {
-            textarea.value = '';
-            textarea.required = false;
-        }
-        if ($('img-preview-foto-ia')) {
-            $('img-preview-foto-ia').src = dataUrl;
-        }
-        if ($('texto-preview-foto-ia')) {
-            $('texto-preview-foto-ia').textContent = MENSAJE_FOTO_LISTA_IA;
-        }
-        if ($('preview-foto-lista-ia')) {
-            $('preview-foto-lista-ia').style.display = 'flex';
-        }
-        mostrarEstadoArchivoPdf(MENSAJE_FOTO_LISTA_IA, 'info');
-        mostrarToast(MENSAJE_FOTO_LISTA_IA, 'exito');
-        if (origenSelector === 'csv') {
-            $('preview-foto-lista-ia')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
-        }
+        const imagenPreparada = await redimensionarImagenParaImportacion(archivo);
+        aplicarImagenImportacion(imagenPreparada, archivo.name, origenSelector);
     } catch (err) {
         console.error('Error al preparar la foto:', err);
         limpiarFotoImportacionActual();
@@ -2525,7 +2609,7 @@ const enviarCsvAlCircuitoAprobacion = async () => {
             }
         } else {
             console.warn('Error al enviar lista al servicio de IA:', res.status, data);
-            const motivo = mensajeErrorParaUsuario(res.status, data?.mensaje);
+            const motivo = mensajeFallaImportacionIA(res.status, data?.mensaje);
             renderizarPropuestaIAComercial({
                 _id: null,
                 estado: 'CONTINGENCIA',
@@ -2536,9 +2620,9 @@ const enviarCsvAlCircuitoAprobacion = async () => {
                 salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
             });
             if ($('estado-importacion-ia')) {
-                $('estado-importacion-ia').textContent = MENSAJE_IA_NO_DISPONIBLE;
+                $('estado-importacion-ia').textContent = motivo;
             }
-            mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+            mostrarToast(motivo, 'advertencia');
         }
     } catch (err) {
         console.error('Error al consultar servicio de importación IA:', err);
@@ -2547,14 +2631,14 @@ const enviarCsvAlCircuitoAprobacion = async () => {
             estado: 'CONTINGENCIA',
             contingencia: true,
             proveedorIa: 'contingencia',
-            mensajeContingencia: 'No se pudo conectar con el servicio de importación IA.',
+            mensajeContingencia: MENSAJE_IMPORTACION_SIN_CONEXION,
             advertencias: ['No pudimos comunicarnos con el servidor de IA.'],
             salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
         });
         if ($('estado-importacion-ia')) {
-            $('estado-importacion-ia').textContent = MENSAJE_IA_NO_DISPONIBLE;
+            $('estado-importacion-ia').textContent = MENSAJE_IMPORTACION_SIN_CONEXION;
         }
-        mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+        mostrarToast(MENSAJE_IMPORTACION_SIN_CONEXION, 'advertencia');
     }
 };
 
@@ -5413,7 +5497,7 @@ Flete y entrega a local: $4500`;
                     }
                 } else {
                     console.warn('Error al analizar lista con IA:', res.status, data);
-                    const motivo = mensajeErrorParaUsuario(res.status, data?.mensaje);
+                    const motivo = mensajeFallaImportacionIA(res.status, data?.mensaje);
                     renderizarPropuestaIAComercial({
                         _id: null,
                         estado: 'CONTINGENCIA',
@@ -5423,8 +5507,8 @@ Flete y entrega a local: $4500`;
                         advertencias: data?.detalles ? [String(data.detalles)] : [],
                         salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
                     });
-                    if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
-                    mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+                    if (estadoPill) estadoPill.textContent = motivo;
+                    mostrarToast(motivo, 'advertencia');
                 }
             } catch (err) {
                 renderizarPropuestaIAComercial({
@@ -5432,12 +5516,12 @@ Flete y entrega a local: $4500`;
                     estado: 'CONTINGENCIA',
                     contingencia: true,
                     proveedorIa: 'contingencia',
-                    mensajeContingencia: err?.message || 'No se pudo conectar con el servicio de IA.',
+                    mensajeContingencia: MENSAJE_IMPORTACION_SIN_CONEXION,
                     advertencias: [err?.message || 'Error de red'],
                     salida: { proveedorDetectado: proveedorNombre, envioDetectado: '0.00', items: [] },
                 });
-                if (estadoPill) estadoPill.textContent = MENSAJE_IA_NO_DISPONIBLE;
-                mostrarToast(MENSAJE_IA_NO_DISPONIBLE, 'advertencia');
+                if (estadoPill) estadoPill.textContent = MENSAJE_IMPORTACION_SIN_CONEXION;
+                mostrarToast(MENSAJE_IMPORTACION_SIN_CONEXION, 'advertencia');
             }
         });
     });
