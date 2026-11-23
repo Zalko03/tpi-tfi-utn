@@ -785,7 +785,10 @@ textarea:focus {
     border: 1px solid rgba(45, 106, 79, 0.3);
 }
 
-.btn-hamburguesa-sidebar,
+/* El botón de menú también es .btn-icono-panel (display: flex, definido más abajo):
+   con un solo nombre de clase esa regla lo pisaba y quedaba visible, sin función,
+   en pantallas anchas. Por eso el selector lleva .barra-superior-comercial. */
+.barra-superior-comercial .btn-hamburguesa-sidebar,
 .btn-cerrar-sidebar,
 .sidebar-backdrop {
     display: none;
@@ -2902,7 +2905,7 @@ textarea:focus {
     .sidebar-comercial.abierto {
         transform: translateX(0);
     }
-    .btn-hamburguesa-sidebar,
+    .barra-superior-comercial .btn-hamburguesa-sidebar,
     .btn-cerrar-sidebar {
         display: inline-flex;
     }
