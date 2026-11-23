@@ -2416,3 +2416,35 @@ Cómo probarlo:
 - `cd backend-node && npm test -- --silent && npm run lint`
 - `cd ai-service && .venv/bin/python -m pytest -q`
 - En la web: abrir un turno propio, cobrar, ir a Reportes y anular la venta con un motivo.
+
+## 22/11 — Botón de menú (☰) visible y sin función en pantallas anchas
+Rama: `fix/web-boton-menu` (desde `main` = `580e80f`).
+Qué pasaba: el botón ☰ de la barra superior está pensado solo para pantallas de hasta 768 px, donde abre el menú lateral deslizable. Tiene dos clases (`btn-icono-panel btn-hamburguesa-sidebar`); la regla que lo oculta (`.btn-hamburguesa-sidebar { display: none }`) estaba antes en `estilos.css` que `.btn-icono-panel { display: flex }`, con la misma especificidad, así que ganaba la segunda. En pantallas anchas el botón se veía y al tocarlo solo agregaba la clase `abierto` al menú, que ahí no cambia nada (el menú ya está fijo a la izquierda).
+Qué se hizo: los dos selectores del botón (el que lo oculta y el de la media query que lo muestra en pantallas chicas) pasan a `.barra-superior-comercial .btn-hamburguesa-sidebar`. El Service Worker es network-first, así que no hace falta cambiar la versión de caché.
+Prueba: web de la rama servida en local en el navegador integrado: a 1650 px el botón queda `display: none` (los otros botones de la barra siguen visibles); a 700 px se ve, abre el menú y la ✕ lo cierra.
+Archivos tocados: `web/css/estilos.css`, `docs/bitacora.md`.
+Cómo probarlo: abrir la app con la ventana ancha (el ☰ no tiene que aparecer) y achicarla a menos de 768 px (aparece y abre el menú).
+
+## 22/11 — "¿No podés conectarte?" abría el modal tapado por el login
+Rama: `fix/web-boton-menu`.
+Qué pasaba: el enlace del login sí abre el modal "Conexión del sistema" (`abrirModalConfigServidor`), pero `.modal-overlay` tiene `z-index: 2000` y la pantalla de login `9999`: el modal quedaba abierto detrás y parecía que el enlace no hacía nada.
+Qué se hizo: `#modal-config-servidor` pasa a `z-index: 9999`. Queda arriba del login porque viene después en el HTML, y debajo de los avisos (`.contenedor-toasts`, `10000`), que siguen viéndose al guardar. Los demás modales no cambian (solo se abren con la sesión iniciada).
+Prueba: web de la rama servida en local en el navegador integrado: al tocar el enlace, el modal se ve encima del login con las direcciones cargadas y "Cancelar" lo cierra.
+Sin arreglar (detalle menor): al guardar, el formulario acepta direcciones sin `http://` (por ejemplo `localhost:8000`) y las guarda tal cual.
+Archivos tocados: `web/css/estilos.css`, `docs/bitacora.md`.
+
+## 22/11 — Doble ojito en la contraseña del login
+Rama: `fix/web-boton-menu`.
+Qué pasaba: al pegar la contraseña con Ctrl+V en Brave aparecían dos botones para verla. El nuestro (`.btn-toggle-visibilidad`) es uno solo; el segundo lo agrega el navegador cuando la contraseña se escribe o pega a mano (no cuando se autocompleta).
+Qué se hizo: `estilos.css` oculta el botón nativo con `::-ms-reveal` (Edge y derivados de Chromium que lo implementan, según la documentación de Microsoft) y `::reveal-icon` (el nombre que eligió la CSSWG en 2025). Cada uno va en su propia regla porque un selector desconocido invalida toda la regla.
+Sin verificar: en el navegador integrado (Chromium 156) no aparece el botón nativo y ninguno de los dos selectores está soportado, así que no se pudo reproducir; queda por confirmar en el Brave donde se vio.
+Archivos tocados: `web/css/estilos.css`, `docs/bitacora.md`.
+
+## 22/11 — La importación con IA caía en contingencia en la nube (arranque en frío)
+Rama: `fix/web-boton-menu`.
+Qué pasaba: en Render gratis `sapori-ai-service` se duerme a los 15 minutos sin tráfico y tarda en despertar (medido: 12 s; puede llegar a ~1 minuto). Node espera la extracción como máximo 12 s (texto) o 25 s (foto), así que la primera importación después de un rato daba "No se pudo usar la IA, revisá la configuración". Con el servicio despierto, el mismo texto respondió bien (Groq, 2,4 s, 4 ítems y envío de $4.500).
+Qué se hizo:
+- `backend-node/src/clients/ai.client.js`: si el primer intento vence (`TimeoutError`/`AbortError`) o falla la red (`TypeError` de fetch), se reintenta una vez con 60 s (`timeoutReintentoIAMs`). Un error HTTP de ai-service no se reintenta. La importación ya corre en segundo plano (202 + aviso por Socket.IO), así que esperar más no traba la pantalla.
+- `web/js/app.js` (`consultarDetalleImportacion`): el sondeo pasa de 40 a 180 intentos de 500 ms (~90 s) para cubrir el reintento; igual el aviso `importacion.lista` refresca la propuesta cuando llega.
+Tests: 4 nuevos en `aiClient.unit.test.js` (reintento exitoso tras timeout, sin reintento ante HTTP 500, contingencia si el reintento falla, criterio de `esErrorReintentableIA`). Node: 258 tests, ESLint sin errores.
+Archivos tocados: `backend-node/src/clients/ai.client.js`, `backend-node/tests/unit/aiClient.unit.test.js`, `web/js/app.js`, `docs/bitacora.md`.

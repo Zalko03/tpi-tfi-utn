@@ -76,6 +76,17 @@ export const validarYNormalizarSalidaIA = (datos) => {
     };
 };
 
+/** Margen del reintento cuando ai-service está despertando (arranque en frío de Render). */
+export const timeoutReintentoIAMs = 60000;
+
+/**
+ * Indica si un fallo de fetch amerita reintentar: vencimiento del plazo (TimeoutError/AbortError)
+ * o falla de red (fetch de Node lanza TypeError "fetch failed").
+ */
+export const esErrorReintentableIA = (error) =>
+    Boolean(error) &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError' || error instanceof TypeError);
+
 /**
  * Consume POST /v1/extraer-precios de ai-service con timeout acotado y degradación elegante.
  */
@@ -117,12 +128,24 @@ export const extraerPreciosIA = async (
             cuerpo.imagen_mime = imagenMime || 'image/jpeg';
         }
 
-        const respuesta = await fetch(`${aiServiceUrl}/v1/extraer-precios`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(cuerpo),
-            signal: AbortSignal.timeout(timeoutEfectivo),
-        });
+        const pedirExtraccion = (limiteMs) =>
+            fetch(`${aiServiceUrl}/v1/extraer-precios`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(cuerpo),
+                signal: AbortSignal.timeout(limiteMs),
+            });
+
+        let respuesta;
+        try {
+            respuesta = await pedirExtraccion(timeoutEfectivo);
+        } catch (errorPrimerIntento) {
+            // En Render gratis ai-service se duerme y tarda hasta ~1 minuto en despertar:
+            // si no contestó a tiempo o la conexión falló, se reintenta una vez con más margen
+            // antes de pasar a contingencia. Un error HTTP (4xx/5xx) no se reintenta.
+            if (!esErrorReintentableIA(errorPrimerIntento)) throw errorPrimerIntento;
+            respuesta = await pedirExtraccion(timeoutReintentoIAMs);
+        }
 
         if (!respuesta.ok) {
             throw new Error(`ai-service respondió con estado HTTP ${respuesta.status}`);

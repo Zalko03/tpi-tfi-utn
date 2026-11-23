@@ -2622,7 +2622,9 @@ const consultarDetalleImportacion = async (importacionId, intento = 1) => {
         if (res.ok) {
             if (
                 (datos.estado === 'PENDIENTE' || datos.estado === 'PROCESANDO') &&
-                intento < 40
+                // ~90 s: si ai-service está dormido (Render gratis), Node lo reintenta con
+                // hasta 60 s de margen. Igual llega el aviso 'importacion.lista' por Socket.IO.
+                intento < 180
             ) {
                 if (intento === 1) {
                     renderizarPropuestaIAComercial(datos);
