@@ -4,6 +4,8 @@ import {
     aplicarResultadoPing,
     calcularEsperaProximoPing,
     debeTrabajarSinConexion,
+    esVistaDebugConexion,
+    resolverModoDesdeInterruptor,
     verificarSaludServidor,
 } from '../../../web/js/logicaPwa.js';
 
@@ -115,5 +117,27 @@ describe('debeTrabajarSinConexion', () => {
         expect(debeTrabajarSinConexion({ modoConexion: 'offline' })).toBe(true);
         expect(debeTrabajarSinConexion({ modoConexion: 'cloud', navegadorEnLinea: false })).toBe(true);
         expect(debeTrabajarSinConexion({ modoConexion: 'local', servidorAlcanzable: false })).toBe(true);
+    });
+});
+
+describe('resolverModoDesdeInterruptor', () => {
+    it('con el interruptor prendido es offline en cualquier host', () => {
+        expect(resolverModoDesdeInterruptor({ sinConexion: true, hostname: 'sapori-stock.vercel.app' })).toBe('offline');
+        expect(resolverModoDesdeInterruptor({ sinConexion: true, hostname: 'localhost' })).toBe('offline');
+    });
+
+    it('apagado: local en la computadora del local, nube en internet', () => {
+        expect(resolverModoDesdeInterruptor({ hostname: 'localhost' })).toBe('local');
+        expect(resolverModoDesdeInterruptor({ hostname: '127.0.0.1' })).toBe('local');
+        expect(resolverModoDesdeInterruptor({ hostname: 'sapori-stock.vercel.app' })).toBe('cloud');
+    });
+});
+
+describe('esVistaDebugConexion', () => {
+    it('solo con ?debug muestra las direcciones', () => {
+        expect(esVistaDebugConexion('?debug')).toBe(true);
+        expect(esVistaDebugConexion('?x=1&debug=1')).toBe(true);
+        expect(esVistaDebugConexion('')).toBe(false);
+        expect(esVistaDebugConexion('?depurar')).toBe(false);
     });
 });

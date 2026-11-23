@@ -1789,13 +1789,22 @@ Envío: $2000</textarea>
             <div class="modal-cabecera">
                 <div>
                     <h3>Conexión del sistema</h3>
-                    <p class="text-muted">Dónde está instalado Sapori Stock</p>
+                    <p class="text-muted">Cómo trabaja este dispositivo</p>
                 </div>
                 <button type="button" class="btn-cerrar-modal" data-cerrar="modal-config-servidor" aria-label="Cerrar">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
             <form id="form-config-servidor" class="modal-cuerpo">
+                <div class="campo-grupo">
+                    <label class="permiso-casilla-item">
+                        <input id="check-trabajar-sin-conexion" type="checkbox" />
+                        <span>Trabajar sin conexión</span>
+                    </label>
+                    <p class="text-muted">Las ventas se guardan en este dispositivo y se envían solas al volver la conexión.</p>
+                </div>
+                <!-- Solo para soporte técnico: se muestra abriendo la app con ?debug en la URL. -->
+                <div id="config-servidor-avanzado" hidden>
                 <div class="campo-grupo">
                     <label for="select-modo-conexion">Modo Operativo de Conexión</label>
                     <select id="select-modo-conexion">
@@ -1811,6 +1820,7 @@ Envío: $2000</textarea>
                 <div class="campo-grupo">
                     <label for="input-config-node-url">Dirección del sistema de avisos e IA</label>
                     <input id="input-config-node-url" type="text" placeholder="http://localhost:3000" required />
+                </div>
                 </div>
                 <div class="modal-footer-acciones">
                     <button type="button" class="btn-secundario-comercial" data-cerrar="modal-config-servidor">Cancelar</button>

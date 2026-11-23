@@ -99,6 +99,8 @@ import {
     ESTADO_CONEXION_INICIAL,
     INTERVALO_PING_CONECTADO_MS,
     verificarSaludServidor,
+    esVistaDebugConexion,
+    resolverModoDesdeInterruptor,
 } from './logicaPwa.js';
 
 const CLAVE_CATALOGO_CACHE = 'sapori_catalogo_cache';
@@ -4914,6 +4916,8 @@ const mostrarModalPermisos = (u) => {
 const abrirModalConfigServidor = () => {
     const modal = $('modal-config-servidor');
     if (!modal) return;
+    if ($('check-trabajar-sin-conexion')) $('check-trabajar-sin-conexion').checked = estadoApp.modoConexion === 'offline';
+    if ($('config-servidor-avanzado')) $('config-servidor-avanzado').hidden = !esVistaDebugConexion(window.location.search);
     if ($('select-modo-conexion')) $('select-modo-conexion').value = estadoApp.modoConexion;
     if ($('input-config-django-url')) $('input-config-django-url').value = estadoApp.djangoUrl;
     if ($('input-config-node-url')) $('input-config-node-url').value = estadoApp.nodeUrl;
@@ -6198,9 +6202,21 @@ Flete y entrega a local: $4500`;
 
     $('form-config-servidor')?.addEventListener('submit', (e) => {
         e.preventDefault();
-        const modo = $('select-modo-conexion')?.value || 'local';
-        const djangoUrl = ($('input-config-django-url')?.value || 'http://localhost:8000').trim().replace(/\/$/, '');
-        const nodeUrl = ($('input-config-node-url')?.value || 'http://localhost:3000').trim().replace(/\/$/, '');
+        const vistaDebug = esVistaDebugConexion(window.location.search);
+        // En la vista normal solo cuenta el interruptor y las direcciones no se tocan;
+        // con ?debug se respetan el selector y las direcciones escritas a mano.
+        const modo = vistaDebug
+            ? $('select-modo-conexion')?.value || 'local'
+            : resolverModoDesdeInterruptor({
+                  sinConexion: Boolean($('check-trabajar-sin-conexion')?.checked),
+                  hostname: window.location.hostname,
+              });
+        const djangoUrl = vistaDebug
+            ? ($('input-config-django-url')?.value || 'http://localhost:8000').trim().replace(/\/$/, '')
+            : estadoApp.djangoUrl;
+        const nodeUrl = vistaDebug
+            ? ($('input-config-node-url')?.value || 'http://localhost:3000').trim().replace(/\/$/, '')
+            : estadoApp.nodeUrl;
 
         estadoApp.modoConexion = modo;
         estadoApp.djangoUrl = djangoUrl;
@@ -6215,6 +6231,16 @@ Flete y entrega a local: $4500`;
         conectarSocketTiempoReal();
         if (!estadoApp.tokenJwt) {
             actualizarDisponibilidadDemo();
+        }
+        if (modo !== 'offline') verificarConexionAhora();
+        if (!vistaDebug) {
+            mostrarToast(
+                modo === 'offline'
+                    ? 'Trabajando sin conexión: las ventas se guardan en este dispositivo.'
+                    : 'Trabajando con conexión.',
+                'exito'
+            );
+            return;
         }
         const etiquetasModo = {
             local: 'En la computadora del local',

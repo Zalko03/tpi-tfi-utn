@@ -4097,3 +4097,24 @@ export const verificarSaludServidor = async ({
  */
 export const debeTrabajarSinConexion = ({ modoConexion, navegadorEnLinea = true, servidorAlcanzable = true } = {}) =>
     modoConexion === 'offline' || navegadorEnLinea === false || servidorAlcanzable === false;
+
+/**
+ * Modo de conexión a partir del interruptor "Trabajar sin conexión".
+ * Sin el interruptor, local o nube se deduce de dónde se abrió la página.
+ */
+export const resolverModoDesdeInterruptor = ({ sinConexion = false, hostname = '' } = {}) => {
+    if (sinConexion) return 'offline';
+    return hostname === 'localhost' || hostname === '127.0.0.1' ? 'local' : 'cloud';
+};
+
+/**
+ * Las direcciones de los servidores solo se muestran abriendo la app con
+ * ?debug en la URL (soporte técnico); el resto ve solo el interruptor.
+ */
+export const esVistaDebugConexion = (search = '') => {
+    try {
+        return new URLSearchParams(search).has('debug');
+    } catch {
+        return false;
+    }
+};
