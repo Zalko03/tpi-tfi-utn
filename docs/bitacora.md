@@ -2459,3 +2459,15 @@ Qué pasaba y qué se hizo:
 - El menú lateral ya es `position: sticky` con alto de pantalla; con el POS sin scroll de página deja de moverse ahí.
 Prueba: reglas inyectadas sobre la web publicada a 1650×900 (sesión de dueño): mediciones de arriba; después del deploy se repite sobre el CSS real.
 Archivos tocados: `web/css/estilos.css`, `web/index.html`, `docs/bitacora.md`.
+
+## 23/11 — La IA ahora lee PDF escaneados y los errores dicen la causa
+Rama: `feature/ia-pdf-escaneado`.
+Diagnóstico previo: ai-service y Node responden bien en local y en Render con texto y con foto (Groq, 1,5–3,5 s). Lo que fallaba era la web:
+- Un PDF escaneado (sin texto seleccionable, típico de una lista sacada con el celular o el escáner) se rechazaba con "El PDF parece ser una imagen escaneada…" y nunca llegaba a la IA, aunque el modelo de visión ya estaba.
+- Cualquier falla al crear la importación (sesión vencida, archivo pesado, demasiados pedidos, servidor caído o sin conexión) mostraba "No se pudo usar la IA, revisá la configuración".
+Qué se hizo:
+- `web/js/app.js`: si pdf.js no encuentra texto, `renderizarPdfEscaneadoComoImagen` dibuja las primeras 3 páginas una debajo de otra en un JPEG y se analiza como una foto (misma vista previa y mismo envío). El aviso indica si quedaron páginas afuera. Se extrajo `aplicarImagenImportacion` para no duplicar lo que ya hacía la foto. El archivo se vuelve a leer antes de dibujar porque pdf.js puede transferir el buffer al worker.
+- `web/js/logicaPwa.js`: `calcularLienzoPdfEscaneado` (función pura) calcula la escala común: ancho máximo 1600 px, alto total máximo 4800 px y ampliación máxima ×3. `mensajeFallaImportacionIA` da el motivo según el código HTTP (401, 403, 413, 429, validación 400, 5xx) y `MENSAJE_IMPORTACION_SIN_CONEXION` cubre la falta de red. El caso en que la IA sí recibió el pedido pero cayó en contingencia sigue con el mensaje anterior.
+Tests: `backend-node/tests/unit/importacionPdfEscaneado.unit.test.js` (10 casos). Suite de Node: 267 de 268. Falla `clientePwa.integration` (`/carta.html` da 404) solo en este worktree, porque su ruta pasa por la carpeta oculta `.claude` y `res.sendFile` la rechaza; en `main`, en una carpeta normal, pasa.
+Prueba en navegador: Brave sin ventana con la misma CSP de la app, cargando la web de la rama. PDF escaneado de 1 página → imagen 1260×360; PDF con texto → sigue yendo por texto; PDF escaneado de 4 páginas → 1131×4800 (78 KB) con el aviso "primeras 3 de 4 páginas". Esa imagen enviada a Node local → LISTA con Groq y 4 ítems (café, leche, azúcar, vasos). Las importaciones de prueba se rechazaron con motivo "Prueba de diagnostico".
+Archivos tocados: `web/js/app.js`, `web/js/logicaPwa.js`, `backend-node/tests/unit/importacionPdfEscaneado.unit.test.js`, `docs/bitacora.md`.
