@@ -558,10 +558,16 @@ export const actualizarIndicadorColaOffline = () => {
 
     if (sinInternet || cantidad > 0) {
         banner.style.display = 'flex';
-        texto.textContent =
-            cantidad === 1
-                ? 'Sin conexión: 1 venta guardada, se enviará al volver la conexión'
-                : `Sin conexión: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
+        if (sinInternet) {
+            texto.textContent =
+                cantidad === 1
+                    ? 'Sin conexión: 1 venta guardada, se enviará al volver la conexión'
+                    : `Sin conexión: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
+        } else {
+            // Hay conexión pero quedaron ventas sin enviar (por ejemplo, falta abrir un turno).
+            texto.textContent =
+                cantidad === 1 ? '1 venta guardada sin enviar' : `${cantidad} ventas guardadas sin enviar`;
+        }
     } else {
         banner.style.display = 'none';
     }
