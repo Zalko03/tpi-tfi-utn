@@ -644,8 +644,9 @@ export const obtenerVentasRechazadasOffline = (storagePersonalizado = null) => {
 
 /**
  * Encola una venta en localStorage cuando no hay conexión a internet o el backend no responde.
+ * `fotoTicket` (opcional): { cajero, items: [{ nombre, cantidad, subtotalDecimal }] }.
  */
-export const encolarVentaOffline = (ventaPayload, storagePersonalizado = null) => {
+export const encolarVentaOffline = (ventaPayload, storagePersonalizado = null, fotoTicket = null) => {
     const storage = obtenerStorageSeguro(storagePersonalizado);
     const colaActual = obtenerVentasOffline(storage);
     const payloadConId = {
@@ -659,6 +660,9 @@ export const encolarVentaOffline = (ventaPayload, storagePersonalizado = null) =
         sincronizada: false,
         payload: payloadConId,
     };
+    // Foto del ticket (nombres, subtotales y cajero) para poder reverlo desde Reportes.
+    // Va fuera de `payload`, así no se manda al backend al sincronizar.
+    if (fotoTicket) registroOffline.ticket = fotoTicket;
 
     const nuevaCola = [...colaActual, registroOffline];
     if (storage) {
@@ -1213,6 +1217,97 @@ export const validarMotivoAnulacion = (motivo) => {
     return { valido: true, motivo: texto, mensaje: '' };
 };
 
+// El ticket muestra el IVA (21%) incluido en el total; se calcula en centavos para no arrastrar float.
+export const calcularIvaIncluidoCentavos = (totalCentavos) => Math.round(totalCentavos - totalCentavos / 1.21);
+
+const centavosODecimalNulo = (centavos) => (centavos === null ? null : formatearCentavosADecimal(centavos));
+
+/**
+ * Arma los datos del ticket térmico a partir de una fila de venta del historial de Reportes
+ * (registro.ticketFuente, que guarda unificarTrazabilidadRegistros).
+ * - tipo 'servidor': venta de GET /api/ventas/ (puede venir anulada). Si el usuario no tiene
+ *   permiso para ver montos, el backend manda total y precios en null: el ticket los deja en null.
+ * - tipo 'offline': venta todavía en la cola local. Usa la foto del ticket guardada al cobrar;
+ *   si no la tiene (ventas encoladas antes de este cambio), busca nombre y precio en el catálogo.
+ * Devuelve null si el registro no es una venta.
+ */
+export const armarTicketDesdeRegistroHistorial = (registro, catalogo = []) => {
+    const fuente = registro?.ticketFuente;
+    if (!fuente || !fuente.venta) return null;
+    const venta = fuente.venta;
+
+    if (fuente.tipo === 'offline') {
+        const foto = venta.ticket || null;
+        const payload = venta.payload || {};
+        const lista = Array.isArray(catalogo) ? catalogo : [];
+        let items;
+        if (foto && Array.isArray(foto.items)) {
+            items = foto.items.map((it) => ({
+                descripcion: `${Number(it.cantidad) || 1}x ${it.nombre || 'Producto'}`,
+                subtotalCentavos: convertirMontoACentavos(it.subtotalDecimal),
+            }));
+        } else {
+            const itemsPayload = payload.items_entrada || payload.items || [];
+            items = itemsPayload.map((it) => {
+                const prodId = Number(it.producto_id ?? it.producto);
+                const prod = lista.find((p) => Number(p?.id) === prodId);
+                const cantidad = Number(it.cantidad) || 1;
+                const precioCentavos = convertirMontoACentavos(
+                    it.precio_unitario ?? prod?.precio_venta ?? prod?.precioVenta ?? '0'
+                );
+                return {
+                    descripcion: `${cantidad}x ${prod?.nombre || `Prod #${prodId}`}`,
+                    subtotalCentavos: Math.round(cantidad * precioCentavos),
+                };
+            });
+        }
+        const totalCentavos = items.reduce((acc, it) => acc + it.subtotalCentavos, 0);
+        return {
+            numero: String(venta.idTemporal || '-'),
+            fechaIso: venta.creadoEn || '',
+            cajero: foto?.cajero || '-',
+            turno: payload.turno_caja ? `#${payload.turno_caja}` : '-',
+            items: items.map((it) => ({
+                descripcion: it.descripcion,
+                subtotalDecimal: formatearCentavosADecimal(it.subtotalCentavos),
+            })),
+            totalDecimal: formatearCentavosADecimal(totalCentavos),
+            ivaDecimal: formatearCentavosADecimal(calcularIvaIncluidoCentavos(totalCentavos)),
+            medioPago: payload.medio_pago || payload.metodo_pago || 'EFECTIVO',
+            offline: true,
+            anulada: false,
+            motivoAnulacion: '',
+        };
+    }
+
+    const montosOcultos = venta.total === null || venta.total === undefined;
+    const totalCentavos = montosOcultos ? null : convertirMontoACentavos(venta.total);
+    const items = (Array.isArray(venta.items) ? venta.items : []).map((it) => {
+        const cantidad = Number(it.cantidad) || 1;
+        const sinPrecio = montosOcultos || it.precio_unitario === null || it.precio_unitario === undefined;
+        return {
+            descripcion: `${cantidad}x ${it.producto_nombre || `Prod #${it.producto}`}`,
+            subtotalDecimal: sinPrecio
+                ? null
+                : formatearCentavosADecimal(Math.round(cantidad * convertirMontoACentavos(it.precio_unitario))),
+        };
+    });
+    const anulada = String(venta.estado || 'EMITIDA').toUpperCase() === 'ANULADA';
+    return {
+        numero: `#${String(venta.id).padStart(4, '0')}`,
+        fechaIso: venta.fecha || venta.creado_en || '',
+        cajero: venta.usuario_nombre || '-',
+        turno: venta.turno_caja ? `#${venta.turno_caja}` : '-',
+        items,
+        totalDecimal: centavosODecimalNulo(totalCentavos),
+        ivaDecimal: totalCentavos === null ? null : formatearCentavosADecimal(calcularIvaIncluidoCentavos(totalCentavos)),
+        medioPago: venta.medio_pago || null,
+        offline: false,
+        anulada,
+        motivoAnulacion: anulada ? String(venta.motivo_anulacion || '').trim() : '',
+    };
+};
+
 /**
  * Unifica y ordena cronológicamente Ventas, Movimientos de Stock (o Compras fallback),
  * Cierres de Caja y Ventas Offline pendientes dentro del rango de fechas seleccionado.
@@ -1291,6 +1386,7 @@ export const unificarTrazabilidadRegistros = ({
             detalle: `Ticket #${v.id}${medio} · ${resumenItems}${motivoTexto}`,
             montoCantidad: montoTexto,
             responsable: v.usuario_nombre || (v.turno_caja ? `Turno #${v.turno_caja}` : 'Mostrador'),
+            ticketFuente: { tipo: 'servidor', venta: v },
         });
     }
 
@@ -1307,6 +1403,7 @@ export const unificarTrazabilidadRegistros = ({
             detalle: `Pendiente sync (${payload.medio_pago || 'EFECTIVO'}) · ${cantItems} unidad(es)`,
             montoCantidad: 'Pendiente sync',
             responsable: 'Terminal Local',
+            ticketFuente: { tipo: 'offline', venta: vo },
         });
     }
 
