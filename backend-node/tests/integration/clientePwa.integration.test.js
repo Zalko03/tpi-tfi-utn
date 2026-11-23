@@ -17,7 +17,9 @@ describe('Integración: Cliente Mínimo PWA en /app (T3.6)', () => {
         expect(res.text).toContain('ia-alerta-contingencia');
         expect(res.text).toContain('Cargar planilla del proveedor');
         expect(res.text).toContain('Vista previa');
-        expect(res.text).toContain('¿No podés conectarte?');
+        // El enlace del login se quitó (se confundía con recuperar la contraseña); el modal sigue para el engranaje del dueño.
+        expect(res.text).not.toContain('¿No podés conectarte?');
+        expect(res.text).toContain('btn-config-servidor-header');
         expect(res.text).not.toContain('input-token-jwt');
         expect(res.text).toContain('btn-csv-confirmar-directo');
         expect(res.text).toContain('btn-csv-desde-texto');
