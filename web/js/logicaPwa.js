@@ -1873,6 +1873,65 @@ export const calcularDimensionesReescaladoImagen = (
     };
 };
 
+// PDF escaneado: las páginas se dibujan una debajo de otra en una sola imagen para el modelo de visión.
+export const MAX_PAGINAS_PDF_ESCANEADO = 3;
+export const ALTO_MAXIMO_LIENZO_PDF_PX = 4800;
+// Tope de ampliación: una página chica ampliada de más pesa sin ganar nitidez.
+export const ESCALA_MAXIMA_PDF_ESCANEADO = 3;
+export const MENSAJE_PDF_ESCANEADO_LISTO = 'PDF escaneado: se va a analizar como foto con la IA';
+
+/**
+ * Calcula cómo apilar las primeras páginas de un PDF escaneado en un único lienzo.
+ * Recibe el tamaño de cada página a escala 1 (puntos de pdf.js) y, opcionalmente, el total de
+ * páginas del documento (para avisar cuántas quedaron afuera). Devuelve la escala común,
+ * el tamaño del lienzo y la posición vertical de cada página.
+ */
+export const calcularLienzoPdfEscaneado = (dimensionesPaginas = [], opciones = {}) => {
+    const {
+        ladoMaximo = LADO_MAXIMO_IMAGEN_IMPORTACION_PX,
+        altoMaximo = ALTO_MAXIMO_LIENZO_PDF_PX,
+        maxPaginas = MAX_PAGINAS_PDF_ESCANEADO,
+        escalaMaxima = ESCALA_MAXIMA_PDF_ESCANEADO,
+        totalPaginas = null,
+    } = opciones;
+
+    const validas = Array.isArray(dimensionesPaginas)
+        ? dimensionesPaginas.filter(
+              (p) =>
+                  Number.isFinite(Number(p?.ancho)) &&
+                  Number.isFinite(Number(p?.alto)) &&
+                  Number(p.ancho) > 0 &&
+                  Number(p.alto) > 0
+          )
+        : [];
+    if (validas.length === 0) {
+        throw new Error('El PDF no tiene páginas para dibujar.');
+    }
+
+    const usadas = validas.slice(0, Math.max(1, maxPaginas));
+    const anchoMayor = Math.max(...usadas.map((p) => Number(p.ancho)));
+    const altoTotal = usadas.reduce((suma, p) => suma + Number(p.alto), 0);
+    const escala = Math.min(escalaMaxima, ladoMaximo / anchoMayor, altoMaximo / altoTotal);
+
+    let y = 0;
+    const paginas = usadas.map((p) => {
+        const anchoPx = Math.max(1, Math.round(Number(p.ancho) * escala));
+        const altoPx = Math.max(1, Math.round(Number(p.alto) * escala));
+        const posicion = { y, ancho: anchoPx, alto: altoPx };
+        y += altoPx;
+        return posicion;
+    });
+
+    return {
+        escala,
+        ancho: Math.max(...paginas.map((p) => p.ancho)),
+        alto: y,
+        paginas,
+        paginasUsadas: usadas.length,
+        paginasOmitidas: Math.max(0, (Number(totalPaginas) || validas.length) - usadas.length),
+    };
+};
+
 /**
  * Extrae el contenido base64 puro quitando el prefijo `data:<mime>;base64,`.
  */
@@ -2361,6 +2420,25 @@ export const mensajeErrorParaUsuario = (status, mensajeApi = '') => {
         return mensajeLimpio;
     }
     return 'No se pudo completar la operación. Probá de nuevo en unos minutos.';
+};
+
+export const MENSAJE_IMPORTACION_SIN_CONEXION =
+    'No se pudo conectar con el servidor. Revisá tu conexión y probá de nuevo.';
+
+/**
+ * Motivo legible cuando el pedido de análisis con IA no llega a crearse.
+ * Antes todo terminaba en "revisá la configuración" y ocultaba sesiones vencidas,
+ * archivos pesados o límites de pedidos.
+ */
+export const mensajeFallaImportacionIA = (status, mensajeApi = '') => {
+    const codigo = Number(status);
+    if (codigo === 413) {
+        return 'El archivo es demasiado pesado para analizar. Probá con una foto o un PDF más liviano.';
+    }
+    if (codigo >= 500 || !Number.isFinite(codigo) || codigo === 0) {
+        return 'El servicio de IA no respondió. Probá de nuevo en unos minutos.';
+    }
+    return mensajeErrorParaUsuario(codigo, mensajeApi);
 };
 
 /**
