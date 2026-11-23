@@ -15,6 +15,8 @@ import {
     calcularFactorConversionReceta,
     calcularPrecioSugeridoLocal,
     calcularResumenCarrito,
+    calcularIvaIncluidoCentavos,
+    armarTicketDesdeRegistroHistorial,
     CALIDAD_JPEG_IMAGEN_IMPORTACION,
     construirDictPermisosDesdeSeleccion,
     construirUrlCartaPublica,
@@ -202,6 +204,7 @@ export const estadoApp = {
     empleadoEditandoPermisos: null,
     empleadoParaBaja: null,
     ventaParaAnular: null,
+    ticketAbiertoDesdeHistorial: false,
     productoDesgloseId: null,
     filtroCategoriaActual: 'todos',
     idCargaReportes: 0,
@@ -1433,7 +1436,14 @@ const renderizarCarritoTicket = () => {
 };
 
 const registrarCobroEnColaOffline = (payload, resumen, metodoPago) => {
-    const resultadoCola = encolarVentaOffline(payload);
+    const resultadoCola = encolarVentaOffline(payload, null, {
+        cajero: estadoApp.usuario?.username || '',
+        items: estadoApp.carrito.map((item) => ({
+            nombre: item.nombre,
+            cantidad: item.cantidad,
+            subtotalDecimal: item.subtotalDecimal,
+        })),
+    });
     actualizarIndicadorColaOffline();
 
     mostrarModalTicketTermico(
@@ -1558,22 +1568,66 @@ const cobrarTicketVenta = async () => conCargando($('btn-cobrar-ticket'), async 
     }
 });
 
+// Al cobrar: arma el ticket con el carrito actual y lo muestra (fecha = ahora).
 const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
+    const totalCentavos = Number(resumenCarrito.totalCentavos) || 0;
+    pintarModalTicketTermico({
+        numero: datosVenta.offline
+            ? String(datosVenta.id)
+            : `#${String(datosVenta.id).padStart(4, '0')}`,
+        fechaIso: new Date().toISOString(),
+        cajero: estadoApp.usuario?.username || 'Operador',
+        turno: datosVenta.turno_caja ? `#${datosVenta.turno_caja}` : '-',
+        items: estadoApp.carrito.map((item) => ({
+            descripcion: `${item.cantidad}x ${item.nombre}`,
+            subtotalDecimal: item.subtotalDecimal,
+        })),
+        totalDecimal: resumenCarrito.totalDecimal,
+        ivaDecimal: formatearCentavosADecimal(calcularIvaIncluidoCentavos(totalCentavos)),
+        medioPago: metodoPago,
+        offline: Boolean(datosVenta.offline),
+        anulada: false,
+        motivoAnulacion: '',
+    });
+};
+
+// Desde Reportes: muestra el ticket de una venta ya registrada, con su fecha original.
+const abrirTicketDesdeHistorial = (registro) => {
+    const ticket = armarTicketDesdeRegistroHistorial(registro, estadoApp.catalogo);
+    if (!ticket) return;
+    pintarModalTicketTermico(ticket, { desdeHistorial: true });
+};
+
+// Monto del ticket o "-" si el backend lo ocultó (usuario sin permiso para ver montos).
+const montoTicketOGuion = (decimal) => (decimal === null || decimal === undefined ? '-' : formatearMoneda(decimal));
+
+const pintarModalTicketTermico = (ticket, { desdeHistorial = false } = {}) => {
     const modal = $('modal-ticket-termico');
     if (!modal) return;
 
-    const idFormateado = datosVenta.offline
-        ? String(datosVenta.id)
-        : `#${String(datosVenta.id).padStart(4, '0')}`;
+    const fecha = ticket.fechaIso ? new Date(ticket.fechaIso) : null;
+    const fechaTexto = fecha && !Number.isNaN(fecha.getTime())
+        ? fecha.toLocaleString('es-AR', { hourCycle: 'h23' })
+        : '-';
 
-    if ($('ticket-termico-id')) $('ticket-termico-id').textContent = idFormateado;
-    if ($('ticket-termico-fecha')) $('ticket-termico-fecha').textContent = new Date().toLocaleString('es-AR', { hourCycle: 'h23' });
-    if ($('ticket-termico-cajero')) $('ticket-termico-cajero').textContent = estadoApp.usuario?.username || 'Operador';
-    if ($('ticket-termico-turno')) $('ticket-termico-turno').textContent = datosVenta.turno_caja ? `#${datosVenta.turno_caja}` : '-';
+    if ($('ticket-termico-id')) $('ticket-termico-id').textContent = ticket.numero;
+    if ($('ticket-termico-fecha')) $('ticket-termico-fecha').textContent = fechaTexto;
+    if ($('ticket-termico-cajero')) $('ticket-termico-cajero').textContent = ticket.cajero;
+    if ($('ticket-termico-turno')) $('ticket-termico-turno').textContent = ticket.turno;
+
+    const marcaAnulada = $('ticket-termico-anulada');
+    if (marcaAnulada) {
+        marcaAnulada.style.display = ticket.anulada ? 'block' : 'none';
+        if ($('ticket-termico-motivo')) {
+            $('ticket-termico-motivo').textContent = ticket.motivoAnulacion
+                ? `Motivo: ${ticket.motivoAnulacion}`
+                : '';
+        }
+    }
 
     const leyendaEl = $('ticket-termico-leyenda');
     if (leyendaEl) {
-        leyendaEl.textContent = datosVenta.offline
+        leyendaEl.textContent = ticket.offline
             ? 'Comprobante emitido sin internet - se enviará al volver la conexión'
             : 'No válido como factura';
     }
@@ -1581,22 +1635,24 @@ const mostrarModalTicketTermico = (datosVenta, resumenCarrito, metodoPago) => {
     const itemsBody = $('ticket-termico-items-body');
     if (itemsBody) {
         itemsBody.innerHTML = '';
-        for (const item of estadoApp.carrito) {
+        for (const item of ticket.items) {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td class="col-texto">${item.cantidad}x ${escaparHtml(item.nombre)}</td>
-                <td class="col-numero">${formatearMoneda(item.subtotalDecimal)}</td>
+                <td class="col-texto">${escaparHtml(item.descripcion)}</td>
+                <td class="col-numero">${montoTicketOGuion(item.subtotalDecimal)}</td>
             `;
             itemsBody.appendChild(tr);
         }
     }
 
-    const totalNum = Number(resumenCarrito.totalDecimal);
-    const ivaNum = totalNum - (totalNum / 1.21);
+    if ($('ticket-termico-total')) $('ticket-termico-total').textContent = montoTicketOGuion(ticket.totalDecimal);
+    if ($('ticket-termico-iva')) $('ticket-termico-iva').textContent = montoTicketOGuion(ticket.ivaDecimal);
+    if ($('ticket-termico-metodo')) $('ticket-termico-metodo').textContent = ticket.medioPago || '-';
 
-    if ($('ticket-termico-total')) $('ticket-termico-total').textContent = formatearMoneda(resumenCarrito.totalDecimal);
-    if ($('ticket-termico-iva')) $('ticket-termico-iva').textContent = formatearMoneda(ivaNum);
-    if ($('ticket-termico-metodo')) $('ticket-termico-metodo').textContent = metodoPago;
+    // Desde Reportes no hay venta nueva que empezar: el botón solo cierra.
+    const textoBotonCierre = $('btn-nueva-venta')?.querySelector('span');
+    if (textoBotonCierre) textoBotonCierre.textContent = desdeHistorial ? 'Cerrar' : 'Nueva Venta';
+    estadoApp.ticketAbiertoDesdeHistorial = desdeHistorial;
 
     modal.style.display = 'flex';
 };
@@ -3698,6 +3754,15 @@ const renderizarTablaTrazabilidad = () => {
             <td class="col-texto">${escaparHtml(item.responsable)}</td>
             <td class="col-centro"></td>
         `;
+        if (item.ticketFuente) {
+            const btnTicket = document.createElement('button');
+            btnTicket.type = 'button';
+            btnTicket.className = 'btn-refrescar-mini btn-ver-ticket';
+            btnTicket.textContent = 'Ver ticket';
+            btnTicket.title = 'Ver el ticket completo';
+            btnTicket.addEventListener('click', () => abrirTicketDesdeHistorial(item));
+            tr.lastElementChild.appendChild(btnTicket);
+        }
         // El backend vuelve a validar permiso y turno: esto solo evita ofrecer un botón que va a fallar.
         if (registroMuestraBotonAnular(estadoApp.usuario, item)) {
             const btn = document.createElement('button');
@@ -5220,7 +5285,7 @@ const inicializarEventosDOM = () => {
     });
     $('btn-nueva-venta')?.addEventListener('click', () => {
         if ($('modal-ticket-termico')) $('modal-ticket-termico').style.display = 'none';
-        $('input-codigo-barras')?.focus();
+        if (!estadoApp.ticketAbiertoDesdeHistorial) $('input-codigo-barras')?.focus();
     });
 
     // 11. Cierre de Caja con Arqueo Ciego

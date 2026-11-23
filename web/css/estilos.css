@@ -2765,6 +2765,30 @@ textarea:focus {
     margin-top: 0.2rem;
 }
 
+.ticket-marca-anulada {
+    border: 2px dashed #B3261E;
+    color: #B3261E;
+    text-align: center;
+    padding: 0.3rem;
+    margin: 0.4rem 0;
+}
+
+.ticket-marca-anulada strong {
+    display: block;
+    font-size: 1.1rem;
+    letter-spacing: 0.2em;
+}
+
+.ticket-marca-anulada span {
+    display: block;
+    font-size: 0.7rem;
+    overflow-wrap: anywhere;
+}
+
+.btn-ver-ticket + .btn-anular-venta {
+    margin-left: 0.3rem;
+}
+
 .ticket-modal-acciones {
     display: flex;
     gap: 0.75rem;
