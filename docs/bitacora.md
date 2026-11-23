@@ -2424,3 +2424,11 @@ Qué se hizo: los dos selectores del botón (el que lo oculta y el de la media q
 Prueba: web de la rama servida en local en el navegador integrado: a 1650 px el botón queda `display: none` (los otros botones de la barra siguen visibles); a 700 px se ve, abre el menú y la ✕ lo cierra.
 Archivos tocados: `web/css/estilos.css`, `docs/bitacora.md`.
 Cómo probarlo: abrir la app con la ventana ancha (el ☰ no tiene que aparecer) y achicarla a menos de 768 px (aparece y abre el menú).
+
+## 22/11 — "¿No podés conectarte?" abría el modal tapado por el login
+Rama: `fix/web-boton-menu`.
+Qué pasaba: el enlace del login sí abre el modal "Conexión del sistema" (`abrirModalConfigServidor`), pero `.modal-overlay` tiene `z-index: 2000` y la pantalla de login `9999`: el modal quedaba abierto detrás y parecía que el enlace no hacía nada.
+Qué se hizo: `#modal-config-servidor` pasa a `z-index: 9999`. Queda arriba del login porque viene después en el HTML, y debajo de los avisos (`.contenedor-toasts`, `10000`), que siguen viéndose al guardar. Los demás modales no cambian (solo se abren con la sesión iniciada).
+Prueba: web de la rama servida en local en el navegador integrado: al tocar el enlace, el modal se ve encima del login con las direcciones cargadas y "Cancelar" lo cierra.
+Sin arreglar (detalle menor): al guardar, el formulario acepta direcciones sin `http://` (por ejemplo `localhost:8000`) y las guarda tal cual.
+Archivos tocados: `web/css/estilos.css`, `docs/bitacora.md`.

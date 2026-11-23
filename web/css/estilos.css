@@ -2536,6 +2536,13 @@ textarea:focus {
     padding: 1.5rem;
 }
 
+/* "¿No podés conectarte?" abre este modal desde el login, que está en z-index 9999:
+   con el 2000 de los demás modales quedaba abierto pero tapado. Con 9999 queda arriba
+   del login (viene después en el HTML) y debajo de los avisos (.contenedor-toasts, 10000). */
+#modal-config-servidor {
+    z-index: 9999;
+}
+
 .modal-tarjeta {
     background: var(--color-blanco);
     border: 1px solid var(--color-borde-suave);
