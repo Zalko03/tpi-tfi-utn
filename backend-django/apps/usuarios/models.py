@@ -100,6 +100,7 @@ class RegistroAuditoria(models.Model):
         ("ACTIVACION", "Reactivación de usuario"),
         ("CAMBIO_CLAVE", "Cambio de la propia contraseña"),
         ("RESTABLECIMIENTO_CLAVE", "Restablecimiento de contraseña ajena"),
+        ("PEDIDO_RESTABLECIMIENTO", "Pedido de restablecimiento desde el login"),
     )
 
     usuario_modificado = models.ForeignKey(
@@ -139,3 +140,38 @@ class RegistroAuditoria(models.Model):
     def __str__(self) -> str:
         operador = self.modificado_por.username if self.modificado_por else "Sistema"
         return f"[{self.fecha.strftime('%Y-%m-%d %H:%M')}] {self.accion} sobre {self.usuario_modificado.username} por {operador}"
+
+
+class PedidoRestablecimientoClave(models.Model):
+    """
+    Pedido hecho desde el login ("¿Olvidaste tu contraseña?"). No hay correo: el pedido
+    le aparece a quien puede restablecer la clave (dueño o superadmin), que la fija con
+    el restablecimiento normal. Al restablecerla, el pedido queda atendido.
+    """
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="pedidos_clave",
+        verbose_name="Usuario que pidió",
+    )
+    creado_en = models.DateTimeField(default=timezone.now, verbose_name="Fecha del pedido")
+    atendido = models.BooleanField(default=False, verbose_name="Atendido")
+    atendido_en = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de atención")
+    atendido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pedidos_clave_atendidos",
+        verbose_name="Atendido por",
+    )
+
+    class Meta:
+        verbose_name = "Pedido de restablecimiento de contraseña"
+        verbose_name_plural = "Pedidos de restablecimiento de contraseña"
+        ordering = ["-creado_en"]
+
+    def __str__(self) -> str:
+        estado = "atendido" if self.atendido else "pendiente"
+        return f"{self.usuario.username} ({estado})"

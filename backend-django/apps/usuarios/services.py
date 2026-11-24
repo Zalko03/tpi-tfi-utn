@@ -13,6 +13,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework_simplejwt.settings import api_settings as simplejwt_settings
 
@@ -25,7 +26,7 @@ from apps.usuarios.constantes import (
     ROLES_CHOICES,
 )
 from apps.usuarios.exceptions import ErrorReglaNegocio, ErrorSupervivenciaDuenio
-from apps.usuarios.models import PerfilUsuario, RegistroAuditoria
+from apps.usuarios.models import PedidoRestablecimientoClave, PerfilUsuario, RegistroAuditoria
 from apps.usuarios.tokens import (
     CustomTokenObtainPairSerializer,
     construir_datos_usuario_login,
@@ -487,6 +488,9 @@ def restablecer_clave(usuario_id: int, clave_nueva: str, restablecido_por: Any) 
     usuario.set_password(clave_nueva)
     usuario.save(update_fields=["password"])
     sesiones_cerradas = invalidar_tokens_usuario(usuario)
+    PedidoRestablecimientoClave.objects.filter(usuario=usuario, atendido=False).update(
+        atendido=True, atendido_en=timezone.now(), atendido_por=restablecido_por
+    )
 
     RegistroAuditoria.objects.create(
         usuario_modificado=usuario,
@@ -519,3 +523,26 @@ def crear_superadmin(username: str, clave: str, email: str = "") -> Any:
         detalles={"username": username, "superadmin": True, "origen": "comando"},
     )
     return usuario
+
+
+def solicitar_restablecimiento_clave(username: str) -> None:
+    """
+    "¿Olvidaste tu contraseña?" desde el login. Si el usuario existe y está activo, deja
+    un pedido pendiente (uno solo por persona) y lo audita. No devuelve nada a propósito:
+    la vista responde siempre lo mismo para no revelar qué usuarios existen.
+    """
+    username = (username or "").strip()
+    if not username:
+        return
+    usuario = User.objects.filter(username__iexact=username, is_active=True).first()
+    if usuario is None:
+        return
+    if PedidoRestablecimientoClave.objects.filter(usuario=usuario, atendido=False).exists():
+        return
+    PedidoRestablecimientoClave.objects.create(usuario=usuario)
+    RegistroAuditoria.objects.create(
+        usuario_modificado=usuario,
+        modificado_por=None,
+        accion="PEDIDO_RESTABLECIMIENTO",
+        detalles={"username": usuario.username, "origen": "login"},
+    )
