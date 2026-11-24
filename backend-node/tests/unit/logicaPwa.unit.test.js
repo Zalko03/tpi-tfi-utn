@@ -6,6 +6,8 @@ import vm from 'vm';
 import { jest } from '@jest/globals';
 import {
     accionesCajaVisiblesParaUsuario,
+    puedeRestablecerClaveDe,
+    validarFormularioClave,
     seleccionarTurnoPropio,
     accionesEmpleadoVisiblesParaUsuario,
     accionesEquipoVisiblesParaUsuario,
@@ -2804,5 +2806,66 @@ describe('seleccionarTurnoPropio (turno activo en Caja)', () => {
                 mensaje: '',
             });
         });
+    });
+});
+
+describe('puedeRestablecerClaveDe', () => {
+    const superadmin = { id: 1, is_superuser: true, rol: 'DUENIO' };
+    const duenio = { id: 2, is_superuser: false, rol: 'DUENIO' };
+    const otroDuenio = { id: 3, is_superuser: false, rol: 'DUENIO' };
+    const encargado = { id: 4, is_superuser: false, rol: 'ENCARGADO' };
+    const cajero = { id: 5, is_superuser: false, rol: 'CAJERO' };
+
+    test('el superadmin puede con todos menos consigo mismo', () => {
+        expect(puedeRestablecerClaveDe(superadmin, duenio)).toBe(true);
+        expect(puedeRestablecerClaveDe(superadmin, cajero)).toBe(true);
+        expect(puedeRestablecerClaveDe(superadmin, superadmin)).toBe(false);
+    });
+
+    test('el dueño solo puede con encargados y cajeros', () => {
+        expect(puedeRestablecerClaveDe(duenio, encargado)).toBe(true);
+        expect(puedeRestablecerClaveDe(duenio, cajero)).toBe(true);
+        expect(puedeRestablecerClaveDe(duenio, otroDuenio)).toBe(false);
+        expect(puedeRestablecerClaveDe(duenio, superadmin)).toBe(false);
+        expect(puedeRestablecerClaveDe(duenio, duenio)).toBe(false);
+    });
+
+    test('encargado y cajero nunca pueden, aunque tengan permisos de personal', () => {
+        const encargadoConPermisos = { ...encargado, permisos: ['personal.editar'] };
+        expect(puedeRestablecerClaveDe(encargadoConPermisos, cajero)).toBe(false);
+        expect(puedeRestablecerClaveDe(cajero, encargado)).toBe(false);
+    });
+
+    test('sin datos o sin id no muestra el botón', () => {
+        expect(puedeRestablecerClaveDe(null, cajero)).toBe(false);
+        expect(puedeRestablecerClaveDe({ rol: 'DUENIO' }, cajero)).toBe(false);
+        expect(puedeRestablecerClaveDe(duenio, { rol: 'CAJERO' })).toBe(false);
+    });
+});
+
+describe('validarFormularioClave', () => {
+    test('acepta una clave válida', () => {
+        expect(
+            validarFormularioClave({ actual: 'vieja123!', nueva: 'NuevaClave#1', repetida: 'NuevaClave#1', pedirActual: true })
+        ).toBe('');
+        expect(validarFormularioClave({ nueva: 'NuevaClave#1', repetida: 'NuevaClave#1' })).toBe('');
+    });
+
+    test('pide la actual solo cuando corresponde', () => {
+        expect(validarFormularioClave({ nueva: 'NuevaClave#1', repetida: 'NuevaClave#1', pedirActual: true })).toBe(
+            'Escribí tu contraseña actual.'
+        );
+    });
+
+    test('rechaza corta, solo números, distinta repetición e igual a la actual', () => {
+        expect(validarFormularioClave({ nueva: 'abc', repetida: 'abc' })).toMatch(/al menos 8/);
+        expect(validarFormularioClave({ nueva: '1234567890', repetida: '1234567890' })).toMatch(/solo números/);
+        expect(validarFormularioClave({ nueva: 'NuevaClave#1', repetida: 'NuevaClave#2' })).toBe(
+            'Las contraseñas nuevas no coinciden.'
+        );
+        expect(
+            validarFormularioClave({ actual: 'MismaClave#1', nueva: 'MismaClave#1', repetida: 'MismaClave#1', pedirActual: true })
+        ).toMatch(/distinta/);
+        expect(validarFormularioClave({})).toBe('Escribí la contraseña nueva.');
     });
 });

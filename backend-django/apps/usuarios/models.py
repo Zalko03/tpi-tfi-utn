@@ -98,6 +98,8 @@ class RegistroAuditoria(models.Model):
         ("AJUSTE_PERMISOS", "Ajuste individual de permisos"),
         ("DESACTIVACION", "Desactivación lógica de usuario"),
         ("ACTIVACION", "Reactivación de usuario"),
+        ("CAMBIO_CLAVE", "Cambio de la propia contraseña"),
+        ("RESTABLECIMIENTO_CLAVE", "Restablecimiento de contraseña ajena"),
     )
 
     usuario_modificado = models.ForeignKey(

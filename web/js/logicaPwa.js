@@ -2945,6 +2945,44 @@ export const accionesEmpleadoVisiblesParaUsuario = (usuarioActual, empleado) => 
     };
 };
 
+export const LARGO_MINIMO_CLAVE = 8;
+
+/**
+ * Espeja services.puede_restablecer_clave de Django para mostrar u ocultar el botón.
+ * El servidor vuelve a decidir: esto es solo para no ofrecer algo que va a fallar.
+ * - superadmin: a cualquiera menos a sí mismo;
+ * - dueño: solo a encargados y cajeros.
+ * El rol del superadmin llega como DUENIO, por eso se mira is_superuser primero.
+ */
+export const puedeRestablecerClaveDe = (usuarioActual, empleado) => {
+    if (!usuarioActual || !empleado) return false;
+    const idActual = usuarioActual.id ?? usuarioActual.user_id ?? null;
+    if (idActual === null || empleado.id === null || empleado.id === undefined) return false;
+    if (Number(idActual) === Number(empleado.id)) return false;
+    if (usuarioActual.is_superuser === true) return true;
+    const rolActual = String(usuarioActual.rol || '').toUpperCase();
+    if (rolActual !== 'DUENIO' || empleado.is_superuser === true) return false;
+    const rolEmpleado = String(empleado.rol || '').toUpperCase();
+    return rolEmpleado === 'ENCARGADO' || rolEmpleado === 'CAJERO';
+};
+
+/**
+ * Chequeo rápido del formulario de contraseña antes de llamar a la API. Devuelve el
+ * mensaje de error o '' si está bien. Las reglas completas (claves comunes, parecido
+ * al usuario) las aplica Django.
+ */
+export const validarFormularioClave = ({ actual = '', nueva = '', repetida = '', pedirActual = false } = {}) => {
+    if (pedirActual && !actual) return 'Escribí tu contraseña actual.';
+    if (!nueva) return 'Escribí la contraseña nueva.';
+    if (nueva.length < LARGO_MINIMO_CLAVE) {
+        return `La contraseña nueva tiene que tener al menos ${LARGO_MINIMO_CLAVE} caracteres.`;
+    }
+    if (/^\d+$/.test(nueva)) return 'La contraseña nueva no puede ser solo números.';
+    if (nueva !== repetida) return 'Las contraseñas nuevas no coinciden.';
+    if (pedirActual && nueva === actual) return 'La contraseña nueva tiene que ser distinta de la actual.';
+    return '';
+};
+
 export const CLAVE_SONIDOS_SILENCIADOS = 'sapori_sonidos_silenciados';
 
 /**
