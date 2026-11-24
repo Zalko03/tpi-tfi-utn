@@ -30,3 +30,12 @@ class CartaPublicaRateThrottle(AnonRateThrottle):
     """
 
     scope = "carta_publica"
+
+
+class CambioClaveRateThrottle(UserRateThrottle):
+    """
+    Control de tasa para "cambiar mi clave". Es por usuario (no por IP) porque el endpoint
+    exige sesión, y limita probar contraseñas actuales con una sesión robada.
+    """
+
+    scope = "cambio_clave"

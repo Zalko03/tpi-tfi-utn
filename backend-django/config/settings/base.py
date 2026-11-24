@@ -91,6 +91,7 @@ REST_FRAMEWORK = {
         "login": os.environ.get("DJANGO_THROTTLE_LOGIN", "10/minute"),
         "recalcular": os.environ.get("DJANGO_THROTTLE_RECALCULAR", "20/minute"),
         "carta_publica": os.environ.get("DJANGO_THROTTLE_CARTA_PUBLICA", "60/minute"),
+        "cambio_clave": os.environ.get("DJANGO_THROTTLE_CAMBIO_CLAVE", "10/minute"),
     },
     "DEFAULT_PAGINATION_CLASS": "apps.comun.paginacion.PaginacionEstandar",
     "EXCEPTION_HANDLER": "apps.comun.excepciones.manejador_excepciones_api",
@@ -119,6 +120,18 @@ SIMPLE_JWT = {
     "TOKEN_OBTAIN_SERIALIZER": "apps.usuarios.tokens.CustomTokenObtainPairSerializer",
     "TOKEN_REFRESH_SERIALIZER": "apps.usuarios.tokens.CustomTokenRefreshSerializer",
 }
+
+# Reglas para contraseñas nuevas (cambio, restablecimiento, alta y superadmin).
+# No se aplican a las claves que ya existen: solo se validan al fijar una nueva.
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 8},
+    },
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
 
 TEMPLATES = [
     {

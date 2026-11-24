@@ -14,15 +14,17 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.comun.filtros import filtrar_queryset_por_rango_fechas
-from apps.comun.throttling import LoginRateThrottle
+from apps.comun.throttling import CambioClaveRateThrottle, LoginRateThrottle
 from apps.usuarios import services
 from apps.usuarios.models import RegistroAuditoria
 from apps.usuarios.permissions import TienePermiso
 from apps.usuarios.serializers import (
     AjustarPermisosSerializer,
+    CambiarClaveSerializer,
     DemoAccesoSerializer,
     DesactivarUsuarioSerializer,
     RegistroAuditoriaSerializer,
+    RestablecerClaveSerializer,
     UsuarioActualizarSerializer,
     UsuarioCrearSerializer,
     UsuarioSerializer,
@@ -96,6 +98,32 @@ class LogoutView(APIView):
             )
 
 
+class CambiarClaveView(APIView):
+    """
+    POST /api/auth/cambiar-clave/: el usuario autenticado cambia su propia contraseña.
+    Devuelve tokens nuevos porque las sesiones anteriores quedan cerradas.
+    """
+
+    permission_classes = (IsAuthenticated,)
+    throttle_classes = (CambioClaveRateThrottle,)
+
+    def post(self, request):
+        serializer = CambiarClaveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = services.cambiar_clave_propia(
+            usuario=request.user,
+            clave_actual=serializer.validated_data["clave_actual"],
+            clave_nueva=serializer.validated_data["clave_nueva"],
+        )
+        return Response(
+            {
+                "mensaje": "Contraseña cambiada. Cerramos tus sesiones en otros dispositivos.",
+                **datos,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class DemoAccesoView(APIView):
     """
     Acceso rápido sin contraseña para demostración local (GET/POST /api/auth/demo/).
@@ -149,7 +177,8 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return [TienePermiso("personal.desactivar")()]
         elif self.action == "ajustar_permisos":
             return [TienePermiso("personal.ajustar_permisos")()]
-        elif self.action == "me":
+        elif self.action in ("me", "restablecer_clave"):
+            # restablecer_clave decide por rol en services.puede_restablecer_clave
             return [IsAuthenticated()]
         return [IsAuthenticated()]
 
@@ -166,6 +195,7 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             rol=rol,
             permisos=permisos,
             creado_por=request.user,
+            validar_clave=True,
         )
 
         salida = UsuarioSerializer(usuario)
@@ -258,6 +288,24 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "mensaje": "Permisos actualizados exitosamente.",
+                "usuario": UsuarioSerializer(usuario).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"], url_path="restablecer-clave")
+    def restablecer_clave(self, request, pk=None):
+        """Fija una contraseña nueva a otra persona y cierra todas sus sesiones."""
+        serializer = RestablecerClaveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        usuario = services.restablecer_clave(
+            usuario_id=pk,
+            clave_nueva=serializer.validated_data["clave_nueva"],
+            restablecido_por=request.user,
+        )
+        return Response(
+            {
+                "mensaje": "Contraseña restablecida. Se cerraron las sesiones de esa persona.",
                 "usuario": UsuarioSerializer(usuario).data,
             },
             status=status.HTTP_200_OK,

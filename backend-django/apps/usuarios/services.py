@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import update_last_login
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -19,6 +21,7 @@ from apps.usuarios.constantes import (
     PERMISOS_CRITICOS_ADMINISTRACION,
     ROL_CAJERO,
     ROL_DUENIO,
+    ROL_ENCARGADO,
     ROLES_CHOICES,
 )
 from apps.usuarios.exceptions import ErrorReglaNegocio, ErrorSupervivenciaDuenio
@@ -123,10 +126,14 @@ def crear_personal(
     rol: str = ROL_CAJERO,
     permisos: Optional[Dict[str, bool]] = None,
     creado_por: Optional[Any] = None,
+    validar_clave: bool = False,
 ) -> Any:
     """
     Da de alta un nuevo integrante del personal con su rol plantilla y ajustes
     individuales de permisos (HU6).
+
+    `validar_clave` aplica las reglas de contraseña; lo activa el alta desde la API.
+    Queda apagado para el seed y los tests, que usan claves cortas de ejemplo.
     """
     username = datos_usuario.get("username")
     password = datos_usuario.get("password")
@@ -140,6 +147,8 @@ def crear_personal(
         raise ErrorReglaNegocio("La contraseña inicial es obligatoria.")
     if User.objects.filter(username=username).exists():
         raise ErrorReglaNegocio(f"El nombre de usuario '{username}' ya se encuentra registrado.")
+    if validar_clave:
+        validar_clave_nueva(password, User(username=username, email=email))
 
     roles_validos = dict(ROLES_CHOICES).keys()
     if rol not in roles_validos:
@@ -385,4 +394,128 @@ def activar_personal(
         detalles={"mensaje": "Reactivación de cuenta de usuario"},
     )
 
+    return usuario
+
+
+# --- Contraseñas: cambio propio y restablecimiento ajeno ---
+
+ROLES_RESTABLECIBLES_POR_DUENIO = (ROL_ENCARGADO, ROL_CAJERO)
+
+
+def validar_clave_nueva(clave: str, usuario: Optional[Any] = None) -> None:
+    """
+    Aplica AUTH_PASSWORD_VALIDATORS (largo mínimo, claves comunes, solo números y parecido
+    al usuario). Junta los mensajes en uno solo para el formato único de error.
+    """
+    try:
+        validate_password(clave, user=usuario)
+    except DjangoValidationError as error:
+        raise ErrorReglaNegocio(" ".join(error.messages))
+
+
+def puede_restablecer_clave(operador: Any, objetivo: Any) -> bool:
+    """
+    Regla de quién restablece la clave de quién. Depende del rol y no de un permiso
+    granular, para que no se pueda delegar a un encargado:
+    - el superadmin, a cualquiera menos a sí mismo (para la propia usa "cambiar mi clave");
+    - un dueño, solo a encargados y cajeros (nunca a otro dueño ni al superadmin).
+    """
+    if operador is None or not getattr(operador, "is_authenticated", False):
+        return False
+    if not operador.is_active or operador.id == objetivo.id:
+        return False
+    if operador.is_superuser:
+        return True
+    perfil_operador = getattr(operador, "perfil", None)
+    if perfil_operador is None or perfil_operador.rol != ROL_DUENIO:
+        return False
+    if objetivo.is_superuser:
+        return False
+    perfil_objetivo = getattr(objetivo, "perfil", None)
+    return perfil_objetivo is not None and perfil_objetivo.rol in ROLES_RESTABLECIBLES_POR_DUENIO
+
+
+@transaction.atomic
+def cambiar_clave_propia(usuario: Any, clave_actual: str, clave_nueva: str) -> Dict[str, Any]:
+    """
+    Cambia la contraseña del usuario autenticado. Cierra sus sesiones en los otros
+    dispositivos (blacklist de los refresh) y devuelve un par de tokens nuevo para que
+    el dispositivo actual siga conectado.
+    """
+    if not usuario.check_password(clave_actual or ""):
+        raise ErrorReglaNegocio("La contraseña actual no es correcta.")
+    if clave_actual == clave_nueva:
+        raise ErrorReglaNegocio("La contraseña nueva tiene que ser distinta de la actual.")
+    validar_clave_nueva(clave_nueva, usuario)
+
+    usuario.set_password(clave_nueva)
+    usuario.save(update_fields=["password"])
+    sesiones_cerradas = invalidar_tokens_usuario(usuario)
+
+    # La clave nunca va a la auditoría: solo quién y cuántas sesiones se cerraron.
+    RegistroAuditoria.objects.create(
+        usuario_modificado=usuario,
+        modificado_por=usuario,
+        accion="CAMBIO_CLAVE",
+        detalles={"username": usuario.username, "sesiones_cerradas": sesiones_cerradas},
+    )
+
+    refresh = CustomTokenObtainPairSerializer.get_token(usuario)
+    return {
+        "refresh": str(refresh),
+        "access": str(refresh.access_token),
+        "usuario": construir_datos_usuario_login(usuario),
+    }
+
+
+@transaction.atomic
+def restablecer_clave(usuario_id: int, clave_nueva: str, restablecido_por: Any) -> Any:
+    """
+    Fija una contraseña nueva a otra persona (ver puede_restablecer_clave) y cierra todas
+    sus sesiones. El access token que ya tenga sigue valiendo hasta que venza (15 min),
+    porque Node lo valida por su cuenta con la clave pública.
+    """
+    try:
+        usuario = User.objects.select_related("perfil").get(id=usuario_id)
+    except (User.DoesNotExist, ValueError, TypeError):
+        raise ErrorReglaNegocio("El usuario especificado no existe.")
+
+    if not puede_restablecer_clave(restablecido_por, usuario):
+        raise PermissionDenied("No podés restablecer la contraseña de esta persona.")
+    validar_clave_nueva(clave_nueva, usuario)
+
+    usuario.set_password(clave_nueva)
+    usuario.save(update_fields=["password"])
+    sesiones_cerradas = invalidar_tokens_usuario(usuario)
+
+    RegistroAuditoria.objects.create(
+        usuario_modificado=usuario,
+        modificado_por=restablecido_por,
+        accion="RESTABLECIMIENTO_CLAVE",
+        detalles={"username": usuario.username, "sesiones_cerradas": sesiones_cerradas},
+    )
+    return usuario
+
+
+@transaction.atomic
+def crear_superadmin(username: str, clave: str, email: str = "") -> Any:
+    """
+    Crea el superadmin. Solo lo usa el comando `crear_superadmin`: la API nunca deja
+    marcar is_superuser (es de solo lectura en UsuarioSerializer).
+    """
+    username = (username or "").strip()
+    if not username:
+        raise ErrorReglaNegocio("El nombre de usuario es obligatorio.")
+    if User.objects.filter(username=username).exists():
+        raise ErrorReglaNegocio(f"El usuario '{username}' ya existe. No se modificó nada.")
+    validar_clave_nueva(clave, User(username=username, email=email))
+
+    usuario = User.objects.create_superuser(username=username, email=email, password=clave)
+    PerfilUsuario.objects.create(usuario=usuario, rol=ROL_DUENIO, permisos={})
+    RegistroAuditoria.objects.create(
+        usuario_modificado=usuario,
+        modificado_por=None,
+        accion="ALTA_USUARIO",
+        detalles={"username": username, "superadmin": True, "origen": "comando"},
+    )
     return usuario

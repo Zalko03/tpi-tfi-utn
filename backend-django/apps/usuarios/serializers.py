@@ -166,3 +166,40 @@ class RegistroAuditoriaSerializer(serializers.ModelSerializer):
             "detalles",
             "fecha",
         )
+
+
+class CambiarClaveSerializer(serializers.Serializer):
+    clave_actual = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        error_messages={"blank": "Escribí tu contraseña actual."},
+    )
+    clave_nueva = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        error_messages={"blank": "Escribí la contraseña nueva."},
+    )
+    clave_nueva_repetida = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate(self, attrs):
+        if attrs["clave_nueva"] != attrs["clave_nueva_repetida"]:
+            raise serializers.ValidationError(
+                {"clave_nueva_repetida": "Las contraseñas nuevas no coinciden."}
+            )
+        return attrs
+
+
+class RestablecerClaveSerializer(serializers.Serializer):
+    clave_nueva = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        error_messages={"blank": "Escribí la contraseña nueva."},
+    )
+    clave_nueva_repetida = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate(self, attrs):
+        if attrs["clave_nueva"] != attrs["clave_nueva_repetida"]:
+            raise serializers.ValidationError(
+                {"clave_nueva_repetida": "Las contraseñas nuevas no coinciden."}
+            )
+        return attrs
