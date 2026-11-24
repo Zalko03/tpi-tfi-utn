@@ -3991,3 +3991,130 @@ export const obtenerResumenStockBajo = (insumos = []) => {
 };
 
 
+
+// ============================================================
+// DETECCIÓN REAL DE LA CONEXIÓN (ping a /health)
+// navigator.onLine solo dice si hay una red, no si llega al servidor: con
+// wifi sin internet o con el servidor caído sigue en true. Por eso se
+// pregunta periódicamente a la ruta de salud de Django.
+// ============================================================
+export const RUTA_SALUD_DJANGO = '/health';
+export const INTERVALO_PING_CONECTADO_MS = 30000;
+export const ESPERA_BASE_REINTENTO_MS = 5000;
+export const ESPERA_MAXIMA_REINTENTO_MS = 60000;
+export const TIMEOUT_PING_MS = 8000;
+// Fallos seguidos antes de declarar el corte: un solo ping perdido
+// (un micro-corte del wifi) no tiene que mandar las ventas a la cola.
+export const FALLOS_PARA_DECLARAR_CORTE = 2;
+
+export const ESTADO_CONEXION_INICIAL = Object.freeze({
+    servidorAlcanzable: true,
+    fallosSeguidos: 0,
+});
+
+/**
+ * Cuánto esperar hasta el próximo ping. Conectado: intervalo fijo.
+ * Fallando: espera creciente (5 s, 10 s, 20 s, 40 s…) con tope de 60 s.
+ */
+export const calcularEsperaProximoPing = (
+    fallosSeguidos = 0,
+    {
+        intervaloConectado = INTERVALO_PING_CONECTADO_MS,
+        esperaBase = ESPERA_BASE_REINTENTO_MS,
+        esperaMaxima = ESPERA_MAXIMA_REINTENTO_MS,
+    } = {}
+) => {
+    const fallos = Number.isFinite(fallosSeguidos) && fallosSeguidos > 0 ? Math.floor(fallosSeguidos) : 0;
+    if (fallos === 0) return intervaloConectado;
+    // Se limita el exponente para no generar números gigantes con muchos fallos.
+    const exponente = Math.min(fallos - 1, 20);
+    return Math.min(esperaBase * 2 ** exponente, esperaMaxima);
+};
+
+/**
+ * Aplica el resultado de un ping al estado de conexión.
+ * Devuelve el estado nuevo y el cambio ocurrido: 'corte', 'vuelta' o null.
+ */
+export const aplicarResultadoPing = (
+    estadoPrevio = ESTADO_CONEXION_INICIAL,
+    pingOk,
+    fallosParaCorte = FALLOS_PARA_DECLARAR_CORTE
+) => {
+    const previo = { ...ESTADO_CONEXION_INICIAL, ...(estadoPrevio || {}) };
+    if (pingOk) {
+        return {
+            estado: { servidorAlcanzable: true, fallosSeguidos: 0 },
+            cambio: previo.servidorAlcanzable ? null : 'vuelta',
+        };
+    }
+    const fallosSeguidos = previo.fallosSeguidos + 1;
+    const servidorAlcanzable = previo.servidorAlcanzable && fallosSeguidos < fallosParaCorte;
+    return {
+        estado: { servidorAlcanzable, fallosSeguidos },
+        cambio: previo.servidorAlcanzable && !servidorAlcanzable ? 'corte' : null,
+    };
+};
+
+/**
+ * Hace un GET a la ruta de salud con timeout. Nunca lanza: devuelve
+ * { ok, motivo } con motivo 'ok', 'timeout', 'red' o 'http_<código>'.
+ */
+export const verificarSaludServidor = async ({
+    fetchFn,
+    baseUrl,
+    timeoutMs = TIMEOUT_PING_MS,
+    crearAbortController = () => new AbortController(),
+    programar = setTimeout,
+    cancelar = clearTimeout,
+} = {}) => {
+    if (typeof fetchFn !== 'function' || !baseUrl || baseUrl === 'offline') {
+        return { ok: false, motivo: 'sin_url' };
+    }
+    const url = `${String(baseUrl).replace(/\/+$/, '')}${RUTA_SALUD_DJANGO}`;
+    const controlador = crearAbortController();
+    let vencio = false;
+    const temporizador = programar(() => {
+        vencio = true;
+        controlador.abort();
+    }, timeoutMs);
+    try {
+        // cache: 'no-store' para que ni el navegador ni el SW contesten por el servidor.
+        const respuesta = await fetchFn(url, { method: 'GET', cache: 'no-store', signal: controlador.signal });
+        if (!respuesta || !respuesta.ok) {
+            return { ok: false, motivo: `http_${respuesta?.status ?? 0}` };
+        }
+        return { ok: true, motivo: 'ok' };
+    } catch {
+        return { ok: false, motivo: vencio ? 'timeout' : 'red' };
+    } finally {
+        cancelar(temporizador);
+    }
+};
+
+/**
+ * Hay que trabajar sin conexión si: el usuario lo eligió, el navegador
+ * no tiene red, o el ping declaró el servidor inalcanzable.
+ */
+export const debeTrabajarSinConexion = ({ modoConexion, navegadorEnLinea = true, servidorAlcanzable = true } = {}) =>
+    modoConexion === 'offline' || navegadorEnLinea === false || servidorAlcanzable === false;
+
+/**
+ * Modo de conexión a partir del interruptor "Trabajar sin conexión".
+ * Sin el interruptor, local o nube se deduce de dónde se abrió la página.
+ */
+export const resolverModoDesdeInterruptor = ({ sinConexion = false, hostname = '' } = {}) => {
+    if (sinConexion) return 'offline';
+    return hostname === 'localhost' || hostname === '127.0.0.1' ? 'local' : 'cloud';
+};
+
+/**
+ * Las direcciones de los servidores solo se muestran abriendo la app con
+ * ?debug en la URL (soporte técnico); el resto ve solo el interruptor.
+ */
+export const esVistaDebugConexion = (search = '') => {
+    try {
+        return new URLSearchParams(search).has('debug');
+    } catch {
+        return false;
+    }
+};

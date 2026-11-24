@@ -93,6 +93,14 @@ import {
     validarCarritoContraCatalogo,
     validarRangoFechas,
     validarTamanoArchivoImportacion,
+    aplicarResultadoPing,
+    calcularEsperaProximoPing,
+    debeTrabajarSinConexion,
+    ESTADO_CONEXION_INICIAL,
+    INTERVALO_PING_CONECTADO_MS,
+    verificarSaludServidor,
+    esVistaDebugConexion,
+    resolverModoDesdeInterruptor,
 } from './logicaPwa.js';
 
 const CLAVE_CATALOGO_CACHE = 'sapori_catalogo_cache';
@@ -184,6 +192,8 @@ export const estadoApp = {
     nodeUrl: endpointsIniciales.nodeUrl,
     tokenJwt: tokenInicialGuardado.startsWith('offline-token-') ? '' : tokenInicialGuardado,
     demoAccesoDisponible: false,
+    // Resultado del ping a /health (ver monitor de conexión más abajo).
+    conexion: { ...ESTADO_CONEXION_INICIAL },
     usuario: tokenInicialGuardado.startsWith('offline-token-')
         ? null
         : JSON.parse(sessionStorage.getItem('cafe_user') || 'null'),
@@ -470,8 +480,75 @@ export const mostrarToast = (mensaje, tipo = 'info') => {
 };
 
 // ============================================================
+// MONITOR DE CONEXIÓN REAL
+// Ping a /health cada 30 s; si falla, reintenta con espera creciente
+// (5, 10, 20, 40, 60 s). La lógica de estado vive en logicaPwa.js.
+// ============================================================
+const monitorConexion = { temporizador: null, enCurso: false };
+
+const programarProximoPing = (esperaMs) => {
+    clearTimeout(monitorConexion.temporizador);
+    monitorConexion.temporizador = setTimeout(verificarConexionAhora, esperaMs);
+};
+
+const alDetectarCorteConexion = () => {
+    actualizarIndicadorColaOffline();
+    actualizarEstadoSocketUI(false, 'Sin conexión con el servidor');
+    mostrarToast(
+        'No hay conexión con el servidor. Podés seguir vendiendo; las ventas se guardarán y se enviarán solas.',
+        'advertencia'
+    );
+};
+
+const alVolverConexion = () => {
+    actualizarIndicadorColaOffline();
+    if (!estadoApp.tokenJwt) return;
+    if (obtenerVentasOffline().length > 0) {
+        mostrarToast('Volvió la conexión. Enviando ventas guardadas…', 'info');
+        sincronizarVentasPendientes();
+    } else {
+        mostrarToast('Volvió la conexión con el servidor.', 'exito');
+        conectarSocketTiempoReal();
+    }
+};
+
+export const verificarConexionAhora = async () => {
+    if (monitorConexion.enCurso) return estadoApp.conexion.servidorAlcanzable;
+    // En modo manual sin conexión o sin red en el dispositivo no se pingea:
+    // se vuelve a mirar en el próximo intervalo.
+    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+        programarProximoPing(INTERVALO_PING_CONECTADO_MS);
+        return false;
+    }
+    monitorConexion.enCurso = true;
+    try {
+        const { ok } = await verificarSaludServidor({
+            fetchFn: (url, opciones) => fetch(url, opciones),
+            baseUrl: estadoApp.djangoUrl,
+        });
+        const { estado, cambio } = aplicarResultadoPing(estadoApp.conexion, ok);
+        estadoApp.conexion = estado;
+        if (cambio === 'corte') alDetectarCorteConexion();
+        if (cambio === 'vuelta') alVolverConexion();
+        programarProximoPing(calcularEsperaProximoPing(estado.fallosSeguidos));
+        return estado.servidorAlcanzable;
+    } finally {
+        monitorConexion.enCurso = false;
+    }
+};
+
+// ============================================================
 // GESTIÓN DE COLA OFFLINE Y RECONEXIÓN AUTOMÁTICA
 // ============================================================
+// true si hay que vender a la cola: modo manual sin conexión, navegador sin red
+// o servidor que no contesta el ping (wifi sin internet, Render caído, etc.).
+const sinConexionReal = () =>
+    debeTrabajarSinConexion({
+        modoConexion: estadoApp.modoConexion,
+        navegadorEnLinea: navigator.onLine !== false,
+        servidorAlcanzable: estadoApp.conexion.servidorAlcanzable,
+    });
+
 export const actualizarIndicadorColaOffline = () => {
     const banner = $('banner-cola-offline');
     const texto = $('texto-cola-offline');
@@ -479,14 +556,20 @@ export const actualizarIndicadorColaOffline = () => {
 
     const cola = obtenerVentasOffline();
     const cantidad = cola.length;
-    const sinInternet = navigator.onLine === false || estadoApp.modoConexion === 'offline';
+    const sinInternet = sinConexionReal();
 
     if (sinInternet || cantidad > 0) {
         banner.style.display = 'flex';
-        texto.textContent =
-            cantidad === 1
-                ? 'Sin internet: 1 venta guardada, se enviará al volver la conexión'
-                : `Sin internet: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
+        if (sinInternet) {
+            texto.textContent =
+                cantidad === 1
+                    ? 'Sin conexión: 1 venta guardada, se enviará al volver la conexión'
+                    : `Sin conexión: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
+        } else {
+            // Hay conexión pero quedaron ventas sin enviar (por ejemplo, falta abrir un turno).
+            texto.textContent =
+                cantidad === 1 ? '1 venta guardada sin enviar' : `${cantidad} ventas guardadas sin enviar`;
+        }
     } else {
         banner.style.display = 'none';
     }
@@ -583,8 +666,8 @@ export const sincronizarVentasPendientes = async () => {
             return;
         }
 
-        if (navigator.onLine === false) {
-            mostrarToast('El dispositivo continúa sin conexión a internet.', 'advertencia');
+        if (navigator.onLine === false || !estadoApp.conexion.servidorAlcanzable) {
+            mostrarToast('Todavía no hay conexión con el servidor. Se vuelve a intentar solo.', 'advertencia');
             return;
         }
 
@@ -1064,7 +1147,7 @@ const fetchConSesion = crearFetchConSesion({
 // CONEXIÓN SOCKET.IO EN TIEMPO REAL
 // ============================================================
 export const conectarSocketTiempoReal = () => {
-    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+    if (sinConexionReal()) {
         actualizarEstadoSocketUI(false, 'Trabajando sin internet');
         return;
     }
@@ -1209,7 +1292,7 @@ const registrarEventoEnFeed = (nombreEvento, payload) => {
 // MÓDULO 1: PUNTO DE VENTA (POS) + COLA OFFLINE
 // ============================================================
 export const cargarCatalogo = async () => {
-    if (estadoApp.modoConexion !== 'offline' && navigator.onLine !== false) {
+    if (!sinConexionReal()) {
         if ($('grilla-productos')) {
             $('grilla-productos').innerHTML = construirCargandoPos();
         }
@@ -1459,10 +1542,10 @@ const registrarCobroEnColaOffline = (payload, resumen, metodoPago) => {
     estadoApp.carrito = [];
     renderizarCarritoTicket();
     if ($('estado-caja')) {
-        $('estado-caja').textContent = 'Sin internet: la venta quedó guardada y se enviará sola.';
+        $('estado-caja').textContent = 'Sin conexión: la venta quedó guardada y se enviará sola.';
     }
     reproducirSonido(obtenerSonidoParaEvento('venta.offline'));
-    mostrarToast('Sin internet: la venta quedó guardada y se enviará sola.', 'advertencia');
+    mostrarToast('Sin conexión: la venta quedó guardada y se enviará sola.', 'advertencia');
 };
 
 const cobrarTicketVenta = async () => conCargando($('btn-cobrar-ticket'), async () => {
@@ -1530,7 +1613,7 @@ const cobrarTicketVenta = async () => conCargando($('btn-cobrar-ticket'), async 
         items_entrada: itemsMapeados,
     };
 
-    if (navigator.onLine === false || estadoApp.modoConexion === 'offline') {
+    if (sinConexionReal()) {
         registrarCobroEnColaOffline(payload, resumen, metodoPago);
         return;
     }
@@ -1661,7 +1744,7 @@ const pintarModalTicketTermico = (ticket, { desdeHistorial = false } = {}) => {
 // MÓDULO 2: CAJA Y ARQUEO CIEGO
 // ============================================================
 export const cargarTurnoActivo = async () => {
-    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+    if (sinConexionReal()) {
         const turnoCache = leerCacheTurnoPropio();
         if (turnoCache) {
             estadoApp.turnoActivo = turnoCache;
@@ -4833,6 +4916,8 @@ const mostrarModalPermisos = (u) => {
 const abrirModalConfigServidor = () => {
     const modal = $('modal-config-servidor');
     if (!modal) return;
+    if ($('check-trabajar-sin-conexion')) $('check-trabajar-sin-conexion').checked = estadoApp.modoConexion === 'offline';
+    if ($('config-servidor-avanzado')) $('config-servidor-avanzado').hidden = !esVistaDebugConexion(window.location.search);
     if ($('select-modo-conexion')) $('select-modo-conexion').value = estadoApp.modoConexion;
     if ($('input-config-django-url')) $('input-config-django-url').value = estadoApp.djangoUrl;
     if ($('input-config-node-url')) $('input-config-node-url').value = estadoApp.nodeUrl;
@@ -6117,9 +6202,21 @@ Flete y entrega a local: $4500`;
 
     $('form-config-servidor')?.addEventListener('submit', (e) => {
         e.preventDefault();
-        const modo = $('select-modo-conexion')?.value || 'local';
-        const djangoUrl = ($('input-config-django-url')?.value || 'http://localhost:8000').trim().replace(/\/$/, '');
-        const nodeUrl = ($('input-config-node-url')?.value || 'http://localhost:3000').trim().replace(/\/$/, '');
+        const vistaDebug = esVistaDebugConexion(window.location.search);
+        // En la vista normal solo cuenta el interruptor y las direcciones no se tocan;
+        // con ?debug se respetan el selector y las direcciones escritas a mano.
+        const modo = vistaDebug
+            ? $('select-modo-conexion')?.value || 'local'
+            : resolverModoDesdeInterruptor({
+                  sinConexion: Boolean($('check-trabajar-sin-conexion')?.checked),
+                  hostname: window.location.hostname,
+              });
+        const djangoUrl = vistaDebug
+            ? ($('input-config-django-url')?.value || 'http://localhost:8000').trim().replace(/\/$/, '')
+            : estadoApp.djangoUrl;
+        const nodeUrl = vistaDebug
+            ? ($('input-config-node-url')?.value || 'http://localhost:3000').trim().replace(/\/$/, '')
+            : estadoApp.nodeUrl;
 
         estadoApp.modoConexion = modo;
         estadoApp.djangoUrl = djangoUrl;
@@ -6135,6 +6232,16 @@ Flete y entrega a local: $4500`;
         if (!estadoApp.tokenJwt) {
             actualizarDisponibilidadDemo();
         }
+        if (modo !== 'offline') verificarConexionAhora();
+        if (!vistaDebug) {
+            mostrarToast(
+                modo === 'offline'
+                    ? 'Trabajando sin conexión: las ventas se guardan en este dispositivo.'
+                    : 'Trabajando con conexión.',
+                'exito'
+            );
+            return;
+        }
         const etiquetasModo = {
             local: 'En la computadora del local',
             cloud: 'En internet',
@@ -6148,7 +6255,11 @@ Flete y entrega a local: $4500`;
 
     // 21. Sincronización de ventas offline y reconexión automática
     $('btn-sincronizar-offline')?.addEventListener('click', () => {
-        conCargando($('btn-sincronizar-offline'), sincronizarVentasPendientes);
+        // Primero se pregunta al servidor: el último ping puede tener hasta 60 s.
+        conCargando($('btn-sincronizar-offline'), async () => {
+            await verificarConexionAhora();
+            await sincronizarVentasPendientes();
+        });
     });
 
     // 21b. Consultor IA de Stock y Cierre de Caja para el Dueño
@@ -6244,13 +6355,16 @@ Flete y entrega a local: $4500`;
         });
     });
 
+    // El evento 'online' solo dice que hay red, no que llegue al servidor:
+    // se confirma con un ping y, si contesta, alVolverConexion sincroniza.
     window.addEventListener('online', () => {
-        actualizarIndicadorColaOffline();
-        mostrarToast('Volvió internet. Enviando ventas guardadas…', 'info');
-        sincronizarVentasPendientes();
+        verificarConexionAhora();
     });
 
     window.addEventListener('offline', () => {
+        // 'offline' sí es confiable: sin red no hay servidor. Se marca el corte
+        // ya mismo para que el ping de la vuelta dispare la sincronización.
+        estadoApp.conexion = { servidorAlcanzable: false, fallosSeguidos: estadoApp.conexion.fallosSeguidos };
         actualizarIndicadorColaOffline();
         actualizarEstadoSocketUI(false, 'Trabajando sin internet');
         mostrarToast('Se cortó internet. Podés seguir vendiendo; las ventas se guardarán para enviarse solas.', 'advertencia');
@@ -6428,6 +6542,11 @@ document.addEventListener('DOMContentLoaded', () => {
     actualizarUIUsuario();
     renderizarCatalogoPOS();
     inicializarEventosDOM();
+    verificarConexionAhora();
+    // Al volver a la pestaña (o desbloquear el celular) se pregunta enseguida.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') verificarConexionAhora();
+    });
 
     if (estadoApp.tokenJwt) {
         conectarSocketTiempoReal();
