@@ -31,6 +31,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     rol = serializers.SerializerMethodField()
     permisos = serializers.SerializerMethodField()
     permisos_activos = serializers.SerializerMethodField()
+    pedido_clave_pendiente = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -46,8 +47,18 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "permisos",
             "permisos_activos",
             "date_joined",
+            "pedido_clave_pendiente",
         )
         read_only_fields = ("id", "date_joined", "is_active", "is_superuser")
+
+    def get_pedido_clave_pendiente(self, obj):
+        """Fecha del pedido "olvidé mi contraseña" sin atender, o None."""
+        pendientes = getattr(obj, "pedidos_clave_pendientes", None)
+        if pendientes is None:
+            pedido = obj.pedidos_clave.filter(atendido=False).order_by("-creado_en").first()
+        else:
+            pedido = pendientes[0] if pendientes else None
+        return pedido.creado_en.isoformat() if pedido else None
 
     def get_rol(self, obj) -> str:
         if getattr(obj, "is_superuser", False):
@@ -203,3 +214,10 @@ class RestablecerClaveSerializer(serializers.Serializer):
                 {"clave_nueva_repetida": "Las contraseñas nuevas no coinciden."}
             )
         return attrs
+
+
+class OlvideClaveSerializer(serializers.Serializer):
+    username = serializers.CharField(
+        max_length=150,
+        error_messages={"blank": "Escribí tu usuario.", "required": "Escribí tu usuario."},
+    )

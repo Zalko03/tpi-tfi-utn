@@ -1,5 +1,6 @@
 import http from 'http';
 import app from './app.js';
+import { despertarAiService } from './src/clients/ai.client.js';
 import { puerto } from './src/config/env.js';
 import { conectarDB } from './src/config/db.js';
 import { inicializarSocketIO } from './src/sockets/index.js';
@@ -12,6 +13,8 @@ try {
     servidorHttp.listen(puerto, () => {
         // eslint-disable-next-line no-console
         console.log(`backend-node (HTTP + Socket.IO) escuchando en el puerto ${puerto}`);
+        // En Render gratis, si Node se despertó, ai-service seguramente también dormía.
+        despertarAiService();
     });
 } catch (error) {
     // eslint-disable-next-line no-console

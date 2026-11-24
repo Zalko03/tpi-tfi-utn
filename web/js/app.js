@@ -8,6 +8,7 @@ import {
     accionesCajaVisiblesParaUsuario,
     accionesEmpleadoVisiblesParaUsuario,
     puedeRestablecerClaveDe,
+    pedidosClaveParaAtender,
     validarFormularioClave,
     accionesEquipoVisiblesParaUsuario,
     agregarProductoAlCarrito,
@@ -195,7 +196,8 @@ export const estadoApp = {
     tokenJwt: tokenInicialGuardado.startsWith('offline-token-') ? '' : tokenInicialGuardado,
     demoAccesoDisponible: false,
     // Resultado del ping a /health (ver monitor de conexión más abajo).
-    conexion: { ...ESTADO_CONEXION_INICIAL },
+    // Si el navegador arranca diciendo "sin red", se empieza sin conexión hasta que el ping confirme.
+    conexion: { ...ESTADO_CONEXION_INICIAL, ...(navigator.onLine === false ? { servidorAlcanzable: false } : {}) },
     usuario: tokenInicialGuardado.startsWith('offline-token-')
         ? null
         : JSON.parse(sessionStorage.getItem('cafe_user') || 'null'),
@@ -216,6 +218,7 @@ export const estadoApp = {
     empleadoEditandoPermisos: null,
     empleadoParaBaja: null,
     empleadoParaRestablecerClave: null,
+    avisoPedidosClave: '',
     ventaParaAnular: null,
     ticketAbiertoDesdeHistorial: false,
     productoDesgloseId: null,
@@ -517,9 +520,9 @@ const alVolverConexion = () => {
 
 export const verificarConexionAhora = async () => {
     if (monitorConexion.enCurso) return estadoApp.conexion.servidorAlcanzable;
-    // En modo manual sin conexión o sin red en el dispositivo no se pingea:
-    // se vuelve a mirar en el próximo intervalo.
-    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+    // En modo manual sin conexión no se pingea. Con navigator.onLine en false sí se pingea:
+    // en algunos Linux el navegador reporta "sin red" teniendo internet, y el ping es lo que vale.
+    if (estadoApp.modoConexion === 'offline') {
         programarProximoPing(INTERVALO_PING_CONECTADO_MS);
         return false;
     }
@@ -531,9 +534,10 @@ export const verificarConexionAhora = async () => {
         });
         const { estado, cambio } = aplicarResultadoPing(estadoApp.conexion, ok);
         estadoApp.conexion = estado;
+        // Se programa antes de los avisos: si uno falla, el monitor no se detiene.
+        programarProximoPing(calcularEsperaProximoPing(estado.fallosSeguidos));
         if (cambio === 'corte') alDetectarCorteConexion();
         if (cambio === 'vuelta') alVolverConexion();
-        programarProximoPing(calcularEsperaProximoPing(estado.fallosSeguidos));
         return estado.servidorAlcanzable;
     } finally {
         monitorConexion.enCurso = false;
@@ -548,7 +552,9 @@ export const verificarConexionAhora = async () => {
 const sinConexionReal = () =>
     debeTrabajarSinConexion({
         modoConexion: estadoApp.modoConexion,
-        navegadorEnLinea: navigator.onLine !== false,
+        // navigator.onLine no se usa directo: el evento 'offline' y el ping ya actualizan
+        // servidorAlcanzable, y en algunos Linux onLine queda en false con internet.
+        navegadorEnLinea: true,
         servidorAlcanzable: estadoApp.conexion.servidorAlcanzable,
     });
 
@@ -565,9 +571,11 @@ export const actualizarIndicadorColaOffline = () => {
         banner.style.display = 'flex';
         if (sinInternet) {
             texto.textContent =
-                cantidad === 1
-                    ? 'Sin conexión: 1 venta guardada, se enviará al volver la conexión'
-                    : `Sin conexión: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
+                cantidad === 0
+                    ? 'Sin conexión: las ventas se guardarán y se enviarán al volver la conexión'
+                    : cantidad === 1
+                      ? 'Sin conexión: 1 venta guardada, se enviará al volver la conexión'
+                      : `Sin conexión: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
         } else {
             // Hay conexión pero quedaron ventas sin enviar (por ejemplo, falta abrir un turno).
             texto.textContent =
@@ -669,7 +677,7 @@ export const sincronizarVentasPendientes = async () => {
             return;
         }
 
-        if (navigator.onLine === false || !estadoApp.conexion.servidorAlcanzable) {
+        if (!estadoApp.conexion.servidorAlcanzable) {
             mostrarToast('Todavía no hay conexión con el servidor. Se vuelve a intentar solo.', 'advertencia');
             return;
         }
@@ -1017,7 +1025,7 @@ const enviarSolicitudLogin = async ({
     mensajeErrorPorDefecto = 'No se pudo ingresar. Revisá tus datos.',
     esDemo = false,
 }) => {
-    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+    if (estadoApp.modoConexion === 'offline') {
         intentarReanudarSesionOffline(nombreFallback);
         return;
     }
@@ -1074,7 +1082,7 @@ const ejecutarLoginDemo = async (perfil, nombreUsuarioDemo = '') =>
     });
 
 const actualizarDisponibilidadDemo = async () => {
-    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+    if (estadoApp.modoConexion === 'offline') {
         estadoApp.demoAccesoDisponible = false;
         return false;
     }
@@ -1099,6 +1107,7 @@ const cerrarSesion = ({ motivo = 'Sesión cerrada correctamente.', tipo = 'info'
     sessionStorage.removeItem('cafe_refresh');
     estadoApp.tokenJwt = '';
     estadoApp.usuario = null;
+    estadoApp.avisoPedidosClave = '';
     estadoApp.productoDesgloseId = null;
     if ($('panel-desglose-receta')) $('panel-desglose-receta').style.display = 'none';
     sessionStorage.removeItem('cafe_jwt');
@@ -4694,12 +4703,27 @@ export const cargarPersonal = async () => {
         if (res.ok) {
             const data = await res.json();
             estadoApp.usuariosEquipo = Array.isArray(data) ? data : (data.datos || data.results || []);
+            avisarPedidosClavePendientes();
         }
     } catch {
         // Fallback offline
     } finally {
         renderizarTarjetasPersonal();
     }
+};
+
+// Un aviso por sesión si alguien pidió restablecer su contraseña desde el login.
+const avisarPedidosClavePendientes = () => {
+    const pendientes = pedidosClaveParaAtender(estadoApp.usuario, estadoApp.usuariosEquipo);
+    const clave = pendientes.map((e) => e.id).join(',');
+    if (!clave || estadoApp.avisoPedidosClave === clave) return;
+    estadoApp.avisoPedidosClave = clave;
+    mostrarToast(
+        pendientes.length === 1
+            ? `@${pendientes[0].username} pidió restablecer su contraseña. Lo ves en Equipo & Permisos.`
+            : `${pendientes.length} personas pidieron restablecer su contraseña. Lo ves en Equipo & Permisos.`,
+        'advertencia'
+    );
 };
 
 const renderizarTarjetasPersonal = () => {
@@ -4762,6 +4786,7 @@ const renderizarTarjetasPersonal = () => {
                     ${u.is_active ? 'Activo' : 'Inactivo'}
                 </span>
             </div>
+            ${u.pedido_clave_pendiente && puedeRestablecerClaveDe(estadoApp.usuario, u) ? '<span class="badge-pedido-clave">Pidió restablecer su contraseña</span>' : ''}
             ${botonesHtml.length > 0 ? `<div class="usuario-acciones-fila">${botonesHtml.join('')}</div>` : ''}
         `;
 
@@ -5270,8 +5295,46 @@ const inicializarEventosDOM = () => {
 
     // 3. Logout
     $('btn-cerrar-sesion')?.addEventListener('click', () => cerrarSesion());
+    $('btn-olvide-clave')?.addEventListener('click', () => {
+        $('form-olvide-clave')?.reset();
+        const usuarioEscrito = ($('input-username')?.value || '').trim();
+        if ($('input-olvide-clave-usuario')) $('input-olvide-clave-usuario').value = usuarioEscrito;
+        if ($('modal-olvide-clave')) $('modal-olvide-clave').style.display = 'flex';
+        $('input-olvide-clave-usuario')?.focus();
+    });
+
+    $('form-olvide-clave')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = ($('input-olvide-clave-usuario')?.value || '').trim();
+        if (!username) {
+            mostrarToast('Escribí tu usuario.', 'advertencia');
+            return;
+        }
+        await conCargando($('btn-enviar-olvide-clave'), async () => {
+            try {
+                // Sin sesión: fetch directo, no fetchConSesion.
+                const res = await fetch(`${estadoApp.djangoUrl}/api/auth/olvide-clave/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('modal-olvide-clave')) $('modal-olvide-clave').style.display = 'none';
+                    if ($('mensaje-auth')) $('mensaje-auth').textContent = data.mensaje || '';
+                    mostrarToast(data.mensaje || 'Pedido enviado.', 'exito');
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast('Para pedir una contraseña nueva necesitás conexión.', 'advertencia');
+            }
+        });
+    });
+
     $('btn-cambiar-mi-clave')?.addEventListener('click', () => {
-        if (!navigator.onLine) {
+        if (sinConexionReal()) {
             mostrarToast('Para cambiar la contraseña necesitás conexión.', 'advertencia');
             return;
         }
@@ -5347,6 +5410,7 @@ const inicializarEventosDOM = () => {
                     if ($('modal-restablecer-clave')) $('modal-restablecer-clave').style.display = 'none';
                     estadoApp.empleadoParaRestablecerClave = null;
                     mostrarToast(`Contraseña de @${u.username} restablecida. Se cerraron sus sesiones.`, 'exito');
+                    await cargarPersonal();
                 } else {
                     const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
                     mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');

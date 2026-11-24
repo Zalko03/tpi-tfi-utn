@@ -10,6 +10,7 @@ from apps.usuarios.views import (
     DemoAccesoView,
     LoginView,
     LogoutView,
+    OlvideClaveView,
     RefreshView,
     RegistroAuditoriaViewSet,
     UsuarioViewSet,
@@ -25,6 +26,7 @@ auth_patterns = [
     path("token/blacklist/", LogoutView.as_view(), name="token_blacklist"),
     path("logout/", LogoutView.as_view(), name="logout"),
     path("cambiar-clave/", CambiarClaveView.as_view(), name="auth_cambiar_clave"),
+    path("olvide-clave/", OlvideClaveView.as_view(), name="auth_olvide_clave"),
     path("demo/", DemoAccesoView.as_view(), name="auth_demo"),
 ]
 

@@ -80,6 +80,58 @@ export const validarYNormalizarSalidaIA = (datos) => {
 export const timeoutReintentoIAMs = 60000;
 
 /**
+ * Mientras un servicio gratis de Render despierta, su proxy puede contestar 502/503/504
+ * en vez de esperar. Esos códigos se reintentan; un 500 o un 4xx no (es un error real).
+ */
+export const CODIGOS_ARRANQUE_FRIO = new Set([502, 503, 504]);
+
+/** Esperas entre reintentos y tiempo total máximo (el navegador consulta ~90 s). */
+export const ajustesReintentoIA = {
+    esperasMs: [3000, 5000, 10000, 15000, 20000],
+    presupuestoMs: 80000,
+    esperar: (ms) => new Promise((resolver) => setTimeout(resolver, ms)),
+};
+
+/**
+ * Hace el pedido y, si ai-service está despertando (timeout, falla de red o 502/503/504),
+ * lo repite con esperas crecientes hasta agotar el presupuesto. Devuelve la última
+ * respuesta (puede seguir siendo un 5xx) o lanza el último error de red.
+ */
+export const pedirConArranqueFrio = async (pedir, timeoutInicialMs) => {
+    const inicio = Date.now();
+    let limiteMs = timeoutInicialMs;
+    for (let intento = 0; ; intento += 1) {
+        let respuesta = null;
+        let error = null;
+        try {
+            respuesta = await pedir(limiteMs);
+        } catch (errorPedido) {
+            if (!esErrorReintentableIA(errorPedido)) throw errorPedido;
+            error = errorPedido;
+        }
+        if (respuesta && !CODIGOS_ARRANQUE_FRIO.has(respuesta.status)) return respuesta;
+
+        const espera = ajustesReintentoIA.esperasMs[intento];
+        const restante = ajustesReintentoIA.presupuestoMs - (Date.now() - inicio) - (espera ?? 0);
+        if (espera === undefined || restante < 5000) {
+            if (respuesta) return respuesta;
+            throw error;
+        }
+        await ajustesReintentoIA.esperar(espera);
+        limiteMs = Math.min(timeoutReintentoIAMs, restante);
+    }
+};
+
+/**
+ * Despierta ai-service sin esperar la respuesta. Node lo llama al arrancar: si Node se
+ * acaba de despertar, ai-service probablemente también estaba dormido.
+ */
+export const despertarAiService = () => {
+    if (!aiServiceUrl) return;
+    fetch(`${aiServiceUrl}/health`, { signal: AbortSignal.timeout(90000) }).catch(() => {});
+};
+
+/**
  * Indica si un fallo de fetch amerita reintentar: vencimiento del plazo (TimeoutError/AbortError)
  * o falla de red (fetch de Node lanza TypeError "fetch failed").
  */
@@ -136,16 +188,8 @@ export const extraerPreciosIA = async (
                 signal: AbortSignal.timeout(limiteMs),
             });
 
-        let respuesta;
-        try {
-            respuesta = await pedirExtraccion(timeoutEfectivo);
-        } catch (errorPrimerIntento) {
-            // En Render gratis ai-service se duerme y tarda hasta ~1 minuto en despertar:
-            // si no contestó a tiempo o la conexión falló, se reintenta una vez con más margen
-            // antes de pasar a contingencia. Un error HTTP (4xx/5xx) no se reintenta.
-            if (!esErrorReintentableIA(errorPrimerIntento)) throw errorPrimerIntento;
-            respuesta = await pedirExtraccion(timeoutReintentoIAMs);
-        }
+        // En Render gratis ai-service se duerme y tarda hasta ~1 minuto en despertar.
+        const respuesta = await pedirConArranqueFrio(pedirExtraccion, timeoutEfectivo);
 
         if (!respuesta.ok) {
             throw new Error(`ai-service respondió con estado HTTP ${respuesta.status}`);
@@ -190,12 +234,16 @@ export const generarResumenSemanalIA = async (
             headers['X-Request-ID'] = correlationId;
         }
 
-        const respuesta = await fetch(`${aiServiceUrl}/v1/resumen-semanal`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(timeoutMs),
-        });
+        const respuesta = await pedirConArranqueFrio(
+            (limiteMs) =>
+                fetch(`${aiServiceUrl}/v1/resumen-semanal`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(payload),
+                    signal: AbortSignal.timeout(limiteMs),
+                }),
+            timeoutMs
+        );
 
         if (!respuesta.ok) {
             throw new Error(`ai-service respondió con estado HTTP ${respuesta.status}`);

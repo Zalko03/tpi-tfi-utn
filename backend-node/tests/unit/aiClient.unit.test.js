@@ -1,6 +1,8 @@
 import { jest } from '@jest/globals';
 import {
+    ajustesReintentoIA,
     esErrorReintentableIA,
+    pedirConArranqueFrio,
     extraerPreciosIA,
     generarResumenSemanalIA,
     validarItemExtraido,
@@ -10,8 +12,16 @@ import {
 describe('Unit Tests - Cliente HTTP hacia ai-service (ai.client.js)', () => {
     const fetchOriginal = global.fetch;
 
+    const esperarOriginal = ajustesReintentoIA.esperar;
+
+    beforeEach(() => {
+        // Sin esperas reales entre reintentos.
+        ajustesReintentoIA.esperar = jest.fn().mockResolvedValue(undefined);
+    });
+
     afterEach(() => {
         global.fetch = fetchOriginal;
+        ajustesReintentoIA.esperar = esperarOriginal;
         jest.restoreAllMocks();
     });
 
@@ -241,13 +251,60 @@ describe('Unit Tests - Cliente HTTP hacia ai-service (ai.client.js)', () => {
             expect(resultado.contingencia).toBe(true);
         });
 
-        it('pasa a contingencia si el reintento también falla', async () => {
+        it('pasa a contingencia si ai-service sigue sin responder después de los reintentos', async () => {
             global.fetch = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
 
             const resultado = await extraerPreciosIA({ textoLista: 'Café 1 kg $18000' });
 
-            expect(global.fetch).toHaveBeenCalledTimes(2);
+            expect(global.fetch.mock.calls.length).toBeGreaterThan(1);
             expect(resultado.contingencia).toBe(true);
+        });
+
+        it('reintenta si Render responde 502 mientras ai-service despierta', async () => {
+            global.fetch = jest
+                .fn()
+                .mockResolvedValueOnce({ ok: false, status: 502, json: async () => ({}) })
+                .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) })
+                .mockResolvedValueOnce({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        proveedor_detectado: 'X',
+                        envio_detectado: '0.00',
+                        items: [{ nombre_insumo: 'Leche', cantidad: '12', unidad: 'l', precio_total: '16200.00' }],
+                        proveedor_ia: 'groq',
+                        contingencia: false,
+                    }),
+                });
+
+            const resultado = await extraerPreciosIA({ textoLista: 'Leche 12 l $16200' });
+
+            expect(global.fetch).toHaveBeenCalledTimes(3);
+            expect(ajustesReintentoIA.esperar).toHaveBeenNthCalledWith(1, 3000);
+            expect(ajustesReintentoIA.esperar).toHaveBeenNthCalledWith(2, 5000);
+            expect(resultado.contingencia).toBe(false);
+            expect(resultado.items).toHaveLength(1);
+        });
+
+        it('pedirConArranqueFrio devuelve el último 502 al agotar los reintentos', async () => {
+            const pedir = jest.fn().mockResolvedValue({ ok: false, status: 502 });
+
+            const respuesta = await pedirConArranqueFrio(pedir, 12000);
+
+            expect(respuesta.status).toBe(502);
+            expect(pedir.mock.calls.length).toBe(1 + ajustesReintentoIA.esperasMs.length);
+            expect(pedir).toHaveBeenNthCalledWith(1, 12000);
+            expect(pedir.mock.calls[1][0]).toBeLessThanOrEqual(60000);
+        });
+
+        it('pedirConArranqueFrio no reintenta un 500 ni un error que no es de red', async () => {
+            const pedir500 = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+            expect((await pedirConArranqueFrio(pedir500, 1000)).status).toBe(500);
+            expect(pedir500).toHaveBeenCalledTimes(1);
+
+            const pedirRoto = jest.fn().mockRejectedValue(new Error('JSON inválido'));
+            await expect(pedirConArranqueFrio(pedirRoto, 1000)).rejects.toThrow('JSON inválido');
+            expect(pedirRoto).toHaveBeenCalledTimes(1);
         });
 
         it('esErrorReintentableIA solo acepta timeout, abort y fallas de red', () => {

@@ -4,6 +4,7 @@ La lógica de negocio reside estrictamente en services.py (convenciones-python.m
 """
 
 from django.contrib.auth import get_user_model
+from django.db.models import Prefetch
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
@@ -16,13 +17,14 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from apps.comun.filtros import filtrar_queryset_por_rango_fechas
 from apps.comun.throttling import CambioClaveRateThrottle, LoginRateThrottle
 from apps.usuarios import services
-from apps.usuarios.models import RegistroAuditoria
+from apps.usuarios.models import PedidoRestablecimientoClave, RegistroAuditoria
 from apps.usuarios.permissions import TienePermiso
 from apps.usuarios.serializers import (
     AjustarPermisosSerializer,
     CambiarClaveSerializer,
     DemoAccesoSerializer,
     DesactivarUsuarioSerializer,
+    OlvideClaveSerializer,
     RegistroAuditoriaSerializer,
     RestablecerClaveSerializer,
     UsuarioActualizarSerializer,
@@ -124,6 +126,32 @@ class CambiarClaveView(APIView):
         )
 
 
+class OlvideClaveView(APIView):
+    """
+    POST /api/auth/olvide-clave/: pedido "¿Olvidaste tu contraseña?" desde el login.
+    Responde siempre lo mismo, exista o no el usuario, para no revelar cuentas.
+    """
+
+    permission_classes = (AllowAny,)
+    authentication_classes = ()
+    throttle_classes = (LoginRateThrottle,)
+
+    def post(self, request):
+        serializer = OlvideClaveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.solicitar_restablecimiento_clave(serializer.validated_data["username"])
+        return Response(
+            {
+                "mensaje": (
+                    "Listo. Si el usuario existe, el dueño del local va a ver tu pedido "
+                    "y te va a pasar una contraseña nueva."
+                ),
+                "detalles": None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class DemoAccesoView(APIView):
     """
     Acceso rápido sin contraseña para demostración local (GET/POST /api/auth/demo/).
@@ -161,7 +189,18 @@ class UsuarioViewSet(viewsets.ModelViewSet):
     CRUD y acciones de personal protegidas por permisos granulares (docs/seguridad.md §5).
     """
 
-    queryset = User.objects.select_related("perfil").all().order_by("-date_joined")
+    queryset = (
+        User.objects.select_related("perfil")
+        .prefetch_related(
+            Prefetch(
+                "pedidos_clave",
+                queryset=PedidoRestablecimientoClave.objects.filter(atendido=False),
+                to_attr="pedidos_clave_pendientes",
+            )
+        )
+        .all()
+        .order_by("-date_joined")
+    )
     serializer_class = UsuarioSerializer
 
     def get_permissions(self):

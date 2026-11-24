@@ -10,7 +10,7 @@ from django.core.cache import cache
 from rest_framework.test import APIClient
 
 from apps.usuarios.constantes import ROL_CAJERO, ROL_DUENIO, ROL_ENCARGADO
-from apps.usuarios.models import RegistroAuditoria
+from apps.usuarios.models import PedidoRestablecimientoClave, RegistroAuditoria
 from apps.usuarios.services import crear_personal, crear_superadmin
 
 User = get_user_model()
@@ -216,3 +216,69 @@ class TestAltaConClaveValidada:
         )
         assert res.status_code == 201
         assert User.objects.get(username="colado").is_superuser is False
+
+
+@pytest.mark.django_db
+class TestOlvideMiClave:
+    URL = "/api/auth/olvide-clave/"
+
+    def test_misma_respuesta_exista_o_no_el_usuario(self, personal):
+        existe = APIClient().post(self.URL, {"username": "cajero_clave"}, format="json")
+        no_existe = APIClient().post(self.URL, {"username": "nadie_aca"}, format="json")
+        assert existe.status_code == no_existe.status_code == 200
+        assert existe.json() == no_existe.json()
+        assert PedidoRestablecimientoClave.objects.count() == 1
+
+    def test_crea_un_solo_pedido_pendiente_y_audita(self, personal):
+        for _ in range(3):
+            APIClient().post(self.URL, {"username": "CAJERO_clave"}, format="json")
+        pedidos = PedidoRestablecimientoClave.objects.filter(usuario=personal["cajero"])
+        assert pedidos.count() == 1
+        assert RegistroAuditoria.objects.filter(accion="PEDIDO_RESTABLECIMIENTO").count() == 1
+
+    def test_usuario_inactivo_no_genera_pedido(self, personal):
+        cajero = personal["cajero"]
+        cajero.is_active = False
+        cajero.save()
+        res = APIClient().post(self.URL, {"username": "cajero_clave"}, format="json")
+        assert res.status_code == 200
+        assert not PedidoRestablecimientoClave.objects.exists()
+
+    def test_sin_usuario_responde_400(self, personal):
+        res = APIClient().post(self.URL, {"username": ""}, format="json")
+        assert res.status_code == 400
+
+    def test_el_duenio_ve_el_pedido_y_al_restablecer_queda_atendido(self, personal):
+        APIClient().post(self.URL, {"username": "cajero_clave"}, format="json")
+        cliente, _ = _cliente("duenio_clave")
+
+        filas = cliente.get("/api/usuarios/?limite=50").json()["datos"]
+        fila = next(f for f in filas if f["username"] == "cajero_clave")
+        assert fila["pedido_clave_pendiente"] is not None
+        otra = next(f for f in filas if f["username"] == "encargado_clave")
+        assert otra["pedido_clave_pendiente"] is None
+
+        cliente.post(
+            f"/api/usuarios/{personal['cajero'].id}/restablecer-clave/",
+            {"clave_nueva": NUEVA, "clave_nueva_repetida": NUEVA},
+            format="json",
+        )
+        pedido = PedidoRestablecimientoClave.objects.get(usuario=personal["cajero"])
+        assert pedido.atendido is True
+        assert pedido.atendido_por == personal["duenio"]
+
+    def test_limite_de_intentos(self, personal):
+        from rest_framework.settings import api_settings
+
+        original = api_settings.DEFAULT_THROTTLE_RATES.get("login")
+        api_settings.DEFAULT_THROTTLE_RATES["login"] = "2/min"
+        try:
+            cache.clear()
+            codigos = [
+                APIClient().post(self.URL, {"username": "x"}, format="json").status_code
+                for _ in range(3)
+            ]
+        finally:
+            api_settings.DEFAULT_THROTTLE_RATES["login"] = original
+            cache.clear()
+        assert codigos[-1] == 429
