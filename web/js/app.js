@@ -195,7 +195,8 @@ export const estadoApp = {
     tokenJwt: tokenInicialGuardado.startsWith('offline-token-') ? '' : tokenInicialGuardado,
     demoAccesoDisponible: false,
     // Resultado del ping a /health (ver monitor de conexión más abajo).
-    conexion: { ...ESTADO_CONEXION_INICIAL },
+    // Si el navegador arranca diciendo "sin red", se empieza sin conexión hasta que el ping confirme.
+    conexion: { ...ESTADO_CONEXION_INICIAL, ...(navigator.onLine === false ? { servidorAlcanzable: false } : {}) },
     usuario: tokenInicialGuardado.startsWith('offline-token-')
         ? null
         : JSON.parse(sessionStorage.getItem('cafe_user') || 'null'),
@@ -517,9 +518,9 @@ const alVolverConexion = () => {
 
 export const verificarConexionAhora = async () => {
     if (monitorConexion.enCurso) return estadoApp.conexion.servidorAlcanzable;
-    // En modo manual sin conexión o sin red en el dispositivo no se pingea:
-    // se vuelve a mirar en el próximo intervalo.
-    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+    // En modo manual sin conexión no se pingea. Con navigator.onLine en false sí se pingea:
+    // en algunos Linux el navegador reporta "sin red" teniendo internet, y el ping es lo que vale.
+    if (estadoApp.modoConexion === 'offline') {
         programarProximoPing(INTERVALO_PING_CONECTADO_MS);
         return false;
     }
@@ -531,9 +532,10 @@ export const verificarConexionAhora = async () => {
         });
         const { estado, cambio } = aplicarResultadoPing(estadoApp.conexion, ok);
         estadoApp.conexion = estado;
+        // Se programa antes de los avisos: si uno falla, el monitor no se detiene.
+        programarProximoPing(calcularEsperaProximoPing(estado.fallosSeguidos));
         if (cambio === 'corte') alDetectarCorteConexion();
         if (cambio === 'vuelta') alVolverConexion();
-        programarProximoPing(calcularEsperaProximoPing(estado.fallosSeguidos));
         return estado.servidorAlcanzable;
     } finally {
         monitorConexion.enCurso = false;
@@ -548,7 +550,9 @@ export const verificarConexionAhora = async () => {
 const sinConexionReal = () =>
     debeTrabajarSinConexion({
         modoConexion: estadoApp.modoConexion,
-        navegadorEnLinea: navigator.onLine !== false,
+        // navigator.onLine no se usa directo: el evento 'offline' y el ping ya actualizan
+        // servidorAlcanzable, y en algunos Linux onLine queda en false con internet.
+        navegadorEnLinea: true,
         servidorAlcanzable: estadoApp.conexion.servidorAlcanzable,
     });
 
@@ -565,9 +569,11 @@ export const actualizarIndicadorColaOffline = () => {
         banner.style.display = 'flex';
         if (sinInternet) {
             texto.textContent =
-                cantidad === 1
-                    ? 'Sin conexión: 1 venta guardada, se enviará al volver la conexión'
-                    : `Sin conexión: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
+                cantidad === 0
+                    ? 'Sin conexión: las ventas se guardarán y se enviarán al volver la conexión'
+                    : cantidad === 1
+                      ? 'Sin conexión: 1 venta guardada, se enviará al volver la conexión'
+                      : `Sin conexión: ${cantidad} ventas guardadas, se enviarán al volver la conexión`;
         } else {
             // Hay conexión pero quedaron ventas sin enviar (por ejemplo, falta abrir un turno).
             texto.textContent =
@@ -669,7 +675,7 @@ export const sincronizarVentasPendientes = async () => {
             return;
         }
 
-        if (navigator.onLine === false || !estadoApp.conexion.servidorAlcanzable) {
+        if (!estadoApp.conexion.servidorAlcanzable) {
             mostrarToast('Todavía no hay conexión con el servidor. Se vuelve a intentar solo.', 'advertencia');
             return;
         }
@@ -1017,7 +1023,7 @@ const enviarSolicitudLogin = async ({
     mensajeErrorPorDefecto = 'No se pudo ingresar. Revisá tus datos.',
     esDemo = false,
 }) => {
-    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+    if (estadoApp.modoConexion === 'offline') {
         intentarReanudarSesionOffline(nombreFallback);
         return;
     }
@@ -1074,7 +1080,7 @@ const ejecutarLoginDemo = async (perfil, nombreUsuarioDemo = '') =>
     });
 
 const actualizarDisponibilidadDemo = async () => {
-    if (estadoApp.modoConexion === 'offline' || navigator.onLine === false) {
+    if (estadoApp.modoConexion === 'offline') {
         estadoApp.demoAccesoDisponible = false;
         return false;
     }
@@ -5271,7 +5277,7 @@ const inicializarEventosDOM = () => {
     // 3. Logout
     $('btn-cerrar-sesion')?.addEventListener('click', () => cerrarSesion());
     $('btn-cambiar-mi-clave')?.addEventListener('click', () => {
-        if (!navigator.onLine) {
+        if (sinConexionReal()) {
             mostrarToast('Para cambiar la contraseña necesitás conexión.', 'advertencia');
             return;
         }
