@@ -7,6 +7,8 @@
 import {
     accionesCajaVisiblesParaUsuario,
     accionesEmpleadoVisiblesParaUsuario,
+    puedeRestablecerClaveDe,
+    validarFormularioClave,
     accionesEquipoVisiblesParaUsuario,
     agregarProductoAlCarrito,
     buscarProductoPorCodigoOTexto,
@@ -213,6 +215,7 @@ export const estadoApp = {
     usuariosEquipo: [],
     empleadoEditandoPermisos: null,
     empleadoParaBaja: null,
+    empleadoParaRestablecerClave: null,
     ventaParaAnular: null,
     ticketAbiertoDesdeHistorial: false,
     productoDesgloseId: null,
@@ -4730,6 +4733,11 @@ const renderizarTarjetasPersonal = () => {
                 `<button type="button" class="btn-secundario-comercial btn-ver-permisos w-100" data-id="${u.id}">${esSuperusuario ? 'Ver permisos' : 'Permisos'}</button>`
             );
         }
+        if (puedeRestablecerClaveDe(estadoApp.usuario, u)) {
+            botonesHtml.push(
+                `<button type="button" class="btn-secundario-comercial btn-restablecer-clave" data-id="${u.id}">Restablecer clave</button>`
+            );
+        }
         if (acciones.darDeBaja && !bloqueadoPorSuperusuario) {
             botonesHtml.push(
                 `<button type="button" class="btn-descartar-comercial btn-toggle-usuario" data-id="${u.id}">Dar de baja</button>`
@@ -4749,7 +4757,7 @@ const renderizarTarjetasPersonal = () => {
                 </div>
             </div>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
-                <span class="badge-rol ${rolClase}">${escaparHtml(rolEtiqueta)}</span>
+                <span class="badge-rol ${rolClase}">${escaparHtml(esSuperusuario ? 'Superadmin' : rolEtiqueta)}</span>
                 <span class="${u.is_active ? 'badge-estado-verde' : 'badge-estado-rojo text-peligro'}" style="font-size: 0.82rem;">
                     ${u.is_active ? 'Activo' : 'Inactivo'}
                 </span>
@@ -4759,6 +4767,10 @@ const renderizarTarjetasPersonal = () => {
 
         card.querySelector('.btn-ver-permisos')?.addEventListener('click', () => {
             mostrarModalPermisos(u);
+        });
+
+        card.querySelector('.btn-restablecer-clave')?.addEventListener('click', () => {
+            abrirModalRestablecerClave(u);
         });
 
         const btnToggle = card.querySelector('.btn-toggle-usuario');
@@ -4772,6 +4784,28 @@ const renderizarTarjetasPersonal = () => {
 
         contenedor.appendChild(card);
     }
+};
+
+const abrirModalRestablecerClave = (u) => {
+    const modal = $('modal-restablecer-clave');
+    if (!modal || !u) return;
+    estadoApp.empleadoParaRestablecerClave = u;
+    $('form-restablecer-clave')?.reset();
+    if ($('restablecer-clave-titulo')) {
+        $('restablecer-clave-titulo').textContent = `Restablecer la contraseña de @${u.username}`;
+    }
+    modal.style.display = 'flex';
+    $('input-restablecer-clave-nueva')?.focus();
+};
+
+const abrirModalCambiarClave = () => {
+    const modal = $('modal-cambiar-clave');
+    if (!modal || !estadoApp.usuario) return;
+    $('form-cambiar-clave')?.reset();
+    // Campo oculto para que el gestor de contraseñas del navegador sepa de qué cuenta es.
+    if ($('input-cambiar-clave-usuario')) $('input-cambiar-clave-usuario').value = estadoApp.usuario.username || '';
+    modal.style.display = 'flex';
+    $('input-clave-actual')?.focus();
 };
 
 const abrirModalBajaEmpleado = (u) => {
@@ -5236,6 +5270,92 @@ const inicializarEventosDOM = () => {
 
     // 3. Logout
     $('btn-cerrar-sesion')?.addEventListener('click', () => cerrarSesion());
+    $('btn-cambiar-mi-clave')?.addEventListener('click', () => {
+        if (!navigator.onLine) {
+            mostrarToast('Para cambiar la contraseña necesitás conexión.', 'advertencia');
+            return;
+        }
+        abrirModalCambiarClave();
+    });
+
+    $('form-cambiar-clave')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const datos = {
+            actual: $('input-clave-actual')?.value || '',
+            nueva: $('input-clave-nueva')?.value || '',
+            repetida: $('input-clave-nueva-repetida')?.value || '',
+        };
+        const error = validarFormularioClave({ ...datos, pedirActual: true });
+        if (error) {
+            mostrarToast(error, 'advertencia');
+            return;
+        }
+        await conCargando($('btn-confirmar-cambiar-clave'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/auth/cambiar-clave/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        clave_actual: datos.actual,
+                        clave_nueva: datos.nueva,
+                        clave_nueva_repetida: datos.repetida,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.access) {
+                    // Las sesiones anteriores quedaron cerradas: este dispositivo sigue con los tokens nuevos.
+                    estadoApp.tokenJwt = data.access;
+                    sessionStorage.setItem('cafe_jwt', data.access);
+                    if (data.refresh) sessionStorage.setItem('cafe_refresh', data.refresh);
+                    if (estadoApp.socket) conectarSocketTiempoReal();
+                    $('form-cambiar-clave')?.reset();
+                    if ($('modal-cambiar-clave')) $('modal-cambiar-clave').style.display = 'none';
+                    mostrarToast('Contraseña cambiada. Cerramos tus sesiones en otros dispositivos.', 'exito');
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
+
+    $('form-restablecer-clave')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const u = estadoApp.empleadoParaRestablecerClave;
+        if (!u || !puedeRestablecerClaveDe(estadoApp.usuario, u)) return;
+        const datos = {
+            nueva: $('input-restablecer-clave-nueva')?.value || '',
+            repetida: $('input-restablecer-clave-repetida')?.value || '',
+        };
+        const error = validarFormularioClave(datos);
+        if (error) {
+            mostrarToast(error, 'advertencia');
+            return;
+        }
+        await conCargando($('btn-confirmar-restablecer-clave'), async () => {
+            try {
+                const res = await fetchConSesion(`${estadoApp.djangoUrl}/api/usuarios/${u.id}/restablecer-clave/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clave_nueva: datos.nueva, clave_nueva_repetida: datos.repetida }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    $('form-restablecer-clave')?.reset();
+                    if ($('modal-restablecer-clave')) $('modal-restablecer-clave').style.display = 'none';
+                    estadoApp.empleadoParaRestablecerClave = null;
+                    mostrarToast(`Contraseña de @${u.username} restablecida. Se cerraron sus sesiones.`, 'exito');
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast(mensajeErrorParaUsuario(0), 'peligro');
+            }
+        });
+    });
 
     // 4. Navegación del Sidebar (y menú deslizable en pantallas chicas)
     const setSidebarMovilAbierto = (abierto) => {
@@ -6403,8 +6523,8 @@ Flete y entrega a local: $4500`;
             mostrarToast('Ingresá un nombre de usuario.', 'advertencia');
             return;
         }
-        if (password.length < 4) {
-            mostrarToast('La contraseña tiene que tener al menos 4 caracteres.', 'advertencia');
+        if (password.length < 8) {
+            mostrarToast('La contraseña tiene que tener al menos 8 caracteres.', 'advertencia');
             return;
         }
 
