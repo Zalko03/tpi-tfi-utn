@@ -7,6 +7,7 @@ import { jest } from '@jest/globals';
 import {
     accionesCajaVisiblesParaUsuario,
     puedeRestablecerClaveDe,
+    pedidosClaveParaAtender,
     validarFormularioClave,
     seleccionarTurnoPropio,
     accionesEmpleadoVisiblesParaUsuario,
@@ -2867,5 +2868,28 @@ describe('validarFormularioClave', () => {
             validarFormularioClave({ actual: 'MismaClave#1', nueva: 'MismaClave#1', repetida: 'MismaClave#1', pedirActual: true })
         ).toMatch(/distinta/);
         expect(validarFormularioClave({})).toBe('Escribí la contraseña nueva.');
+    });
+});
+
+describe('pedidosClaveParaAtender', () => {
+    const duenio = { id: 2, is_superuser: false, rol: 'DUENIO' };
+    const superadmin = { id: 1, is_superuser: true, rol: 'DUENIO' };
+    const equipo = [
+        { id: 4, rol: 'CAJERO', pedido_clave_pendiente: '2026-11-23T22:00:00Z' },
+        { id: 5, rol: 'ENCARGADO', pedido_clave_pendiente: null },
+        { id: 3, rol: 'DUENIO', pedido_clave_pendiente: '2026-11-23T22:05:00Z' },
+    ];
+
+    test('el dueño solo ve los pedidos de su personal', () => {
+        expect(pedidosClaveParaAtender(duenio, equipo).map((e) => e.id)).toEqual([4]);
+    });
+
+    test('el superadmin también ve el pedido de un dueño', () => {
+        expect(pedidosClaveParaAtender(superadmin, equipo).map((e) => e.id)).toEqual([4, 3]);
+    });
+
+    test('sin lista o sin usuario no hay pedidos', () => {
+        expect(pedidosClaveParaAtender(duenio, null)).toEqual([]);
+        expect(pedidosClaveParaAtender(null, equipo)).toEqual([]);
     });
 });

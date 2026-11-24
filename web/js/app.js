@@ -8,6 +8,7 @@ import {
     accionesCajaVisiblesParaUsuario,
     accionesEmpleadoVisiblesParaUsuario,
     puedeRestablecerClaveDe,
+    pedidosClaveParaAtender,
     validarFormularioClave,
     accionesEquipoVisiblesParaUsuario,
     agregarProductoAlCarrito,
@@ -217,6 +218,7 @@ export const estadoApp = {
     empleadoEditandoPermisos: null,
     empleadoParaBaja: null,
     empleadoParaRestablecerClave: null,
+    avisoPedidosClave: '',
     ventaParaAnular: null,
     ticketAbiertoDesdeHistorial: false,
     productoDesgloseId: null,
@@ -1105,6 +1107,7 @@ const cerrarSesion = ({ motivo = 'Sesión cerrada correctamente.', tipo = 'info'
     sessionStorage.removeItem('cafe_refresh');
     estadoApp.tokenJwt = '';
     estadoApp.usuario = null;
+    estadoApp.avisoPedidosClave = '';
     estadoApp.productoDesgloseId = null;
     if ($('panel-desglose-receta')) $('panel-desglose-receta').style.display = 'none';
     sessionStorage.removeItem('cafe_jwt');
@@ -4700,12 +4703,27 @@ export const cargarPersonal = async () => {
         if (res.ok) {
             const data = await res.json();
             estadoApp.usuariosEquipo = Array.isArray(data) ? data : (data.datos || data.results || []);
+            avisarPedidosClavePendientes();
         }
     } catch {
         // Fallback offline
     } finally {
         renderizarTarjetasPersonal();
     }
+};
+
+// Un aviso por sesión si alguien pidió restablecer su contraseña desde el login.
+const avisarPedidosClavePendientes = () => {
+    const pendientes = pedidosClaveParaAtender(estadoApp.usuario, estadoApp.usuariosEquipo);
+    const clave = pendientes.map((e) => e.id).join(',');
+    if (!clave || estadoApp.avisoPedidosClave === clave) return;
+    estadoApp.avisoPedidosClave = clave;
+    mostrarToast(
+        pendientes.length === 1
+            ? `@${pendientes[0].username} pidió restablecer su contraseña. Lo ves en Equipo & Permisos.`
+            : `${pendientes.length} personas pidieron restablecer su contraseña. Lo ves en Equipo & Permisos.`,
+        'advertencia'
+    );
 };
 
 const renderizarTarjetasPersonal = () => {
@@ -4768,6 +4786,7 @@ const renderizarTarjetasPersonal = () => {
                     ${u.is_active ? 'Activo' : 'Inactivo'}
                 </span>
             </div>
+            ${u.pedido_clave_pendiente && puedeRestablecerClaveDe(estadoApp.usuario, u) ? '<span class="badge-pedido-clave">Pidió restablecer su contraseña</span>' : ''}
             ${botonesHtml.length > 0 ? `<div class="usuario-acciones-fila">${botonesHtml.join('')}</div>` : ''}
         `;
 
@@ -5276,6 +5295,44 @@ const inicializarEventosDOM = () => {
 
     // 3. Logout
     $('btn-cerrar-sesion')?.addEventListener('click', () => cerrarSesion());
+    $('btn-olvide-clave')?.addEventListener('click', () => {
+        $('form-olvide-clave')?.reset();
+        const usuarioEscrito = ($('input-username')?.value || '').trim();
+        if ($('input-olvide-clave-usuario')) $('input-olvide-clave-usuario').value = usuarioEscrito;
+        if ($('modal-olvide-clave')) $('modal-olvide-clave').style.display = 'flex';
+        $('input-olvide-clave-usuario')?.focus();
+    });
+
+    $('form-olvide-clave')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = ($('input-olvide-clave-usuario')?.value || '').trim();
+        if (!username) {
+            mostrarToast('Escribí tu usuario.', 'advertencia');
+            return;
+        }
+        await conCargando($('btn-enviar-olvide-clave'), async () => {
+            try {
+                // Sin sesión: fetch directo, no fetchConSesion.
+                const res = await fetch(`${estadoApp.djangoUrl}/api/auth/olvide-clave/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if ($('modal-olvide-clave')) $('modal-olvide-clave').style.display = 'none';
+                    if ($('mensaje-auth')) $('mensaje-auth').textContent = data.mensaje || '';
+                    mostrarToast(data.mensaje || 'Pedido enviado.', 'exito');
+                } else {
+                    const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
+                    mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');
+                }
+            } catch {
+                mostrarToast('Para pedir una contraseña nueva necesitás conexión.', 'advertencia');
+            }
+        });
+    });
+
     $('btn-cambiar-mi-clave')?.addEventListener('click', () => {
         if (sinConexionReal()) {
             mostrarToast('Para cambiar la contraseña necesitás conexión.', 'advertencia');
@@ -5353,6 +5410,7 @@ const inicializarEventosDOM = () => {
                     if ($('modal-restablecer-clave')) $('modal-restablecer-clave').style.display = 'none';
                     estadoApp.empleadoParaRestablecerClave = null;
                     mostrarToast(`Contraseña de @${u.username} restablecida. Se cerraron sus sesiones.`, 'exito');
+                    await cargarPersonal();
                 } else {
                     const msgApi = extraerMensajeErrorApi(data, data?.mensaje || '');
                     mostrarToast(mensajeErrorParaUsuario(res.status, msgApi), 'peligro');

@@ -2945,6 +2945,15 @@ export const accionesEmpleadoVisiblesParaUsuario = (usuarioActual, empleado) => 
     };
 };
 
+/**
+ * Personas con un pedido "olvidé mi contraseña" pendiente que el usuario actual puede
+ * atender (misma regla que el botón "Restablecer clave").
+ */
+export const pedidosClaveParaAtender = (usuarioActual, empleados = []) =>
+    (Array.isArray(empleados) ? empleados : []).filter(
+        (empleado) => Boolean(empleado?.pedido_clave_pendiente) && puedeRestablecerClaveDe(usuarioActual, empleado)
+    );
+
 export const LARGO_MINIMO_CLAVE = 8;
 
 /**
